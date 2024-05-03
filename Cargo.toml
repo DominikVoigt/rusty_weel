@@ -7,3 +7,4 @@ edition = "2021"
 
 [dependencies]
 serde = {version = "1.0.198", features = ["derive"]}
+indoc = "2"

@@ -1,5 +1,5 @@
-#![allow(dead_code)] 
+#![allow(dead_code)]
 
-pub mod model;
 pub mod dsl;
 pub mod dslrealization;
+pub mod model;

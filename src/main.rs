@@ -1,0 +1,88 @@
+use std::clone;
+
+use indoc::indoc;
+use rusty_weel::dsl::DSL;
+use rusty_weel::dslrealization::Weel;
+use rusty_weel::model::{KeyValuePair, Parameters, HTTP};
+
+fn main() {
+    let data = ""; // TODO: Load data from file -> Maybe as a struct: holds data as a single string, if accessing field -> parses string for field
+    let config = ""; // TODO: Load config from file
+    let weel: Weel = Weel {};
+
+    // Block included into main:
+    // TODO: adapt it s.t. we can decode the endpoint url directly from json
+    weel.call(
+        "a1",
+        "bookAir",
+        Parameters {
+            label: "Book Airline 1",
+            method: HTTP::POST,
+            arguments: Some(vec![
+                weel.new_key_value_pair("from", "data.from"), // TODO: here we need to extract the to and from fields from data -> write some accessor code
+                weel.new_key_value_pair("from", "data.to"),
+                weel.new_key_value_pair("persons", "data.persons"),
+            ]),
+            // TODO: is it okay to treat annotations as a string?
+            annotations: r###"{ :_timing => {:_timing_weight => nil, :_timing_avg => nil, :explanations => nil}, :_shifting => {:_shifting_type => "Duration"}, :_context_data_analysis => {:probes => nil, :ips => nil}, :report => {:url => nil}, :_notes => {:_notes_general => nil} } }"###,
+        },
+        Option::None,
+        Option::None,
+        Some(indoc! {r###"
+            data.airlone = result.value(\'id')
+            data.costs += result.value('costs').to_f
+            status.update 1, 'Hotel'
+        "###}),
+        Option::None,
+    );
+    weel.parallel_do(Option::None, "last", || {
+        weel.loop_exec(weel.pre_test("data.persons > 0"), || {
+            weel.parallel_branch(data, |_local: &str| {
+                weel.call(
+                    "a2",
+                    "bookHotel",
+                    Parameters {
+                        label: "Book Hotel",
+                        method: HTTP::POST,
+                        arguments: Some(vec![weel.new_key_value_pair("to", "data.to")]),
+                        annotations: r###"{ :_timing => {:_timing_weight => nil, :_timing_avg => nil, :explanations => nil}, :_shifting => {:_shifting_type => "Duration"}, :_context_data_analysis => {:probes => nil, :ips => nil}, :report => {:url => nil}, :_notes => {:_notes_general => nil} } }"###,
+                    },
+                    Option::None,
+                    Option::None,
+                    Some(indoc! {r###"
+                            data.hotels << result.value('id')
+                            data.costs += result.value('costs').to_f
+                        "###}),
+                    Option::None,
+                );
+            });
+            weel.manipulate(
+                "a3",
+                Option::None,
+                indoc! {r###"
+                data.persons -= 1
+            "###},
+            )
+        })
+    });
+    weel.choose("exclusive", || {
+        // TODO: here it should also be fine to leave it as string and send it to the ruby handler
+        weel.alternative("data.costs > 700", || {
+            weel.call(
+                "a4",
+                "approve",
+                Parameters {
+                    label: "Approve Hotel",
+                    method: HTTP::POST,
+                    arguments: Some(vec![weel::new_key_value_pair("costs", "data.costs")]),
+                    annotations: r###"{ :_timing => {:_timing_weight => nil, :_timing_avg => nil, :explanations => nil}, :_shifting => {:_shifting_type => "Duration"}, :_context_data_analysis => {:probes => nil, :ips => nil}, :report => {:url => nil}, :_notes => {:_notes_general => nil} } }"###,
+                },
+                Option::None,
+                Option::None,
+                Option::None,
+                Option::None,
+            );
+        })
+    });
+    // End bock included into main
+}

@@ -1,13 +1,13 @@
 #[derive(Debug)]
 pub struct Parameters {
     pub label: &'static str,
-    pub method: HTTPVerb,
+    pub method: HTTP,
     pub arguments: Option<Vec<KeyValuePair>>,
     pub annotations: &'static str,
 }
 
 #[derive(Debug)]
-pub enum HTTPVerb {
+pub enum HTTP {
     GET,
     PUT,
     POST,
@@ -27,4 +27,4 @@ pub struct KeyValuePair {
 type UndefinedTypeTODO = ();
 // Define a float type to easily apply changes here if needed
 #[allow(non_camel_case_types)]
-type  float = f32;
+type float = f32;
