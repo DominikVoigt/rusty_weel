@@ -10,7 +10,6 @@ fn main() {
     let data = ""; // TODO: Load data from file -> Maybe as a struct: holds data as a single string, if accessing field -> parses string for field
     let config = ""; // TODO: Load config from file
     let weel: Weel = Weel {};
-
-    {main}
+    //{main}
     // End bock included into main
 }

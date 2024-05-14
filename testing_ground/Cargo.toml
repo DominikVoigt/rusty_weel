@@ -1,0 +1,8 @@
+[package]
+name = "testing_ground"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rusty-weel-macro ={ path = "../rusty_weel_macro"}
+json = "0.12.4"

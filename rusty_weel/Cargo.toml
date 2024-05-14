@@ -2,11 +2,21 @@
 name = "rusty-weel"
 version = "0.1.0"
 edition = "2021"
+# Use this version if you want to use the templating into the file (alternative
+# to the procecdural macro
 #build = "src/build.rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 serde = {version = "1.0.198", features = ["derive"]}
+serde_json = "1.0"
 indoc = "2"
+redis = "0.25.3"
+json = "0.12.4"
+reqwest = "0.12.4"
+
+log = "0.4.21"
+simple_logger = "5.0.0"
 rusty-weel-macro ={ path = "../rusty_weel_macro"}
+http_helper ={ path = "../http_helper"}

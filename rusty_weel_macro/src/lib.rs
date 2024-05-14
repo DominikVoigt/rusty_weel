@@ -1,4 +1,5 @@
 use proc_macro::TokenStream;
+use quote::{quote, ToTokens};
 
 /**
  * Injects the contents of the file provided into the file as if it was code.
@@ -14,7 +15,40 @@ pub fn inject(input: TokenStream) -> TokenStream {
     main_content.parse().unwrap()
 }
 
-fn open_file(path: &str) -> String{
+/**
+ * Helper to extract string value from a JsonValue (https://docs.rs/json/latest/json/enum.JsonValue.html)
+ */
+#[proc_macro]
+pub fn get_str_from_value(input: TokenStream) -> TokenStream {
+    let input = proc_macro2::TokenStream::from(input);
+    quote::quote! {
+        match #input.as_str() {
+            Some(x) => x.to_owned(),
+            None => {
+                log::error!("Could not create simple parameter as the field is not a string");
+                panic!("{}", CALLBACK_RESPONSE_ERROR_MESSAGE);
+            }
+        }
+    }.into()
+}
+
+/**
+ * Helper to extract string value from a JsonValue (https://docs.rs/json/latest/json/enum.JsonValue.html)
+ */
+#[proc_macro]
+pub fn get_str_from_value_simple(input: TokenStream) -> TokenStream {
+    let input = proc_macro2::TokenStream::from(input);
+    quote::quote! {
+        match #input.as_str() {
+            Some(x) => x.to_owned(),
+            None => {
+                panic!("panicing!");
+            }
+        }
+    }.into()
+}
+
+fn open_file(path: &str) -> String {
     println!("Trying to open path: {:?}", path);
     std::fs::read_to_string(path).unwrap()
 }
