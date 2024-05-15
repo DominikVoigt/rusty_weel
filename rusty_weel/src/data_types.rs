@@ -1,9 +1,10 @@
 use std::collections::HashMap;
+use std::fs;
 
 use serde::{Serialize, Deserialize};
 
 #[derive(Debug)]
-pub struct Parameters {
+pub struct HTTPRequest {
     pub label: &'static str,
     pub method: HTTP,
     pub arguments: Option<Vec<KeyValuePair>>,
@@ -40,6 +41,15 @@ pub struct Configuration {
     pub global_executionhandlers: String,
     pub executionhandlers: String,
     pub executionhandler: String
+}
+
+impl Configuration {
+    
+    fn load_configuration(path: &str) -> Configuration {
+        let config = fs::read_to_string(path).expect("Could not read configuration file!");
+        let config: Configuration = serde_yaml::from_str(&config).expect("Could not parse Configuration");
+        config
+    } 
 }
 
 type UndefinedTypeTODO = ();

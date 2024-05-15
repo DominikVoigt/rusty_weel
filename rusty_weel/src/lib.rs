@@ -2,7 +2,7 @@
 
 pub mod dsl;
 pub mod dslrealization;
-pub mod model;
+pub mod data_types;
 
 pub mod controller;
 pub mod connection_wrapper;

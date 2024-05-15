@@ -1,4 +1,4 @@
-use crate::model::Parameters;
+use crate::data_types::HTTPRequest;
 
 pub trait DSL {
     /**
@@ -8,7 +8,7 @@ pub trait DSL {
         &self, 
         label: &str,
         endpoint_url: &str,
-        parameters: Parameters,
+        parameters: HTTPRequest,
         // Even though adding separate functions would be more idomatic for opt. parameters, the number and similar handling of these parameters would make it clunky to handle (2^4 variants)
         prepare_code: Option<&str>,
         update_code: Option<&str>,

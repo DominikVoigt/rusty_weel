@@ -1,5 +1,5 @@
 use crate::dsl::DSL;
-use crate::model::{Parameters, KeyValuePair};
+use crate::data_types::{HTTPRequest, KeyValuePair};
 
 pub struct Weel {}
 
@@ -8,7 +8,7 @@ impl DSL for Weel {
         &self, 
         label: &str,
         endpoint_url: &str,
-        parameters: Parameters,
+        parameters: HTTPRequest,
         // Even though adding separate functions would be more idomatic for opt. parameters, the number and similar handling of these parameters would make it clunky to handle (2^4 variants)
         prepare_code: Option<&str>,
         update_code: Option<&str>,

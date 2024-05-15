@@ -11,12 +11,16 @@ edition = "2021"
 [dependencies]
 serde = {version = "1.0.198", features = ["derive"]}
 serde_json = "1.0"
-indoc = "2"
-redis = "0.25.3"
 json = "0.12.4"
+serde_yaml = "0.9.34"
+redis = "0.25.3"
+
 reqwest = "0.12.4"
+http_helper ={ path = "../http_helper"}
+
+indoc = "2"
 
 log = "0.4.21"
 simple_logger = "5.0.0"
+
 rusty-weel-macro ={ path = "../rusty_weel_macro"}
-http_helper ={ path = "../http_helper"}

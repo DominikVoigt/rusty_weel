@@ -1,9 +1,11 @@
+use std::collections::HashMap;
 use std::fs;
 
 use indoc::indoc;
 use rusty_weel::controller::Controller;
 use rusty_weel::dsl::DSL;
-use rusty_weel::model::{Configuration, Parameters, HTTP};
+use rusty_weel::dslrealization;
+use rusty_weel::data_types::{Configuration, HTTPRequest, HTTP};
 use rusty_weel_macro::inject;
 
 fn main() {
@@ -12,25 +14,22 @@ fn main() {
     let data = ""; // TODO: Load data from file -> Maybe as a struct: holds data as a single string, if accessing field -> parses string for field
                    // TODO: Use execution handler and inform of this issue
 
-    let config =
-        fs::read_to_string("./configuration.json").expect("Could not read configuration file!");
-    let config: Configuration =
-        serde_json::from_str(&config).expect("Could not parse Configuration");
+    let config = 
 
     // TODO: Add instance id
-    let controller = Controller::new("", config);
-    let weel = &controller.instance;
+    // let controller = Controller::new("", config);
+    let weel = dslrealization::Weel {};
 
     // Block included into main:
     // TODO: adapt it s.t. we can decode the endpoint url directly from json
-    inject!("rusty_weel/src/model_instance.eic");
+    // inject!("rusty_weel/src/model_instance.eic");
 
     // Block included into main:
     // TODO: adapt it s.t. we can decode the endpoint url directly from json
     weel.call(
         "a1",
         "bookAir",
-        Parameters {
+        HTTPRequest {
             label: "Book Airline 1",
             method: HTTP::POST,
             arguments: Some(vec![
@@ -56,7 +55,7 @@ fn main() {
                 weel.call(
                     "a2",
                     "bookHotel",
-                    Parameters {
+                    HTTPRequest {
                         label: "Book Hotel",
                         method: HTTP::POST,
                         arguments: Some(vec![weel.new_key_value_pair("to", "data.to")]),
@@ -85,7 +84,7 @@ fn main() {
             weel.call(
                 "a4",
                 "approve",
-                Parameters {
+                HTTPRequest {
                     label: "Approve Hotel",
                     method: HTTP::POST,
                     arguments: Some(vec![weel.new_key_value_pair("costs", "data.costs")]),

@@ -1,3 +1,5 @@
+use std::fs;
+
 
 pub enum ParameterType {
     Header,
@@ -5,6 +7,8 @@ pub enum ParameterType {
 }
 
 pub enum HTTPParameters {
+    // Simple kv parameters, can be in body or header
     SimpleParameter {name: String, value: String, param_type: ParameterType,},
-    ComplexParamter {a: String, mime_type: String, file_path: String }
+    // Body parameters, multi-part
+    ComplexParamter {name: String, mime_type: String, content_handle: fs::File }
 }

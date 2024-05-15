@@ -25,8 +25,7 @@ pub fn get_str_from_value(input: TokenStream) -> TokenStream {
         match #input.as_str() {
             Some(x) => x.to_owned(),
             None => {
-                log::error!("Could not create simple parameter as the field is not a string");
-                panic!("{}", CALLBACK_RESPONSE_ERROR_MESSAGE);
+                log_error_and_panic(CALLBACK_RESPONSE_ERROR_MESSAGE)
             }
         }
     }.into()
