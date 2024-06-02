@@ -34,7 +34,7 @@ pub struct Configuration {
     pub endpoints: HashMap<String, String>,
     pub data: String,
     pub host: String,
-    pub url: String,
+    pub base_url: String,
     pub redis_url: String,
     pub redis_path: String,
     pub redis_db: u32,
@@ -45,7 +45,7 @@ pub struct Configuration {
 
 impl Configuration {
     
-    fn load_configuration(path: &str) -> Configuration {
+    pub fn load_configuration(path: &str) -> Configuration {
         let config = fs::read_to_string(path).expect("Could not read configuration file!");
         let config: Configuration = serde_yaml::from_str(&config).expect("Could not parse Configuration");
         config

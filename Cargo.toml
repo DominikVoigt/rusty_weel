@@ -2,6 +2,5 @@
 members = [
     "rusty_weel",
     "rusty_weel_macro",
-    "http_helper",
-    "testing_ground"
+    "http_helper"
 ]

@@ -1,5 +1,5 @@
 use proc_macro::TokenStream;
-use quote::{quote, ToTokens};
+use quote::quote;
 
 /**
  * Injects the contents of the file provided into the file as if it was code.
@@ -21,7 +21,7 @@ pub fn inject(input: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn get_str_from_value(input: TokenStream) -> TokenStream {
     let input = proc_macro2::TokenStream::from(input);
-    quote::quote! {
+    quote! {
         match #input.as_str() {
             Some(x) => x.to_owned(),
             None => {
@@ -37,7 +37,7 @@ pub fn get_str_from_value(input: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn get_str_from_value_simple(input: TokenStream) -> TokenStream {
     let input = proc_macro2::TokenStream::from(input);
-    quote::quote! {
+    quote! {
         match #input.as_str() {
             Some(x) => x.to_owned(),
             None => {

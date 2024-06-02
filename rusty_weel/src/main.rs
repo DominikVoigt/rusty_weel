@@ -10,12 +10,14 @@ use rusty_weel_macro::inject;
 
 fn main() {
     simple_logger::init_with_level(log::Level::Warn).unwrap();
-
+    let cwd = std::env::current_dir().expect("could not get cwd").to_str().expect("could not get cwd").to_owned();
+    let instance_id = cwd;
+    println!("Current working directory is: {}", instance_id);
     let data = ""; // TODO: Load data from file -> Maybe as a struct: holds data as a single string, if accessing field -> parses string for field
                    // TODO: Use execution handler and inform of this issue
 
-    let config = 
-
+    let configuration = Configuration::load_configuration("opts.yaml");
+    let controller = Controller::new(instance_id.as_str(), configuration);
     // TODO: Add instance id
     // let controller = Controller::new("", config);
     let weel = dslrealization::Weel {};

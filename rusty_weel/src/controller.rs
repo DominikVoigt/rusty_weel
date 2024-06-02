@@ -1,8 +1,5 @@
 use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
-    thread::{self, sleep, JoinHandle},
-    time::Duration,
+    collections::HashMap, path::PathBuf, sync::{Arc, Mutex}, thread::{self, sleep, JoinHandle}, time::Duration
 };
 
 use http_helper::HTTPParameters;
@@ -71,6 +68,7 @@ impl Controller {
      * If it subscribed to the necessary topics, it will start a new thread that handles incomming redis messages
      * The thread receives a shared reference to the controller.
      * If the thread fails to subscribe, it will currently panic!
+     * // TODO: Seems to be semantically equal now -> **Review later**
      * // TODO: Handle issue of redis not connecting
      */
     fn try_establish_subscriptions(&mut self) -> Result<(), RedisError> {
@@ -140,7 +138,31 @@ impl Controller {
         Ok(())
     }
 
-    fn notify(&self) {}
+    fn notify(&self) {
+
+    }
+
+    fn uuid(&self) -> String {
+        self.attributes.get("uuid").expect("Attributes do not contain uuid").to_owned()
+    }
+
+    fn attributes_translated(&self) {
+        todo!()
+    }
+
+    fn host(&self) -> &str {
+        self.configuration.host.as_str()
+    }
+
+    fn base_url(&self) -> &str {
+        self.configuration.base_url.as_str()
+    }
+
+    fn instance_url(&self) -> String {
+        let mut path = PathBuf::from(self.base_url());
+        path.push(self.id.clone());
+        path.to_str().expect("Path to instance is not valid UTF-8").to_owned()
+    }
 }
 
 /**
