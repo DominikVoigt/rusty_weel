@@ -1,13 +1,16 @@
 use crate::dsl::DSL;
-use crate::data_types::{HTTPRequest, KeyValuePair};
+use crate::data_types::HTTPRequest;
+use crate::controller::Controller;
 
-pub struct Weel {}
+pub struct Weel {
+    pub controller: Controller,
+}
 
 impl DSL for Weel {
     fn call(
         &self, 
         label: &str,
-        endpoint_url: &str,
+        endpoint_url_name: &str,
         parameters: HTTPRequest,
         // Even though adding separate functions would be more idomatic for opt. parameters, the number and similar handling of these parameters would make it clunky to handle (2^4 variants)
         prepare_code: Option<&str>,
@@ -75,20 +78,5 @@ impl DSL for Weel {
     fn critical_do(&self, mutex_id: &str, lambda: impl Fn()) {
         println!("in critical do");
         lambda();
-    }
-}
-
-impl Weel {
-    /**
-     * Creates a new Key value pair by evaluating the key and value expressions (tries to resolve them in rust if they are simple data accessors)
-     */
-    pub fn new_key_value_pair(&self, key_expression: &'static str, value_expression: &'static str) -> KeyValuePair {
-        
-        let key = key_expression;
-        let value = Some(value_expression);
-        KeyValuePair {
-            key,
-            value,
-        }
     }
 }

@@ -1,11 +1,9 @@
-use std::collections::HashMap;
-use std::fs;
-
 use indoc::indoc;
 use rusty_weel::controller::Controller;
 use rusty_weel::dsl::DSL;
-use rusty_weel::dslrealization;
-use rusty_weel::data_types::{Configuration, HTTPRequest, HTTP};
+// Needed for inject!
+use rusty_weel::dslrealization::Weel;
+use rusty_weel::data_types::{Configuration, Context, HTTPRequest, HTTP};
 use rusty_weel_macro::inject;
 
 fn main() {
@@ -17,14 +15,16 @@ fn main() {
                    // TODO: Use execution handler and inform of this issue
 
     let configuration = Configuration::load_configuration("opts.yaml");
-    let controller = Controller::new(instance_id.as_str(), configuration);
+    let context = Context::load_context("context.yaml");
+    let controller = Controller::new(instance_id.as_str(), configuration, context);
     // TODO: Add instance id
     // let controller = Controller::new("", config);
-    let weel = dslrealization::Weel {};
-
+    let weel = Weel {
+        controller
+    };
     // Block included into main:
     // TODO: adapt it s.t. we can decode the endpoint url directly from json
-    // inject!("rusty_weel/src/model_instance.eic");
+    inject!("rusty_weel/src/model_instance.eic");
 
     // Block included into main:
     // TODO: adapt it s.t. we can decode the endpoint url directly from json
@@ -35,9 +35,9 @@ fn main() {
             label: "Book Airline 1",
             method: HTTP::POST,
             arguments: Some(vec![
-                weel.new_key_value_pair("from", "data.from"), // TODO: here we need to extract the to and from fields from data -> write some accessor code
-                weel.new_key_value_pair("from", "data.to"),
-                weel.new_key_value_pair("persons", "data.persons"),
+                Controller::new_key_value_pair("from", "data.from"), // TODO: here we need to extract the to and from fields from data -> write some accessor code
+                Controller::new_key_value_pair("from", "data.to"),
+                Controller::new_key_value_pair("persons", "data.persons"),
             ]),
             // TODO: is it okay to treat annotations as a string? 
             annotations: r###"{ :_timing => {:_timing_weight => nil, :_timing_avg => nil, :explanations => nil}, :_shifting => {:_shifting_type => "Duration"}, :_context_data_analysis => {:probes => nil, :ips => nil}, :report => {:url => nil}, :_notes => {:_notes_general => nil} } }"###,
@@ -60,7 +60,7 @@ fn main() {
                     HTTPRequest {
                         label: "Book Hotel",
                         method: HTTP::POST,
-                        arguments: Some(vec![weel.new_key_value_pair("to", "data.to")]),
+                        arguments: Some(vec![Controller::new_key_value_pair("to", "data.to")]),
                         annotations: r###"{ :_timing => {:_timing_weight => nil, :_timing_avg => nil, :explanations => nil}, :_shifting => {:_shifting_type => "Duration"}, :_context_data_analysis => {:probes => nil, :ips => nil}, :report => {:url => nil}, :_notes => {:_notes_general => nil} } }"###,
                     },
                     Option::None,
@@ -89,7 +89,7 @@ fn main() {
                 HTTPRequest {
                     label: "Approve Hotel",
                     method: HTTP::POST,
-                    arguments: Some(vec![weel.new_key_value_pair("costs", "data.costs")]),
+                    arguments: Some(vec![Controller::new_key_value_pair("costs", "data.costs")]),
                     annotations: r###"{ :_timing => {:_timing_weight => nil, :_timing_avg => nil, :explanations => nil}, :_shifting => {:_shifting_type => "Duration"}, :_context_data_analysis => {:probes => nil, :ips => nil}, :report => {:url => nil}, :_notes => {:_notes_general => nil} } }"###,
                 },
                 Option::None,

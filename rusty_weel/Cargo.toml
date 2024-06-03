@@ -15,7 +15,8 @@ json = "0.12.4"
 serde_yaml = "0.9.34"
 redis = "0.25.3"
 
-reqwest = "0.12.4"
+chrono = {version = "0.4.38", features = ["serde"]}
+
 http_helper ={ path = "../http_helper"}
 
 indoc = "2"

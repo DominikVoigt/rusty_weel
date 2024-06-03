@@ -2,28 +2,36 @@ use std::{
     collections::HashMap, path::PathBuf, sync::{Arc, Mutex}, thread::{self, sleep, JoinHandle}, time::Duration
 };
 
-use http_helper::HTTPParameters;
-use redis::RedisError;
+use http_helper::{eval::evaluate, HTTPParameters};
+use http_helper::eval;
+use redis::{Commands, RedisError};
 use rusty_weel_macro::get_str_from_value;
+use crate::data_types::KeyValuePair;
 use serde_json::json;
 
 use crate::{
-    connection_wrapper::ConnectionWrapper, data_types::Configuration, dslrealization::Weel,
+    connection_wrapper::ConnectionWrapper, data_types::{Configuration, Context}
 };
 
 const TOPICS: &[&str] = &["callback-response:*", "callback-end:*"];
 const CALLBACK_RESPONSE_ERROR_MESSAGE: &str =
     "Callback-response had not the correct format, could not find whitespace separator";
 
+/**
+ * Controller is central to the instance execution
+ * It interfaces directly with Redis and thus manages ALL communication of the Weel Instance with the CPEE:
+ *  - Status Updates
+ *  - Callbacks
+ * 
+ * The controller also takes any interrrupts and provides the correct signals to the weel instance (via state change) to halt execution when requested.
+ */
 pub struct Controller {
-    pub instance: Weel,
     configuration: Configuration,
+    context: Context,
     redis_connection: redis::Connection,
     votes: Vec<String>, // Not sure yet
     callback_keys: Arc<Mutex<HashMap<String, Arc<Mutex<ConnectionWrapper>>>>>,
     id: String,
-    attributes: HashMap<String, String>,
-    instance_execution_thread: Option<JoinHandle<()>>,
     redis_subscription_thread: Option<JoinHandle<()>>,
     loop_guard: HashMap<String, String>,
 }
@@ -34,22 +42,19 @@ impl Controller {
      * Instance is returned as an Arc<Mutex> as it is shared between the calling thread
      * and the thread that is started within new to handle messages the controller subscribes to
      */
-    pub fn new(instance_id: &str, configuration: Configuration) -> Controller {
-        let controller = Controller {
-            instance: Weel {},
+    pub fn new(instance_id: &str, configuration: Configuration, context: Context) -> Controller {
+        let mut controller = Controller {
             redis_connection: connect_to_redis(&configuration)
                 .expect("Could not establish initial redis connection"),
-            configuration: configuration,
+            configuration,
+            context,
             votes: Vec::new(),
             callback_keys: Arc::new(Mutex::new(HashMap::new())),
             id: instance_id.to_owned(),
-            attributes: HashMap::new(),
-            instance_execution_thread: Option::None,
             redis_subscription_thread: Option::None,
             loop_guard: HashMap::new(),
         };
 
-        let mut controller = controller;
         // Here the mutex is created so we can lock and unwrap directly
         loop {
             match controller.try_establish_subscriptions() {
@@ -60,6 +65,9 @@ impl Controller {
                 }
             }
         }
+
+
+
         controller
     }
 
@@ -88,6 +96,7 @@ impl Controller {
                 Err(_) => return,
             }
 
+            // Handle incomming messages
             loop {
                 let message: redis::Msg = redis_subscription.get_message().expect("");
                 let payload: String = message
@@ -138,15 +147,41 @@ impl Controller {
         Ok(())
     }
 
-    fn notify(&self) {
-
+    /**
+     * //TODO: What is what
+     */
+    fn notify(&mut self, what: &str, content: Option<HashMap<String, String>>) {
+        let mut content: HashMap<String, String> = content.unwrap_or_else(|| -> HashMap<String, String> {
+            HashMap::new()
+        });
+        content.insert("attributes".to_owned(), self.translate_attributes());
+        self.send("event", what, content);
     }
 
-    fn uuid(&self) -> String {
-        self.attributes.get("uuid").expect("Attributes do not contain uuid").to_owned()
+    fn uuid(&self) -> &str {
+        self.context.attributes.get("uuid").expect("Attributes do not contain uuid")
     }
 
-    fn attributes_translated(&self) {
+    fn info(& self) -> &str {
+        self.context.attributes.get("info").expect("Attributes do not contain info")
+    }
+
+    fn translate_attributes(&mut self) -> String {
+        let mut statements = HashMap::new(); 
+        self.context.attributes.iter().for_each(|(k, v)| {
+            if v.starts_with("!") {
+                statements.insert(k.to_owned(), v[1..].to_owned());
+            }
+        }); 
+        // Evaluate expressions
+        let evaluations = evaluate(self.configuration.eval_backend_url.as_str(), self.context.data.clone(), statements);
+        
+        // Replace expressions with values in attributes
+        evaluations.iter().for_each(|(k,v)| {
+            let k = k.to_owned();
+            let v = v.to_owned();
+            self.context.attributes.insert(k, v);
+        });
         todo!()
     }
 
@@ -162,6 +197,62 @@ impl Controller {
         let mut path = PathBuf::from(self.base_url());
         path.push(self.id.clone());
         path.to_str().expect("Path to instance is not valid UTF-8").to_owned()
+    }
+
+
+    fn send(&mut self, message_type: &str, event: &str, content: HashMap<String, String>) -> () {
+        let cpee_url = self.base_url();
+        let instance_id = self.id.as_str();
+        let instance_uuid = self.uuid();
+        let info = self.info(); 
+
+        let target = "";
+        let (topic, name) = event.split_at(event.rfind("/").expect("event does not have correct structure: Misses / delimiter"));
+        let content = serde_json::to_string(&content).expect("Could not serialize content to json string");
+        let payload = json!({
+            "cpee": cpee_url,
+            "instance-url": format!("{}/{}", cpee_url, instance_id),
+            "instance": instance_id,
+            "topic": topic,
+            "type": message_type,
+            "name": name,
+            // Use ISO 8601 format
+            "timestamp": chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, false),
+            "content": content,
+            "instance-uuid": instance_uuid,
+            "instance-name": info
+        });
+        let channel: String = format!("{}:{}:{}", message_type, target, event);
+        let payload: String = format!("{} {}", instance_id, serde_json::to_string(&payload).expect("Could not deserialize payload"));
+        let publish_result: Result<(), redis::RedisError> = self.redis_connection.publish(channel, payload);
+        if publish_result.is_err() {
+            log_error_and_panic(format!("Error occured when publishing message to redis during send: {:?}", publish_result.expect_err("Not possible to reach")).as_str())
+        }
+    }
+
+        /**
+     * Creates a new Key value pair by evaluating the key and value expressions (tries to resolve them in rust if they are simple data accessors)
+     */
+    pub fn new_key_value_pair(key_expression: &'static str, value: &'static str) -> KeyValuePair {
+        let key = key_expression;
+        let value = Some(value.to_owned());
+        KeyValuePair {
+            key,
+            value,
+        }
+    }
+
+    pub fn new_key_value_pair_ex(&self, key_expression: &'static str, value_expression: &'static str) -> KeyValuePair {
+        let key = key_expression;
+        let mut statement = HashMap::new();
+        statement.insert("k".to_owned(), value_expression.to_owned());
+        // TODO: Should we lock context here as mutex or just pass copy?
+        let value = eval::evaluate(self.configuration.eval_backend_url.as_str(), self.context.data.clone(), statement).remove("k").expect("Response is empty");
+        let value = Option::Some(value);
+        KeyValuePair {
+            key,
+            value,
+        }
     }
 }
 
@@ -182,6 +273,7 @@ fn connect_to_redis(configuration: &Configuration) -> Result<redis::Connection, 
         Err(err) => Err(err),
     }
 }
+
 
 fn convert_headers_to_map(message_json: &serde_json::Value) -> HashMap<String, String> {
     message_json.as_object()
@@ -265,3 +357,4 @@ fn log_error_and_panic(log_msg: &str) -> ! {
     log::error!("{}", log_msg);
     panic!("{}", log_msg);
 }
+

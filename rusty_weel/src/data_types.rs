@@ -3,6 +3,7 @@ use std::fs;
 
 use serde::{Serialize, Deserialize};
 
+//TODO: Think whether we can merge this with the http helper
 #[derive(Debug)]
 pub struct HTTPRequest {
     pub label: &'static str,
@@ -26,13 +27,14 @@ pub enum HTTP {
 #[derive(Debug)]
 pub struct KeyValuePair {
     pub key: &'static str,
-    pub value: Option<&'static str>,
+    pub value: Option<String>,
 }
 
+/**
+ * Contains all the meta data that is never changing during execution
+ */
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Configuration {
-    pub endpoints: HashMap<String, String>,
-    pub data: String,
     pub host: String,
     pub base_url: String,
     pub redis_url: String,
@@ -40,7 +42,19 @@ pub struct Configuration {
     pub redis_db: u32,
     pub global_executionhandlers: String,
     pub executionhandlers: String,
-    pub executionhandler: String
+    pub executionhandler: String,
+    pub eval_language: String,
+    pub eval_backend_url: String,
+}
+
+/**
+ * Contains meta data that might be changing during execution
+ */
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Context {
+    pub endpoints: HashMap<String, String>,
+    pub attributes: HashMap<String, String>,
+    pub data: String,
 }
 
 impl Configuration {
@@ -49,6 +63,15 @@ impl Configuration {
         let config = fs::read_to_string(path).expect("Could not read configuration file!");
         let config: Configuration = serde_yaml::from_str(&config).expect("Could not parse Configuration");
         config
+    } 
+}
+
+impl Context {
+    
+    pub fn load_context(path: &str) -> Context {
+        let context = fs::read_to_string(path).expect("Could not read context file!");
+        let context: Context = serde_yaml::from_str(&context).expect("Could not parse Configuration");
+        context
     } 
 }
 
