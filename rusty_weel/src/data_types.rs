@@ -9,7 +9,6 @@ pub struct HTTPRequest {
     pub label: &'static str,
     pub method: HTTP,
     pub arguments: Option<Vec<KeyValuePair>>,
-    pub annotations: &'static str,
 }
 
 #[derive(Debug)]
@@ -45,6 +44,7 @@ pub struct Configuration {
     pub executionhandler: String,
     pub eval_language: String,
     pub eval_backend_url: String,
+    pub attributes: HashMap<String, String>,
 }
 
 /**
@@ -53,8 +53,27 @@ pub struct Configuration {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Context {
     pub endpoints: HashMap<String, String>,
-    pub attributes: HashMap<String, String>,
-    pub data: String,
+    pub data: String
+}
+
+/**
+ * DTO that contains all the general information about the instance
+ */
+#[derive(Serialize, Deserialize)]
+pub struct InstanceMetaData {
+    pub cpee_base_url: String,
+    pub instance_id: String,
+    pub instance_url: String,
+    pub instance_uuid: String,
+    pub info: String,
+}
+
+/**
+ * Contains all the meta data about the task
+ */
+pub struct TaskMetaData {
+    task_label: String,
+    task_id: String
 }
 
 impl Configuration {

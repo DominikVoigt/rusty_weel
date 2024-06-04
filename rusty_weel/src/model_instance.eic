@@ -1,5 +1,4 @@
 // Block included into main:
-// TODO: adapt it s.t. we can decode the endpoint url directly from json
 weel.call(
     "a1",
     "bookAir",
@@ -12,7 +11,7 @@ weel.call(
             Controller::new_key_value_pair("persons", "data.persons"),
         ]),
         // TODO: is it okay to treat annotations as a string?
-        annotations: r###"{ :_timing => {:_timing_weight => nil, :_timing_avg => nil, :explanations => nil}, :_shifting => {:_shifting_type => "Duration"}, :_context_data_analysis => {:probes => nil, :ips => nil}, :report => {:url => nil}, :_notes => {:_notes_general => nil} } }"###,
+        // We do not require annotations without the weel
     },
     Option::None,
     Option::None,
@@ -33,7 +32,6 @@ weel.parallel_do(Option::None, "last", || {
                     label: "Book Hotel",
                     method: HTTP::POST,
                     arguments: Some(vec![Controller::new_key_value_pair("to", "data.to")]),
-                    annotations: r###"{ :_timing => {:_timing_weight => nil, :_timing_avg => nil, :explanations => nil}, :_shifting => {:_shifting_type => "Duration"}, :_context_data_analysis => {:probes => nil, :ips => nil}, :report => {:url => nil}, :_notes => {:_notes_general => nil} } }"###,
                 },
                 Option::None,
                 Option::None,

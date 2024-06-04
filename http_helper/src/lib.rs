@@ -1,7 +1,5 @@
 use std::fs;
 
-pub mod eval;
-
 pub enum ParameterType {
     Header,
     Body
