@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf};
 use std::fs;
 
 use serde::{Serialize, Deserialize};
@@ -30,6 +30,7 @@ pub struct KeyValuePair {
 }
 
 pub enum State {
+    Starting,
     Running,
     Stopping,
     Stopped,
@@ -39,7 +40,8 @@ pub enum State {
  * Contains all the meta data that is never changing during execution
  */
 #[derive(Serialize, Deserialize, Debug)]
-pub struct Configuration {
+pub struct Static {
+    pub id: String,
     pub host: String,
     pub base_url: String,
     pub redis_url: String,
@@ -57,13 +59,14 @@ pub struct Configuration {
  * Contains meta data that might be changing during execution
  */
 #[derive(Serialize, Deserialize, Debug)]
-pub struct Context {
+pub struct Dynamic {
     pub endpoints: HashMap<String, String>,
-    pub data: String
+    pub data: String,
 }
 
 /**
  * DTO that contains all the general information about the instance
+ * Helper, can be directly derived from configuration
  */
 #[derive(Serialize, Deserialize)]
 pub struct InstanceMetaData {
@@ -72,6 +75,7 @@ pub struct InstanceMetaData {
     pub instance_url: String,
     pub instance_uuid: String,
     pub info: String,
+    pub attributes: HashMap<String, String>
 }
 
 /**
@@ -82,22 +86,61 @@ pub struct TaskMetaData {
     task_id: String
 }
 
-impl Configuration {
+impl Static {
     
-    pub fn load_configuration(path: &str) -> Configuration {
+    pub fn load_configuration(path: &str) -> Static {
         let config = fs::read_to_string(path).expect("Could not read configuration file!");
-        let config: Configuration = serde_yaml::from_str(&config).expect("Could not parse Configuration");
+        let config: Static = serde_yaml::from_str(&config).expect("Could not parse Configuration");
         config
     } 
+
+    fn uuid(&self) -> &str {
+        self.attributes
+            .get("uuid")
+            .expect("Attributes do not contain uuid")
+    }
+
+    fn info(&self) -> &str {
+        self.attributes
+            .get("info")
+            .expect("Attributes do not contain info")
+    }
+
+    fn host(&self) -> &str {
+        self.host.as_str()
+    }
+
+    fn base_url(&self) -> &str {
+        self.base_url.as_str()
+    }
+
+    fn instance_url(&self) -> String {
+        let mut path = PathBuf::from(self.base_url.as_str());
+        path.push(self.id.clone());
+        path.to_str()
+            .expect("Path to instance is not valid UTF-8")
+            .to_owned()
+    }
+
+    pub fn get_instance_meta_data(&self) -> InstanceMetaData {
+        InstanceMetaData {
+            cpee_base_url: self.base_url().to_owned(),
+            instance_id: self.id.clone(),
+            instance_url: self.instance_url(),
+            instance_uuid: self.uuid().to_owned(),
+            info: self.info().to_owned(),
+            attributes: self.attributes.clone(),
+        }
+    }
 }
 
-impl Context {
+impl Dynamic {
     
-    pub fn load_context(path: &str) -> Context {
+    pub fn load_context(path: &str) -> Dynamic {
         let context = fs::read_to_string(path).expect("Could not read context file!");
-        let context: Context = serde_yaml::from_str(&context).expect("Could not parse Configuration");
+        let context: Dynamic = serde_yaml::from_str(&context).expect("Could not parse Configuration");
         context
-    } 
+    }
 }
 
 type UndefinedTypeTODO = ();

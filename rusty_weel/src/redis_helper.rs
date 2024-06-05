@@ -4,7 +4,7 @@ use http_helper::HTTPParameters;
 use redis::{Commands, RedisError};
 use rusty_weel_macro::get_str_from_value;
 use serde_json::json;
-use crate::{connection_wrapper::ConnectionWrapper, data_types::{Configuration, InstanceMetaData}};
+use crate::{connection_wrapper::ConnectionWrapper, data_types::{Static, InstanceMetaData}};
 
 
 
@@ -19,16 +19,16 @@ pub struct RedisHelper {
 
 impl RedisHelper {
     /** Tries to create redis connection. Panics if this fails */
-    pub fn new(configuration: &Configuration, callback_keys: Arc<Mutex<HashMap<String, Arc<Mutex<ConnectionWrapper>>>>>) -> Self {
+    pub fn new(static_data: &Static, callback_keys: Arc<Mutex<HashMap<String, Arc<Mutex<ConnectionWrapper>>>>>) -> Self {
         // TODO: Think about returning result instead of panic here.
-        let redis_connection = connect_to_redis(configuration)
+        let redis_connection = connect_to_redis(static_data)
                                         .expect("Could not establish initial redis connection");
         
         let mut redis_helper = Self { redis_connection, redis_subscription_thread: Option::None};
 
         // Here the mutex is created so we can lock and unwrap directly
         loop {
-            match redis_helper.establish_subscriptions(configuration, Arc::clone(&callback_keys)) {
+            match redis_helper.establish_subscriptions(static_data, Arc::clone(&callback_keys)) {
                 Ok(_) => break,
                 Err(_) => {
                     log::error!("Could not establish redis connection for subscription, will retry in 10 milliseconds");
@@ -37,6 +37,17 @@ impl RedisHelper {
             }
         }
         redis_helper
+    }
+
+    /**
+     * //TODO: What is what
+     */
+    fn notify(&mut self, what: &str, content: Option<HashMap<String, String>>, instace_meta_data: InstanceMetaData) {
+        let mut content: HashMap<String, String> =
+            content.unwrap_or_else(|| -> HashMap<String, String> { HashMap::new() });
+        // Todo: What should we put here? Json?
+        content.insert("attributes".to_owned(), serde_json::to_string(&instace_meta_data.attributes).expect("Could not serialize attributes"));
+        self.send(instace_meta_data, "event", what, &content);
     }
 
     pub fn send(&mut self, instace_meta_data: InstanceMetaData, message_type: &str, event: &str, content: &HashMap<String, String>) -> () {
@@ -94,7 +105,7 @@ impl RedisHelper {
      * // TODO: Seems to be semantically equal now -> **Review later**
      * // TODO: Handle issue of redis not connecting
      */
-    fn establish_subscriptions(&mut self, configuration: &Configuration, callback_keys: Arc<Mutex<HashMap<String, Arc<Mutex<ConnectionWrapper>>>>>) -> Result<(), RedisError> {
+    fn establish_subscriptions(&mut self, configuration: &Static, callback_keys: Arc<Mutex<HashMap<String, Arc<Mutex<ConnectionWrapper>>>>>) -> Result<(), RedisError> {
         // Create redis connection for subscriptions and their handling
         let mut redis_connection = match connect_to_redis(configuration) {
             Ok(redis_connection) => redis_connection,
@@ -169,7 +180,7 @@ impl RedisHelper {
  * redis+unix:///<path>[?db=<db>[&pass=<password>][&user=<username>]]
  * unix:///<path>[?db=<db>][&pass=<password>][&user=<username>]]
  */
-fn connect_to_redis(configuration: &Configuration) -> Result<redis::Connection, RedisError> {
+fn connect_to_redis(configuration: &Static) -> Result<redis::Connection, RedisError> {
     // TODO: make real connection here
     match redis::Client::open("") {
         Ok(client) => match client.get_connection() {

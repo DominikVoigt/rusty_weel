@@ -6,9 +6,9 @@ weel.call(
         label: "Book Airline 1",
         method: HTTP::POST,
         arguments: Some(vec![
-            Controller::new_key_value_pair("from", "data.from"),
-            Controller::new_key_value_pair("from", "data.to"),
-            Controller::new_key_value_pair("persons", "data.persons"),
+            new_key_value_pair("from", "data.from"),
+            new_key_value_pair("from", "data.to"),
+            new_key_value_pair("persons", "data.persons"),
         ]),
     },
     Option::None,
@@ -29,7 +29,7 @@ weel.parallel_do(Option::None, "last", || {
                 HTTPRequest {
                     label: "Book Hotel",
                     method: HTTP::POST,
-                    arguments: Some(vec![Controller::new_key_value_pair("to", "data.to")]),
+                    arguments: Some(vec![new_key_value_pair("to", "data.to")]),
                 },
                 Option::None,
                 Option::None,
@@ -57,8 +57,7 @@ weel.choose("exclusive", || {
             HTTPRequest {
                 label: "Approve Hotel",
                 method: HTTP::POST,
-                arguments: Some(vec![Controller::new_key_value_pair("costs", "data.costs")]),
-                annotations: r###"{ :_timing => {:_timing_weight => nil, :_timing_avg => nil, :explanations => nil}, :_shifting => {:_shifting_type => "Duration"}, :_context_data_analysis => {:probes => nil, :ips => nil}, :report => {:url => nil}, :_notes => {:_notes_general => nil} } }"###,
+                arguments: Some(vec![new_key_value_pair("costs", "data.costs")]),
             },
             Option::None,
             Option::None,

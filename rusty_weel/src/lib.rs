@@ -5,6 +5,6 @@ pub mod dslrealization;
 pub mod data_types;
 pub mod controller;
 
-mod connection_wrapper;
-mod eval_helper;
-mod redis_helper;
+pub mod connection_wrapper;
+pub mod eval_helper;
+pub mod redis_helper;
