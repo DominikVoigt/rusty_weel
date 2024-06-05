@@ -11,6 +11,7 @@ use serde_json::json;
  *  - Post request fails
  */
 // TODO: Currently the context passed to the evaluated is currently only the data, not endpoints/attributes -> Do we also need these?
+// TODO: Yes we need to pass all contained in ManipulateStructure (weel.rb)?
 pub fn evaluate(
     eval_backend: &str,
     context: String,

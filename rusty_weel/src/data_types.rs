@@ -29,6 +29,12 @@ pub struct KeyValuePair {
     pub value: Option<String>,
 }
 
+pub enum State {
+    Running,
+    Stopping,
+    Stopped,
+}
+
 /**
  * Contains all the meta data that is never changing during execution
  */

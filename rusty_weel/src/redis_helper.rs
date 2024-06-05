@@ -28,7 +28,7 @@ impl RedisHelper {
 
         // Here the mutex is created so we can lock and unwrap directly
         loop {
-            match redis_helper.try_establish_subscriptions(configuration, callback_keys) {
+            match redis_helper.establish_subscriptions(configuration, Arc::clone(&callback_keys)) {
                 Ok(_) => break,
                 Err(_) => {
                     log::error!("Could not establish redis connection for subscription, will retry in 10 milliseconds");
@@ -39,7 +39,7 @@ impl RedisHelper {
         redis_helper
     }
 
-    pub fn send(&self, instace_meta_data: InstanceMetaData, message_type: &str, event: &str, content: HashMap<String, String>) -> () {
+    pub fn send(&mut self, instace_meta_data: InstanceMetaData, message_type: &str, event: &str, content: &HashMap<String, String>) -> () {
         let cpee_url = instace_meta_data.cpee_base_url;
         let instance_id = instace_meta_data.instance_id;
         let instance_uuid = instace_meta_data.instance_uuid;
@@ -49,7 +49,7 @@ impl RedisHelper {
         let (topic, name) = event.split_once("/")
                 .expect("event does not have correct structure: Misses / separator");
         let content =
-            serde_json::to_string(&content).expect("Could not serialize content to json string");
+            serde_json::to_string(content).expect("Could not serialize content to json string");
         let payload = json!({
             "cpee": cpee_url,
             "instance-url": format!("{}/{}", cpee_url, instance_id),
@@ -70,7 +70,7 @@ impl RedisHelper {
             serde_json::to_string(&payload).expect("Could not deserialize payload")
         );
         let publish_result: Result<(), redis::RedisError> =
-            self.redis_connection.publish(channel, content);
+            self.redis_connection.publish(channel, payload);
         if publish_result.is_err() {
             log_error_and_panic(
                 format!(
@@ -82,7 +82,7 @@ impl RedisHelper {
         }
     }
 
-    pub fn extract_handler(&self, instance_id: &str, key: &str) -> HashSet<String> {
+    pub fn extract_handler(&mut self, instance_id: &str, key: &str) -> HashSet<String> {
         self.redis_connection.smembers(format!("instance:#{}/handlers/#{})", instance_id, key)).expect("Could not extract handlers")
     }
 
@@ -94,7 +94,7 @@ impl RedisHelper {
      * // TODO: Seems to be semantically equal now -> **Review later**
      * // TODO: Handle issue of redis not connecting
      */
-    fn try_establish_subscriptions(&mut self, configuration: &Configuration, callback_keys: Arc<Mutex<HashMap<String, Arc<Mutex<ConnectionWrapper>>>>>) -> Result<(), RedisError> {
+    fn establish_subscriptions(&mut self, configuration: &Configuration, callback_keys: Arc<Mutex<HashMap<String, Arc<Mutex<ConnectionWrapper>>>>>) -> Result<(), RedisError> {
         // Create redis connection for subscriptions and their handling
         let mut redis_connection = match connect_to_redis(configuration) {
             Ok(redis_connection) => redis_connection,

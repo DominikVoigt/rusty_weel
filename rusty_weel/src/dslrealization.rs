@@ -1,9 +1,11 @@
+use std::sync::Arc;
+
 use crate::dsl::DSL;
 use crate::data_types::HTTPRequest;
 use crate::controller::Controller;
 
 pub struct Weel {
-    pub controller: Controller,
+    pub controller: Arc<Controller>,
 }
 
 impl DSL for Weel {

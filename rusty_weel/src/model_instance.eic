@@ -6,12 +6,10 @@ weel.call(
         label: "Book Airline 1",
         method: HTTP::POST,
         arguments: Some(vec![
-            Controller::new_key_value_pair("from", "data.from"), // TODO: here we need to extract the to and from fields from data -> write some accessor code
+            Controller::new_key_value_pair("from", "data.from"),
             Controller::new_key_value_pair("from", "data.to"),
             Controller::new_key_value_pair("persons", "data.persons"),
         ]),
-        // TODO: is it okay to treat annotations as a string?
-        // We do not require annotations without the weel
     },
     Option::None,
     Option::None,
@@ -52,7 +50,6 @@ weel.parallel_do(Option::None, "last", || {
     })
 });
 weel.choose("exclusive", || {
-    // TODO: here it should also be fine to leave it as string and send it to the ruby handler
     weel.alternative("data.costs > 700", || {
         weel.call(
             "a4",

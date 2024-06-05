@@ -1,29 +1,15 @@
 use std::{
-    collections::HashMap,
-    path::PathBuf,
-    sync::{Arc, Mutex},
-    thread::{self, sleep, JoinHandle},
-    time::Duration,
+    collections::HashMap, path::PathBuf, sync::{Arc, Mutex}, thread::{self, JoinHandle}
 };
-
-use crate::data_types::{InstanceMetaData, KeyValuePair};
-use crate::eval_helper::evaluate;
-use http_helper::HTTPParameters;
-use redis::{Commands, RedisError};
-use rusty_weel_macro::get_str_from_value;
-use serde_json::json;
 
 use crate::{
     connection_wrapper::ConnectionWrapper,
-    data_types::{Configuration, Context},
+    data_types::{Configuration, Context, InstanceMetaData, KeyValuePair, State},
     redis_helper::RedisHelper,
+    eval_helper::evaluate,
+    dslrealization::Weel,
 };
 
-enum State {
-    Running,
-    Stopping,
-    Stopped,
-}
 
 /**
  * Controller is central to the instance execution
@@ -36,33 +22,45 @@ enum State {
 pub struct Controller {
     configuration: Configuration,
     context: Context,
-    redis_helper: RedisHelper,
-    votes: Vec<String>, // Not sure yet
+    // We need to guard redis helper if we keep one helper (aka one connection per helper/controller) (voting and notify can occur in parallel)
+    redis_helper: Mutex<RedisHelper>,
+    votes: Mutex<Vec<u128>>, // Not sure yet
     callback_keys: Arc<Mutex<HashMap<String, Arc<Mutex<ConnectionWrapper>>>>>,
     id: String,
+    // TODO: Maybe we do not need to hold handle -> Detach thread
     redis_subscription_thread: Option<JoinHandle<()>>,
+    instance_execution_thread: Mutex<Option<JoinHandle<()>>>,
+    // To pass it to execution thread we need Send + Sync
+    instance_code: Mutex<Option<Box<dyn FnOnce() -> () + Send + Sync>>>,
     loop_guard: HashMap<String, String>,
+    // Used to communicate with executing weel -> If set to stopping, weel will stop execution by skipping the activities
     state: Arc<Mutex<State>>,
+    weel_instance: Option<Weel>
 }
 
 impl Controller {
     /**
      * Creates a new controller instance
      * Instance is returned as an Arc<Mutex> as it is shared between the calling thread
-     * and the thread that is started within new to handle messages the controller subscribes to
+     * and the thread that is started within new to handle messages the controller subscribes to.
+     * It is also shared with the connection wrapper instances
      */
-    pub fn new(instance_id: &str, configuration: Configuration, context: Context) -> Controller {
+    pub fn new(instance_id: &str, configuration: Configuration, context: Context) -> Self {
         let callback_keys = Arc::new(Mutex::new(HashMap::new()));
-        let mut controller = Self {
+        let redis_helper = Mutex::new(RedisHelper::new(&configuration, Arc::clone(&callback_keys)));
+        let controller = Self {
             configuration,
             context,
-            votes: Vec::new(),
+            votes: Mutex::new(Vec::new()),
             callback_keys: Arc::clone(&callback_keys),
-            redis_helper: RedisHelper::new(&configuration, callback_keys),
+            redis_helper,
             id: instance_id.to_owned(),
             redis_subscription_thread: Option::None,
+            instance_execution_thread: Mutex::new(Option::None),
+            instance_code: Mutex::new(Option::None),
             loop_guard: HashMap::new(),
             state: Arc::new(Mutex::new(State::Running)),
+            weel_instance: Option::None,
         };
         controller
     }
@@ -74,15 +72,16 @@ impl Controller {
         let mut content: HashMap<String, String> =
             content.unwrap_or_else(|| -> HashMap<String, String> { HashMap::new() });
         content.insert("attributes".to_owned(), self.translate_attributes());
-        self.send("event", what, content);
+        self.send("event", what, &content);
     }
 
-    // TODO: Check whether this works as intended, what should be returned
+    // TODO: Check whether this works as intended,
+    // TODO: what should be returned
     /**
      * Checks attributes entries for expressions (which are prefixed by !) and sends them to the evaluation backend to be evaluated
      * The expressions are then replaced with their evaluated values
      */
-    fn translate_attributes(&mut self) -> String {
+    fn translate_attributes(&self) -> String {
         let mut statements = HashMap::new();
         self.configuration.attributes.iter().for_each(|(k, v)| {
             if v.starts_with("!") {
@@ -112,35 +111,56 @@ impl Controller {
         evaluations.iter().for_each(|(k, v)| {
             let k = k.to_owned();
             let v = v.to_owned();
+            // TODO: Here we change the attributes, is this what we want to do?
             self.configuration.attributes.insert(k, v);
         });
+        todo!()
     }
 
-    fn send(&mut self, message_type: &str, event: &str, content: HashMap<String, String>) -> () {
-        self.redis_helper.send(self.get_instance_meta_data(), message_type, event, content)
+    fn send(&self, message_type: &str, event: &str, content: &HashMap<String, String>) -> () {
+        self.redis_helper
+            .lock()
+            .expect("Could not acquire redis helper for sending")
+            .send(self.get_instance_meta_data(), message_type, event, content)
     }
 
+    /**
+     * Starts execution
+     * Will not return untril 
+     */
     fn start(&self) {
         let mut content = HashMap::new();
         content.insert("state".to_owned(), "running".to_owned());
         if self.vote("state/change", content) {
-            // TODO: Implement starting
+            // We take the closure out of instance code and pass it to the thread -> transfer ownership of closure
+            *self.instance_execution_thread.lock().expect("Could not start instance") = Some(thread::spawn(self.instance_code.lock().expect("could not lock instance code").take().expect("Instance code not set!")));
+            // Take the join handle out of the member and join.
+            self.instance_execution_thread.lock().expect("cannot happen as we just set it").take().expect("Could not lock ").join();
+        } else {
+            // TODO: What does 
+
         }
     }
 
     // TODO: Implement stop
     fn stop(&self) {
-        todo!()
+        *self
+            .state
+            .lock()
+            .expect("Could not lock state to change to stopping") = State::Stopping;
     }
 
-    // TODO: Check this
-    fn vote(&self, vote_topic: &str, content: HashMap<String, String>) -> bool {
+    // TODO: What is this supposed to do?
+    fn vote(&self, vote_topic: &str, mut content: HashMap<String, String>) -> bool {
         let (topic, name) = vote_topic
             .split_once("/")
             .expect("Vote topic did not contain / separator");
         let handler = format!("{}/{}/{}", topic, "vote", name);
         let mut votes: Vec<u128> = Vec::new();
+        // TODO: Put redis_helper behind mutex here? 
         self.redis_helper
+            .lock()
+            .expect("Could not acquire redis helper for voting")
             .extract_handler(&handler, &self.id)
             .iter()
             .for_each(|client| {
@@ -150,16 +170,22 @@ impl Controller {
                 content.insert("subscription".to_owned(), client.clone());
                 let votes = &mut votes;
                 votes.push(vote_id);
-                self.send("vote", vote_topic, content)
+                self.send("vote", vote_topic, &content)
             });
 
-
+        if votes.len() > 0 {
+            self.votes
+                .lock()
+                .expect("Could not lock votes")
+                .append(&mut votes);
+        }
+        todo!()
     }
 
     fn get_instance_meta_data(&self) -> InstanceMetaData {
         InstanceMetaData {
             cpee_base_url: self.base_url().to_owned(),
-            instance_id: self.id,
+            instance_id: self.id.clone(),
             instance_url: self.instance_url(),
             instance_uuid: self.uuid().to_owned(),
             info: self.info().to_owned(),
@@ -213,7 +239,7 @@ impl Controller {
         let key = key_expression;
         let mut statement = HashMap::new();
         statement.insert("k".to_owned(), value_expression.to_owned());
-        // TODO: Should we lock context here as mutex or just pass copy?
+        // TODO: Should we lock *context* here as mutex or just pass copy?
         let eval_result = match evaluate(
             self.configuration.eval_backend_url.as_str(),
             self.context.data.clone(),
