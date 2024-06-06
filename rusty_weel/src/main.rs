@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use indoc::indoc;
+use rusty_weel::connection_wrapper::ConnectionWrapper;
 use rusty_weel::dsl::DSL;
 // Needed for inject!
 use rusty_weel::data_types::{DynamicData, HTTPRequest, InstanceMetaData, KeyValuePair, State, StaticData, HTTP};
@@ -19,11 +20,15 @@ fn main() {
 
     let static_data = StaticData::load("opts.yaml");
     let dynamic_data = DynamicData::load("context.yaml");
+    let callback_keys: Arc<Mutex<HashMap<String, Arc<Mutex<ConnectionWrapper>>>>> = Arc::new(Mutex::new(HashMap::new()));
     let weel = Weel {
         static_data,
         dynamic_data,
+        callback_keys,
         state: State::Starting
-    }; 
+    };
+    // create thread for callback subscriptions with redis
+    RedisHelper::establish_subscriptions(&weel.static_data, callback_keys);
     
     let weel = Arc::new(weel);
 

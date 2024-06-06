@@ -6,7 +6,8 @@ use crate::data_types::{DynamicData, HTTPRequest, State, StaticData};
 pub struct Weel {
     pub static_data: StaticData,
     pub dynamic_data: DynamicData,
-    pub state: State
+    pub state: State,
+    pub callback_keys: Arc<std::sync::Mutex<std::collections::HashMap<String, Arc<std::sync::Mutex<crate::connection_wrapper::ConnectionWrapper>>>>>
 }
 
 impl DSL for Weel {

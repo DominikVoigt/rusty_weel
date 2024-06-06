@@ -1,42 +1,31 @@
-use std::{collections::{HashMap, HashSet}, sync::{Arc, Mutex}, thread::{self, sleep, JoinHandle}, time::Duration};
+use std::{collections::{HashMap, HashSet}, sync::{atomic::AtomicBool, Arc, Mutex}, thread::{self, sleep, JoinHandle}, time::Duration};
 
 use http_helper::HTTPParameters;
-use redis::{Commands, RedisError};
+use once::assert_has_not_been_called;
+use redis::{Commands, Connection, RedisError};
 use rusty_weel_macro::get_str_from_value;
 use serde_json::json;
 use crate::{connection_wrapper::ConnectionWrapper, data_types::{StaticData, InstanceMetaData}};
-
-
 
 const TOPICS: &[&str] = &["callback-response:*", "callback-end:*"];
 const CALLBACK_RESPONSE_ERROR_MESSAGE: &str =
     "Callback-response had not the correct format, could not find whitespace separator";
 
+/**
+ * Manages a single TCP connection with redis
+ */
 pub struct RedisHelper {
-    redis_connection: redis::Connection,
-    redis_subscription_thread: Option<JoinHandle<()>>,
+    redis_connection: redis::Connection
 }
 
 impl RedisHelper {
     /** Tries to create redis connection. Panics if this fails */
-    pub fn new(static_data: &StaticData, callback_keys: Arc<Mutex<HashMap<String, Arc<Mutex<ConnectionWrapper>>>>>) -> Self {
+    pub fn new(static_data: &StaticData) -> Self {
         // TODO: Think about returning result instead of panic here.
         let redis_connection = connect_to_redis(static_data)
                                         .expect("Could not establish initial redis connection");
         
-        let mut redis_helper = Self { redis_connection, redis_subscription_thread: Option::None};
-
-        // Here the mutex is created so we can lock and unwrap directly
-        loop {
-            match redis_helper.establish_subscriptions(static_data, Arc::clone(&callback_keys)) {
-                Ok(_) => break,
-                Err(_) => {
-                    log::error!("Could not establish redis connection for subscription, will retry in 10 milliseconds");
-                    sleep(Duration::from_millis(100))
-                }
-            }
-        }
-        redis_helper
+        Self { redis_connection }
     }
 
     /**
@@ -103,22 +92,39 @@ impl RedisHelper {
      * The thread receives a shared reference to the controller.
      * If the thread fails to subscribe, it will currently panic!
      * // TODO: Seems to be semantically equal now -> **Review later**
-     * // TODO: Handle issue of redis not connecting
      */
-    fn establish_subscriptions(&mut self, configuration: &StaticData, callback_keys: Arc<Mutex<HashMap<String, Arc<Mutex<ConnectionWrapper>>>>>) -> Result<(), RedisError> {
-        // Create redis connection for subscriptions and their handling
-        let mut redis_connection = match connect_to_redis(configuration) {
-            Ok(redis_connection) => redis_connection,
-            Err(err) => return Err(err),
-        };
+    pub fn establish_subscriptions(configuration: &StaticData, callback_keys: Arc<Mutex<HashMap<String, Arc<Mutex<ConnectionWrapper>>>>>) -> Result<JoinHandle<()>, RedisError> {
+        // Should only be called once in main!
+        assert_has_not_been_called!();
+        let connection: Connection;
+        loop {
+            // Create redis connection for subscriptions and their handling
+            let redis_connection = connect_to_redis(configuration);
 
-        self.redis_subscription_thread = Some(thread::spawn(move || {
+            match redis_connection {
+                Ok(conn) => {
+                    connection = conn;
+                    break;
+                },
+                Err(_) => {
+                    log::error!("Could not establish redis connection for subscription, will retry in 10 milliseconds");
+                    sleep(Duration::from_millis(100));
+                }
+            }
+        };
+        let mut connection = connection;
+
+        Ok(thread::spawn(move || {
             // Move redis connection and callbacks reference into this thread
-            let mut redis_subscription = redis_connection.as_pubsub();
+            let mut redis_subscription = connection.as_pubsub();
             // will pushback message to self.waiting_messages of the PubSub instance
             match redis_subscription.psubscribe(TOPICS) {
-                Ok(_) => {}
-                Err(_) => return,
+                Ok(()) => {}
+                Err(err) => {
+                    log::error!("Could not subscribe to the topics: {err}");
+                    // This is unrecoverable -> panic thread
+                    panic!("Could not subscribe to the topics: {err}")
+                },
             }
 
             // Handle incomming messages
@@ -168,8 +174,7 @@ impl RedisHelper {
                     }
                 }
             }
-        }));
-        Ok(())
+        }))
     }
 }
 
@@ -190,6 +195,8 @@ fn connect_to_redis(configuration: &StaticData) -> Result<redis::Connection, Red
         Err(err) => Err(err),
     }
 }
+
+    
 struct Topic {
     prefix: String,
     worker: String,
