@@ -21,6 +21,7 @@ reqwest = {version="0.12.4", features = ["blocking"]}
 
 chrono = {version = "0.4.38", features = ["serde"]}
 rand = "0.8.5"
+once = "0.3.4"
 
 
 indoc = "2"
