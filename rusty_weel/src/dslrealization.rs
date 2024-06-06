@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
 use crate::dsl::DSL;
-use crate::data_types::{Dynamic, HTTPRequest, State, Static};
+use crate::data_types::{DynamicData, HTTPRequest, State, StaticData};
 
 pub struct Weel {
-    pub static_data: Static,
-    pub dynamic_data: Dynamic,
+    pub static_data: StaticData,
+    pub dynamic_data: DynamicData,
     pub state: State
 }
 

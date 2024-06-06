@@ -18,7 +18,7 @@ pub enum HTTP {
     POST,
     DELETE,
     PATCH,
-}
+} 
 
 /*
 * Represents KVs with optional values
@@ -40,7 +40,7 @@ pub enum State {
  * Contains all the meta data that is never changing during execution
  */
 #[derive(Serialize, Deserialize, Debug)]
-pub struct Static {
+pub struct StaticData {
     pub id: String,
     pub host: String,
     pub base_url: String,
@@ -59,7 +59,7 @@ pub struct Static {
  * Contains meta data that might be changing during execution
  */
 #[derive(Serialize, Deserialize, Debug)]
-pub struct Dynamic {
+pub struct DynamicData {
     pub endpoints: HashMap<String, String>,
     pub data: String,
 }
@@ -86,11 +86,11 @@ pub struct TaskMetaData {
     task_id: String
 }
 
-impl Static {
+impl StaticData {
     
-    pub fn load_configuration(path: &str) -> Static {
+    pub fn load(path: &str) -> StaticData {
         let config = fs::read_to_string(path).expect("Could not read configuration file!");
-        let config: Static = serde_yaml::from_str(&config).expect("Could not parse Configuration");
+        let config: StaticData = serde_yaml::from_str(&config).expect("Could not parse Configuration");
         config
     } 
 
@@ -134,11 +134,11 @@ impl Static {
     }
 }
 
-impl Dynamic {
+impl DynamicData {
     
-    pub fn load_context(path: &str) -> Dynamic {
+    pub fn load(path: &str) -> DynamicData {
         let context = fs::read_to_string(path).expect("Could not read context file!");
-        let context: Dynamic = serde_yaml::from_str(&context).expect("Could not parse Configuration");
+        let context: DynamicData = serde_yaml::from_str(&context).expect("Could not parse Configuration");
         context
     }
 }

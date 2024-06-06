@@ -4,7 +4,7 @@ use http_helper::HTTPParameters;
 use redis::{Commands, RedisError};
 use rusty_weel_macro::get_str_from_value;
 use serde_json::json;
-use crate::{connection_wrapper::ConnectionWrapper, data_types::{Static, InstanceMetaData}};
+use crate::{connection_wrapper::ConnectionWrapper, data_types::{StaticData, InstanceMetaData}};
 
 
 
@@ -19,7 +19,7 @@ pub struct RedisHelper {
 
 impl RedisHelper {
     /** Tries to create redis connection. Panics if this fails */
-    pub fn new(static_data: &Static, callback_keys: Arc<Mutex<HashMap<String, Arc<Mutex<ConnectionWrapper>>>>>) -> Self {
+    pub fn new(static_data: &StaticData, callback_keys: Arc<Mutex<HashMap<String, Arc<Mutex<ConnectionWrapper>>>>>) -> Self {
         // TODO: Think about returning result instead of panic here.
         let redis_connection = connect_to_redis(static_data)
                                         .expect("Could not establish initial redis connection");
@@ -105,7 +105,7 @@ impl RedisHelper {
      * // TODO: Seems to be semantically equal now -> **Review later**
      * // TODO: Handle issue of redis not connecting
      */
-    fn establish_subscriptions(&mut self, configuration: &Static, callback_keys: Arc<Mutex<HashMap<String, Arc<Mutex<ConnectionWrapper>>>>>) -> Result<(), RedisError> {
+    fn establish_subscriptions(&mut self, configuration: &StaticData, callback_keys: Arc<Mutex<HashMap<String, Arc<Mutex<ConnectionWrapper>>>>>) -> Result<(), RedisError> {
         // Create redis connection for subscriptions and their handling
         let mut redis_connection = match connect_to_redis(configuration) {
             Ok(redis_connection) => redis_connection,
@@ -180,7 +180,7 @@ impl RedisHelper {
  * redis+unix:///<path>[?db=<db>[&pass=<password>][&user=<username>]]
  * unix:///<path>[?db=<db>][&pass=<password>][&user=<username>]]
  */
-fn connect_to_redis(configuration: &Static) -> Result<redis::Connection, RedisError> {
+fn connect_to_redis(configuration: &StaticData) -> Result<redis::Connection, RedisError> {
     // TODO: make real connection here
     match redis::Client::open("") {
         Ok(client) => match client.get_connection() {

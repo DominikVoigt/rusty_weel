@@ -3,11 +3,10 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use indoc::indoc;
-use rusty_weel::controller::Controller;
 use rusty_weel::dsl::DSL;
 // Needed for inject!
-use rusty_weel::data_types::{Dynamic, HTTPRequest, InstanceMetaData, KeyValuePair, State, Static, HTTP};
-use rusty_weel::eval_helper::evaluate;
+use rusty_weel::data_types::{DynamicData, HTTPRequest, InstanceMetaData, KeyValuePair, State, StaticData, HTTP};
+use rusty_weel::eval_helper::evaluate_expressions;
 use rusty_weel::redis_helper::RedisHelper;
 use rusty_weel::dslrealization::Weel;
 use rusty_weel_macro::inject;
@@ -18,8 +17,8 @@ fn main() {
     let data = ""; // TODO: Load data from file -> Maybe as a struct: holds data as a single string, if accessing field -> parses string for field
                    // TODO: Use execution handler and inform of this issue
 
-    let static_data = Static::load_configuration("opts.yaml");
-    let dynamic_data = Dynamic::load_context("context.yaml");
+    let static_data = StaticData::load("opts.yaml");
+    let dynamic_data = DynamicData::load("context.yaml");
     let weel = Weel {
         static_data,
         dynamic_data,
@@ -31,7 +30,7 @@ fn main() {
     // Block included into main:
     let model = || {
         inject!("rusty_weel/src/model_instance.eic");
-        
+
         // Block included into main:
         weel.call(
             "a1",
@@ -133,7 +132,7 @@ fn stop() {
 }
 
 // TODO: What is this supposed to do?
-fn vote(redis_helper: Mutex<RedisHelper>, vote_topic: &str, mut content: HashMap<String, String>, instance_meta_data: InstanceMetaData) -> bool {
+fn vote(redis_helper: Mutex<RedisHelper>, vote_topic: &str, mut content: HashMap<String, String>, configuration: &StaticData) -> bool {
     let (topic, name) = vote_topic
         .split_once("/")
         .expect("Vote topic did not contain / separator");
@@ -157,9 +156,9 @@ fn vote(redis_helper: Mutex<RedisHelper>, vote_topic: &str, mut content: HashMap
 
     // TODO: Where to hold votes now? -> Weel? redis helper?
     if votes.len() > 0 {
-        votes.lock()
-            .expect("Could not lock votes")
-            .append(&mut votes);
+        //self.votes.lock()
+        //    .expect("Could not lock votes")
+        //    .append(&mut votes);
     }
     todo!()
 }
@@ -176,14 +175,14 @@ pub fn new_key_value_pair(key_expression: &'static str, value: &'static str) -> 
 pub fn new_key_value_pair_ex(
     key_expression: &'static str,
     value_expression: &'static str,
-    configuration: &Static,
-    context: &Dynamic
+    configuration: &StaticData,
+    context: &DynamicData
 ) -> KeyValuePair {
     let key = key_expression;
     let mut statement = HashMap::new();
     statement.insert("k".to_owned(), value_expression.to_owned());
     // TODO: Should we lock *context* here as mutex or just pass copy?
-    let eval_result = match evaluate(
+    let eval_result = match evaluate_expressions(
         configuration.eval_backend_url.as_str(),
         context.data.clone(),
         statement,

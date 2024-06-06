@@ -4,7 +4,7 @@ use std::{
 
 use crate::{
     connection_wrapper::ConnectionWrapper,
-    data_types::{Static, Dynamic, InstanceMetaData, KeyValuePair, State},
+    data_types::{StaticData, DynamicData, InstanceMetaData, KeyValuePair, State},
     redis_helper::RedisHelper,
     dslrealization::Weel,
 };
@@ -19,8 +19,8 @@ use crate::{
  * The controller also takes any interrrupts and provides the correct signals to the weel instance (via state change) to halt execution when requested.
  */
 pub struct Controller {
-    configuration: Static,
-    context: Dynamic,
+    configuration: StaticData,
+    context: DynamicData,
     // We need to guard redis helper if we keep one helper (aka one connection per helper/controller) (voting and notify can occur in parallel)
     redis_helper: Mutex<RedisHelper>,
     votes: Mutex<Vec<u128>>, // Not sure yet
