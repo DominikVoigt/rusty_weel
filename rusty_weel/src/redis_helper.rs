@@ -1,4 +1,4 @@
-use std::{collections::{HashMap, HashSet}, sync::{atomic::AtomicBool, Arc, Mutex}, thread::{self, sleep, JoinHandle}, time::Duration};
+use std::{collections::{HashMap, HashSet}, sync::{Arc, Mutex}, thread::{self, sleep, JoinHandle}, time::Duration};
 
 use http_helper::HTTPParameters;
 use once::assert_has_not_been_called;

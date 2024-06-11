@@ -1,22 +1,25 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 
+use crate::connection_wrapper::ConnectionWrapper;
 use crate::dsl::DSL;
 use crate::data_types::{DynamicData, HTTPRequest, State, StaticData};
+use crate::redis_helper::RedisHelper;
 
 pub struct Weel {
     pub static_data: StaticData,
     pub dynamic_data: DynamicData,
     pub state: State,
-    pub callback_keys: Arc<std::sync::Mutex<std::collections::HashMap<String, Arc<std::sync::Mutex<crate::connection_wrapper::ConnectionWrapper>>>>>,
-    pub redis_notifications_client: crate::redis_helper::RedisHelper
+    pub callback_keys: Arc<Mutex<std::collections::HashMap<String, Arc<Mutex<ConnectionWrapper>>>>>,
+    pub redis_notifications_client: Mutex<RedisHelper>,
+    pub votes: Mutex<Vec<String>>
 }
 
 impl DSL for Weel {
     fn call(
         &self, 
         label: &str,
-        endpoint_url_name: &str,
+        endpoint_name: &str,
         parameters: HTTPRequest,
         // Even though adding separate functions would be more idomatic for opt. parameters, the number and similar handling of these parameters would make it clunky to handle (2^4 variants)
         prepare_code: Option<&str>,
@@ -39,7 +42,7 @@ impl DSL for Weel {
         }
     }
 
-    fn parallel_do(&self, wait: Option<u32>, cancel: &str, start_branches: impl Fn()) {
+    fn parallel_do(&self, wait: Option<u32>, cancel: &str, start_branches: impl Fn() + Sync) {
         println!("Calling parallel_do");
         println!("Executing lambda");
         start_branches();
@@ -54,12 +57,12 @@ impl DSL for Weel {
         });
     }
 
-    fn choose(&self, variant: &str, lambda: impl Fn()) {
+    fn choose(&self, variant: &str, lambda: impl Fn() + Sync) {
         println!("Executing choose");
         lambda();
     }
 
-    fn alternative(&self, condition: &str, lambda: impl Fn()) {
+    fn alternative(&self, condition: &str, lambda: impl Fn()+ Sync) {
         println!("Executing alternative, ignoring condition: {}", condition);
         lambda();
     }
@@ -68,7 +71,7 @@ impl DSL for Weel {
         println!("Calling manipulate")
     }
 
-    fn loop_exec(&self, condition: bool, lambda: impl Fn()) {
+    fn loop_exec(&self, condition: bool, lambda: impl Fn() + Sync) {
         println!("Executing loop!");
         lambda();
     }
@@ -85,7 +88,7 @@ impl DSL for Weel {
         println!("Stopping... just kidding")
     }
 
-    fn critical_do(&self, mutex_id: &str, lambda: impl Fn()) {
+    fn critical_do(&self, mutex_id: &str, lambda: impl Fn() + Sync) {
         println!("in critical do");
         lambda();
     }

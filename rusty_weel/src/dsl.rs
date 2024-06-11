@@ -21,7 +21,7 @@ pub trait DSL {
      */
     fn manipulate(&self, label: &str, name: Option<&str>, code: &str);
 
-    fn loop_exec(&self, condition: bool, lambda: impl Fn());
+    fn loop_exec(&self, condition: bool, lambda: impl Fn() + Sync);
 
     fn pre_test(&self, condition: &str) -> bool;
 
@@ -33,7 +33,7 @@ pub trait DSL {
      *        - Value: Will wait for the specified number of branches to return
      * `cancel` - Determines on which task the termination of a branch is decided on: either the first or last task in a branch
      */
-    fn parallel_do(&self, wait: Option<u32>, cancel: &str, lambda: impl Fn());
+    fn parallel_do(&self, wait: Option<u32>, cancel: &str, lambda: impl Fn() + Sync);
 
     /**
      * One of the parallel branches within a parallel do, has to create the threads and then wait for sync with the parallel_do for execution
@@ -44,14 +44,14 @@ pub trait DSL {
      * Guards critical block
      * All sections with the same mutex_id share the mutex
      */
-    fn critical_do(&self, mutex_id: &str, lambda: impl Fn());
+    fn critical_do(&self, mutex_id: &str, lambda: impl Fn() + Sync);
 
     /**
      * Implements
      */
-    fn choose(&self, variant: &str, lambda: impl Fn());
+    fn choose(&self, variant: &str, lambda: impl Fn() + Sync);
 
-    fn alternative(&self, condition: &str, lambda: impl Fn());
+    fn alternative(&self, condition: &str, lambda: impl Fn() + Sync);
 
     fn stop(&self, label: &str);
 }

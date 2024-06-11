@@ -4,6 +4,8 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::thread::{self, JoinHandle, ScopedJoinHandle};
 
 use indoc::indoc;
+use rand::distributions::Alphanumeric;
+use rand::Rng;
 use rusty_weel::connection_wrapper::ConnectionWrapper;
 use rusty_weel::dsl::DSL;
 // Needed for inject!
@@ -14,6 +16,8 @@ use rusty_weel::dslrealization::Weel;
 use rusty_weel::eval_helper::evaluate_expressions;
 use rusty_weel::redis_helper::RedisHelper;
 use rusty_weel_macro::inject;
+
+const VOTE_KEY_LENGTH: usize = 32;
 
 fn main() {
     simple_logger::init_with_level(log::Level::Warn).unwrap();
@@ -26,11 +30,12 @@ fn main() {
     let callback_keys: Arc<Mutex<HashMap<String, Arc<Mutex<ConnectionWrapper>>>>> =
         Arc::new(Mutex::new(HashMap::new()));
     let weel = Weel {
-        redis_notifications_client: RedisHelper::new(&static_data, "notifications"),
+        redis_notifications_client: Mutex::new(RedisHelper::new(&static_data, "notifications")),
         static_data,
         dynamic_data,
         callback_keys,
         state: State::Starting,
+        votes: Mutex::new(Vec::new()),
     };
     // create thread for callback subscriptions with redis
     RedisHelper::establish_subscriptions(&weel.static_data, Arc::clone(&weel.callback_keys));
@@ -113,17 +118,17 @@ fn main() {
             })
         });
     });
-    start(instance_thread, tx, &weel_local.static_data);
+    start(&weel_local, instance_thread, tx);
 }
 
 /**
  * Starts execution
  * To pass it to execution thread we need Send + Sync
  */
-fn start(instance_thread: JoinHandle<()>, transmitter: Sender<()>, static_data: &StaticData) {
+fn start(weel: &Weel, instance_thread: JoinHandle<()>, transmitter: Sender<()>) {
     let mut content = HashMap::new();
     content.insert("state".to_owned(), "running".to_owned());
-    if vote(static_data, "state/change", content) {
+    if vote(weel, "state/change", content) {
         // We take the closure out of instance code and pass it to the thread -> transfer ownership of closure
         transmitter.send(());
         // Take the join handle out of the member and join.
@@ -138,19 +143,21 @@ fn stop() {
     
 }
 
-fn vote(static_data: &StaticData, vote_topic: &str, mut content: HashMap<String, String>) -> bool {
+fn vote(weel: &Weel, vote_topic: &str, mut content: HashMap<String, String>) -> bool {
+    let static_data = &weel.static_data;
     let (topic, name) = vote_topic
         .split_once("/")
         .expect("Vote topic did not contain / separator");
     let handler = format!("{}/{}/{}", topic, "vote", name);
-    let mut votes: Vec<u128> = Vec::new();
+    let mut votes: Vec<String> = Vec::new();
     let mut redis_helper: RedisHelper =
         RedisHelper::new(static_data, &format!("voting on: {}", vote_topic));
     redis_helper
         .extract_handler(&handler, &static_data.id)
         .iter()
         .for_each(|client| {
-            let vote_id: u128 = rand::random();
+            // Generate random ASCII string of length VOTE_KEY_LENGTH
+            let vote_id: String = generate_vote_key();
             content.insert("key".to_owned(), vote_id.to_string());
             content.insert(
                 "attributes".to_owned(),
@@ -170,11 +177,20 @@ fn vote(static_data: &StaticData, vote_topic: &str, mut content: HashMap<String,
 
     // TODO: Where to hold votes now? -> Weel? redis helper?
     if votes.len() > 0 {
-        //self.votes.lock()
-        //    .expect("Could not lock votes")
-        //    .append(&mut votes);
+        weel.votes.lock().expect("could not lock votes").append(&mut votes);
+        
     }
     todo!()
+}
+
+/**
+ * Generates random ASCII character string of length VOTE_KEY_LENGTH
+ */
+fn generate_vote_key() -> String {
+    rand::thread_rng().sample_iter(&Alphanumeric)
+                                        .take(VOTE_KEY_LENGTH)
+                                        .map(char::from)
+                                        .collect()
 }
 
 /**
@@ -222,11 +238,3 @@ pub fn new_key_value_pair_ex(
     KeyValuePair { key, value }
 }
 
-/**
- * This function is a helper function that is called if an unrecoverable error is happening.
- * This function will end in the program panicing but also includes some prior logging
- */
-fn log_error_and_panic(log_msg: &str) -> ! {
-    log::error!("{}", log_msg);
-    panic!("{}", log_msg);
-}
