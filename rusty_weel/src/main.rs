@@ -1,15 +1,18 @@
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-use std::thread;
+use std::sync::mpsc::{Receiver, Sender};
+use std::sync::{mpsc, Arc, Mutex};
+use std::thread::{self, JoinHandle, ScopedJoinHandle};
 
 use indoc::indoc;
 use rusty_weel::connection_wrapper::ConnectionWrapper;
 use rusty_weel::dsl::DSL;
 // Needed for inject!
-use rusty_weel::data_types::{DynamicData, HTTPRequest, InstanceMetaData, KeyValuePair, State, StaticData, HTTP};
+use rusty_weel::data_types::{
+    DynamicData, HTTPRequest, KeyValuePair, State, StaticData, HTTP,
+};
+use rusty_weel::dslrealization::Weel;
 use rusty_weel::eval_helper::evaluate_expressions;
 use rusty_weel::redis_helper::RedisHelper;
-use rusty_weel::dslrealization::Weel;
 use rusty_weel_macro::inject;
 
 fn main() {
@@ -20,22 +23,27 @@ fn main() {
 
     let static_data = StaticData::load("opts.yaml");
     let dynamic_data = DynamicData::load("context.yaml");
-    let callback_keys: Arc<Mutex<HashMap<String, Arc<Mutex<ConnectionWrapper>>>>> = Arc::new(Mutex::new(HashMap::new()));
+    let callback_keys: Arc<Mutex<HashMap<String, Arc<Mutex<ConnectionWrapper>>>>> =
+        Arc::new(Mutex::new(HashMap::new()));
     let weel = Weel {
+        redis_notifications_client: RedisHelper::new(&static_data, "notifications"),
         static_data,
         dynamic_data,
         callback_keys,
-        state: State::Starting
+        state: State::Starting,
     };
     // create thread for callback subscriptions with redis
-    RedisHelper::establish_subscriptions(&weel.static_data, callback_keys);
-    
+    RedisHelper::establish_subscriptions(&weel.static_data, Arc::clone(&weel.callback_keys));
+ 
     let weel = Arc::new(weel);
+    let weel_local = Arc::clone(&weel);
+    let (tx, rx): (Sender<()>, Receiver<()>) = mpsc::channel::<()>();
+    
 
-    // Block included into main:
-    let model = || {
-        inject!("rusty_weel/src/model_instance.eic");
-
+    let instance_thread = thread::spawn(move || {
+        // Wait for start signal -> provided by [`Self::start`]
+        let _ = rx.recv();
+        
         // Block included into main:
         weel.call(
             "a1",
@@ -60,7 +68,7 @@ fn main() {
         );
         weel.parallel_do(Option::None, "last", || {
             weel.loop_exec(weel.pre_test("data.persons > 0"), || {
-                weel.parallel_branch(data, |_local: &str| {
+                weel.parallel_branch(data, || {
                     weel.call(
                         "a2",
                         "bookHotel",
@@ -95,10 +103,7 @@ fn main() {
                     HTTPRequest {
                         label: "Approve Hotel",
                         method: HTTP::POST,
-                        arguments: Some(vec![new_key_value_pair(
-                            "costs",
-                            "data.costs",
-                        )]),
+                        arguments: Some(vec![new_key_value_pair("costs", "data.costs")]),
                     },
                     Option::None,
                     Option::None,
@@ -107,24 +112,20 @@ fn main() {
                 );
             })
         });
-    };
-    let redis_helper = RedisHelper::new(&weel.static_data);
-    start(model, &weel.static_data);
-
+    });
+    start(instance_thread, tx, &weel_local.static_data);
 }
 
 /**
  * Starts execution
  * To pass it to execution thread we need Send + Sync
  */
-fn start(instance_code: impl Fn() + Send, static_data: &StaticData) {
+fn start(instance_thread: JoinHandle<()>, transmitter: Sender<()>, static_data: &StaticData) {
     let mut content = HashMap::new();
     content.insert("state".to_owned(), "running".to_owned());
     if vote(static_data, "state/change", content) {
         // We take the closure out of instance code and pass it to the thread -> transfer ownership of closure
-        let instance_thread = thread::spawn(
-            instance_code
-        );
+        transmitter.send(());
         // Take the join handle out of the member and join.
         instance_thread.join();
     } else {
@@ -134,6 +135,7 @@ fn start(instance_code: impl Fn() + Send, static_data: &StaticData) {
 
 // TODO: Implement stop
 fn stop() {
+    
 }
 
 fn vote(static_data: &StaticData, vote_topic: &str, mut content: HashMap<String, String>) -> bool {
@@ -142,18 +144,28 @@ fn vote(static_data: &StaticData, vote_topic: &str, mut content: HashMap<String,
         .expect("Vote topic did not contain / separator");
     let handler = format!("{}/{}/{}", topic, "vote", name);
     let mut votes: Vec<u128> = Vec::new();
-    let mut redis_helper: RedisHelper = RedisHelper::new(static_data);
+    let mut redis_helper: RedisHelper =
+        RedisHelper::new(static_data, &format!("voting on: {}", vote_topic));
     redis_helper
         .extract_handler(&handler, &static_data.id)
         .iter()
         .for_each(|client| {
             let vote_id: u128 = rand::random();
             content.insert("key".to_owned(), vote_id.to_string());
-            content.insert("attributes".to_owned(), serde_json::to_string(&static_data.attributes).expect("Could not serialize attributes"));
+            content.insert(
+                "attributes".to_owned(),
+                serde_json::to_string(&static_data.attributes)
+                    .expect("Could not serialize attributes"),
+            );
             content.insert("subscription".to_owned(), client.clone());
             let votes = &mut votes;
             votes.push(vote_id);
-            redis_helper.send(static_data.get_instance_meta_data(), "vote", vote_topic, &content)
+            redis_helper.send(
+                static_data.get_instance_meta_data(),
+                "vote",
+                vote_topic,
+                &content,
+            )
         });
 
     // TODO: Where to hold votes now? -> Weel? redis helper?
@@ -178,7 +190,7 @@ pub fn new_key_value_pair_ex(
     key_expression: &'static str,
     value_expression: &'static str,
     static_data: &StaticData,
-    dynamic_data: &DynamicData
+    dynamic_data: &DynamicData,
 ) -> KeyValuePair {
     let key = key_expression;
     let mut statement = HashMap::new();
@@ -189,7 +201,6 @@ pub fn new_key_value_pair_ex(
         dynamic_data,
         static_data,
         statement,
-
     ) {
         Ok(eval_result) => match eval_result.get("k") {
             Some(x) => x.clone(),

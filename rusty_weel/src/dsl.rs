@@ -38,7 +38,7 @@ pub trait DSL {
     /**
      * One of the parallel branches within a parallel do, has to create the threads and then wait for sync with the parallel_do for execution
      */
-    fn parallel_branch(&self, data: &str, lambda: impl Fn(&str));
+    fn parallel_branch(&self, data: &str, lambda: impl Fn() + Sync);
 
     /**
      * Guards critical block

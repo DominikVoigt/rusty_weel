@@ -20,17 +20,18 @@ pub struct RedisHelper {
 
 impl RedisHelper {
     /** Tries to create redis connection. Panics if this fails */
-    pub fn new(static_data: &StaticData) -> Self {
+    pub fn new(static_data: &StaticData, connection_name: &str) -> Self {
         // TODO: Think about returning result instead of panic here.
-        let redis_connection = connect_to_redis(static_data)
+        let mut redis_connection = connect_to_redis(static_data)
                                         .expect("Could not establish initial redis connection");
-        
+        match redis::cmd("CLIENT SETNAME").arg(connection_name).query::<String>(&mut redis_connection) {
+            Ok(resp) => log::info!("Response: {}", resp),
+            Err(err) => log::error!("Error occured when setting client name: {}", err)
+        };
+
         Self { redis_connection }
     }
-
-    /**
-     * //TODO: What is what
-     */
+ 
     fn notify(&mut self, what: &str, content: Option<HashMap<String, String>>, instace_meta_data: InstanceMetaData) {
         let mut content: HashMap<String, String> =
             content.unwrap_or_else(|| -> HashMap<String, String> { HashMap::new() });
@@ -93,7 +94,7 @@ impl RedisHelper {
      * If the thread fails to subscribe, it will currently panic!
      * // TODO: Seems to be semantically equal now -> **Review later**
      */
-    pub fn establish_subscriptions(configuration: &StaticData, callback_keys: Arc<Mutex<HashMap<String, Arc<Mutex<ConnectionWrapper>>>>>) -> Result<JoinHandle<()>, RedisError> {
+    pub fn establish_subscriptions(configuration: &StaticData, callback_keys: Arc<Mutex<HashMap<String, Arc<Mutex<ConnectionWrapper>>>>>) -> JoinHandle<()> {
         // Should only be called once in main!
         assert_has_not_been_called!();
         let connection: Connection;
@@ -114,7 +115,7 @@ impl RedisHelper {
         };
         let mut connection = connection;
 
-        Ok(thread::spawn(move || {
+        thread::spawn(move || {
             // Move redis connection and callbacks reference into this thread
             let mut redis_subscription = connection.as_pubsub();
             // will pushback message to self.waiting_messages of the PubSub instance
@@ -174,7 +175,7 @@ impl RedisHelper {
                     }
                 }
             }
-        }))
+        })
     }
 }
 

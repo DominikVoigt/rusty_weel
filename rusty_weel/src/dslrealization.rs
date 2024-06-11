@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::thread;
 
 use crate::dsl::DSL;
 use crate::data_types::{DynamicData, HTTPRequest, State, StaticData};
@@ -7,7 +8,8 @@ pub struct Weel {
     pub static_data: StaticData,
     pub dynamic_data: DynamicData,
     pub state: State,
-    pub callback_keys: Arc<std::sync::Mutex<std::collections::HashMap<String, Arc<std::sync::Mutex<crate::connection_wrapper::ConnectionWrapper>>>>>
+    pub callback_keys: Arc<std::sync::Mutex<std::collections::HashMap<String, Arc<std::sync::Mutex<crate::connection_wrapper::ConnectionWrapper>>>>>,
+    pub redis_notifications_client: crate::redis_helper::RedisHelper
 }
 
 impl DSL for Weel {
@@ -43,9 +45,13 @@ impl DSL for Weel {
         start_branches();
     }
 
-    fn parallel_branch(&self, data: &str, lambda: impl Fn(&str)) {
+    fn parallel_branch(&self, data: &str, lambda: impl Fn() + Sync) {
         println!("Executing parallel branch");
-        lambda(data)
+        thread::scope(|scope| {
+            scope.spawn(|| {
+                lambda();
+            });
+        });
     }
 
     fn choose(&self, variant: &str, lambda: impl Fn()) {
