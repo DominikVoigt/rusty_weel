@@ -25,7 +25,7 @@ pub fn get_str_from_value(input: TokenStream) -> TokenStream {
         match #input.as_str() {
             Some(x) => x.to_owned(),
             None => {
-                log_error_and_panic(CALLBACK_RESPONSE_ERROR_MESSAGE)
+                panic!("Could not retrieve string value");
             }
         }
     }.into()

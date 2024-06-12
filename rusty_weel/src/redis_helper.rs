@@ -5,9 +5,8 @@ use once::assert_has_not_been_called;
 use redis::{Commands, Connection, RedisError};
 use rusty_weel_macro::get_str_from_value;
 use serde_json::json;
-use crate::{connection_wrapper::ConnectionWrapper, data_types::{StaticData, InstanceMetaData}};
+use crate::{connection_wrapper::ConnectionWrapper, data_types::{InstanceMetaData, StaticData}};
 
-const TOPICS: &[&str] = &["callback-response:*", "callback-end:*"];
 const CALLBACK_RESPONSE_ERROR_MESSAGE: &str =
     "Callback-response had not the correct format, could not find whitespace separator";
 
@@ -15,7 +14,7 @@ const CALLBACK_RESPONSE_ERROR_MESSAGE: &str =
  * Manages a single TCP connection with redis
  */
 pub struct RedisHelper {
-    redis_connection: redis::Connection
+    pub redis_connection: redis::Connection
 }
 
 impl RedisHelper {
@@ -65,6 +64,7 @@ impl RedisHelper {
             "instance-name": info
         });
         let channel: String = format!("{}:{}:{}", message_type, target, event);
+        // Construct complete payload out of: <instance-id> <actual-payload>
         let payload: String = format!(
             "{} {}",
             instance_id,
@@ -94,7 +94,7 @@ impl RedisHelper {
      * If the thread fails to subscribe, it will currently panic!
      * // TODO: Seems to be semantically equal now -> **Review later**
      */
-    pub fn establish_subscriptions(configuration: &StaticData, callback_keys: Arc<Mutex<HashMap<String, Arc<Mutex<ConnectionWrapper>>>>>) -> JoinHandle<()> {
+    pub fn establish_callback_subscriptions(configuration: &StaticData, callback_keys: Arc<Mutex<HashMap<String, Arc<Mutex<ConnectionWrapper>>>>>) -> JoinHandle<()> {
         // Should only be called once in main!
         assert_has_not_been_called!();
         let connection: Connection;
@@ -113,43 +113,20 @@ impl RedisHelper {
                 }
             }
         };
-        let mut connection = connection;
 
         thread::spawn(move || {
-            // Move redis connection and callbacks reference into this thread
-            let mut redis_subscription = connection.as_pubsub();
-            // will pushback message to self.waiting_messages of the PubSub instance
-            match redis_subscription.psubscribe(TOPICS) {
-                Ok(()) => {}
-                Err(err) => {
-                    log::error!("Could not subscribe to the topics: {err}");
-                    // This is unrecoverable -> panic thread
-                    panic!("Could not subscribe to the topics: {err}")
-                },
-            }
-
-            // Handle incomming messages
-            loop {
-                let message: redis::Msg = redis_subscription.get_message().expect("");
-                let payload: String = message
-                    .get_payload()
-                    .expect("Failed to get payload from message in callback thread");
-                let pattern: String = message
-                    .get_pattern()
-                    .expect("Could not get pattern  in callback thread");
-                match pattern.as_str() {
+            let mut redis_helper = RedisHelper {
+                redis_connection: connection
+            };
+            let topics = vec!["callback-response:*".to_owned(), "callback-end:*".to_owned()];
+            redis_helper.blocking_pub_sub(topics, move |payload: &str, pattern: &str, topic: Topic| {
+                match pattern {
                     "callback-response:*" => {
-                        let topic: Topic = split_topic(message.get_channel_name());
                         let callback_keys_guard = callback_keys
                             .lock()
                             .expect("Could not lock mutex in callback thread");
                         if callback_keys_guard.contains_key(&topic.identifier) {
-                            let (_instance_id, message) = payload
-                                .split_once(" ")
-                                .expect(CALLBACK_RESPONSE_ERROR_MESSAGE);
-
-                            // Parse message into json
-                            let message_json = json!(message);
+                            let message_json = json!(payload);
                             if message_json["content"]["headers"].is_null()
                                 || !message_json["content"]["headers"].is_object()
                             {
@@ -164,19 +141,66 @@ impl RedisHelper {
                         }
                     }
                     "callback-end:*" => {
-                        let topic: Topic = split_topic(message.get_channel_name());
                         callback_keys
                             .lock()
                             .expect("Mutex of callback_keys was poisoned")
                             .remove(&topic.identifier);
                     }
                     x => {
-                        println!("Received on channel {} the payload: {}", x, payload)
+                        println!("Received on channel {} the payload: {}", x, payload);
                     }
-                }
-            }
+                };
+                // This should loop indefinitely
+                true
+            });
         })
     }
+
+    /**
+     * Uses the provided connection to establish a pub-sub channel
+     * Waits for messages until the closure returns false (do not continue)
+     * The handler gets 3 parameters:
+     * - payload:   The actual payload (without the id in front)
+     * - pattern:   The pattern structure that matched (e.g. "callback-response:*")
+     * - topic:     The topic (e.g. "callback-response:01:<identifier>")
+     */
+    pub fn blocking_pub_sub(&mut self, topics: Vec<String>, mut handler: impl FnMut(&str, &str, Topic) -> bool) {
+            let mut redis_subscription = self.redis_connection.as_pubsub();
+            // will pushback message to self.waiting_messages of the PubSub instance
+            match redis_subscription.psubscribe(&topics) {
+                Ok(()) => {}
+                Err(err) => {
+                    log::error!("Could not subscribe to the topics: {err}");
+                    // This is unrecoverable -> panic thread
+                    panic!("Could not subscribe to the topics: {err}")
+                },
+            }
+
+            // Handle incomming messages
+            loop {
+                let message: redis::Msg = redis_subscription.get_message().expect("");
+                // Payload structure: <instance-id> <actual-content>
+                let payload: String = message
+                    .get_payload()
+                    .expect("Failed to get payload from message in callback thread");
+                // cut of the instance-id in front of the actual message off
+                let (_instance_id, payload) = payload
+                                        .split_once(" ")
+                                        .expect(CALLBACK_RESPONSE_ERROR_MESSAGE);
+                let pattern: String = message
+                    .get_pattern()
+                    .expect("Could not get pattern  in callback thread");
+                
+                let topic: Topic = split_topic(message.get_channel_name());
+                if !handler(payload, &pattern, topic) {
+                    break;
+                };
+            }
+
+            if let Err(err) = redis_subscription.unsubscribe(topics) {
+                log::error!("Could not unsubscribe from topics at the end: {}", err);
+            }
+        }
 }
 
 /**
@@ -198,13 +222,14 @@ fn connect_to_redis(configuration: &StaticData) -> Result<redis::Connection, Red
 }
 
     
-struct Topic {
-    prefix: String,
-    worker: String,
-    identifier: String,
+pub struct Topic {
+    pub prefix: String,
+    pub worker: String,
+    pub identifier: String,
 }
 
 fn split_topic(topic: &str) -> Topic {
+    // Topic string should have structure: <prefix>:<worker-id>:<identifier>
     let mut topic: Vec<String> = topic.split(":").map(String::from).collect();
     Topic {
         prefix: topic.remove(0),
