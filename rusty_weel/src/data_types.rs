@@ -1,7 +1,7 @@
-use std::{collections::HashMap, path::PathBuf};
 use std::fs;
+use std::{collections::HashMap, path::PathBuf};
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 //TODO: Think whether we can merge this with the http helper
 #[derive(Debug)]
@@ -18,7 +18,7 @@ pub enum HTTP {
     POST,
     DELETE,
     PATCH,
-} 
+}
 
 /*
 * Represents KVs with optional values
@@ -75,7 +75,7 @@ pub struct InstanceMetaData {
     pub instance_url: String,
     pub instance_uuid: String,
     pub info: String,
-    pub attributes: HashMap<String, String>
+    pub attributes: HashMap<String, String>,
 }
 
 /**
@@ -83,16 +83,16 @@ pub struct InstanceMetaData {
  */
 pub struct TaskMetaData {
     task_label: String,
-    task_id: String
+    task_id: String,
 }
 
 impl StaticData {
-    
     pub fn load(path: &str) -> StaticData {
         let config = fs::read_to_string(path).expect("Could not read configuration file!");
-        let config: StaticData = serde_yaml::from_str(&config).expect("Could not parse Configuration");
+        let config: StaticData =
+            serde_yaml::from_str(&config).expect("Could not parse Configuration");
         config
-    } 
+    }
 
     fn uuid(&self) -> &str {
         self.attributes
@@ -135,10 +135,10 @@ impl StaticData {
 }
 
 impl DynamicData {
-    
     pub fn load(path: &str) -> DynamicData {
         let context = fs::read_to_string(path).expect("Could not read context file!");
-        let context: DynamicData = serde_yaml::from_str(&context).expect("Could not parse Configuration");
+        let context: DynamicData =
+            serde_yaml::from_str(&context).expect("Could not parse Configuration");
         context
     }
 }
