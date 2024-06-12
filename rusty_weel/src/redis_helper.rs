@@ -14,21 +14,18 @@ const CALLBACK_RESPONSE_ERROR_MESSAGE: &str =
  * Manages a single TCP connection with redis
  */
 pub struct RedisHelper {
-    pub redis_connection: redis::Connection
+    pub connection: redis::Connection
 }
 
 impl RedisHelper {
     /** Tries to create redis connection. Panics if this fails */
     pub fn new(static_data: &StaticData, connection_name: &str) -> Self {
         // TODO: Think about returning result instead of panic here.
-        let mut redis_connection = connect_to_redis(static_data)
+        let mut connection = connect_to_redis(static_data, connection_name)
                                         .expect("Could not establish initial redis connection");
-        match redis::cmd("CLIENT SETNAME").arg(connection_name).query::<String>(&mut redis_connection) {
-            Ok(resp) => log::info!("Response: {}", resp),
-            Err(err) => log::error!("Error occured when setting client name: {}", err)
-        };
+        
 
-        Self { redis_connection }
+        Self { connection }
     }
  
     fn notify(&mut self, what: &str, content: Option<HashMap<String, String>>, instace_meta_data: InstanceMetaData) {
@@ -71,7 +68,7 @@ impl RedisHelper {
             serde_json::to_string(&payload).expect("Could not deserialize payload")
         );
         let publish_result: Result<(), redis::RedisError> =
-            self.redis_connection.publish(channel, payload);
+            self.connection.publish(channel, payload);
         if publish_result.is_err() {
             log_error_and_panic(
                 format!(
@@ -84,25 +81,26 @@ impl RedisHelper {
     }
 
     pub fn extract_handler(&mut self, instance_id: &str, key: &str) -> HashSet<String> {
-        self.redis_connection.smembers(format!("instance:#{}/handlers/#{})", instance_id, key)).expect("Could not extract handlers")
+        self.connection.smembers(format!("instance:#{}/handlers/#{})", instance_id, key)).expect("Could not extract handlers")
     }
 
     /**
      * Will try to subscribe to the necessary topics, if this is not possible, it will panic
      * If it subscribed to the necessary topics, it will start a new thread that handles incomming redis messages
      * The thread receives a shared reference to the controller.
-     * If the thread fails to subscribe, it will currently panic!
+     * This method should be called exactly once, if it is called a second time, it will panic to prevent an accidental invokation.
+     * If the thread fails to subscribe, it will panic
      * // TODO: Seems to be semantically equal now -> **Review later**
      */
-    pub fn establish_callback_subscriptions(configuration: &StaticData, callback_keys: Arc<Mutex<HashMap<String, Arc<Mutex<ConnectionWrapper>>>>>) -> JoinHandle<()> {
+    pub fn establish_callback_subscriptions(static_data: &StaticData, callback_keys: Arc<Mutex<HashMap<String, Arc<Mutex<ConnectionWrapper>>>>>) -> JoinHandle<()> {
         // Should only be called once in main!
         assert_has_not_been_called!();
         let connection: Connection;
         loop {
             // Create redis connection for subscriptions and their handling
-            let redis_connection = connect_to_redis(configuration);
+            let connection_result = connect_to_redis(static_data, &format!("Callback subscription Instance: {}", static_data.instance_id));
 
-            match redis_connection {
+            match connection_result {
                 Ok(conn) => {
                     connection = conn;
                     break;
@@ -116,7 +114,7 @@ impl RedisHelper {
 
         thread::spawn(move || {
             let mut redis_helper = RedisHelper {
-                redis_connection: connection
+                connection
             };
             let topics = vec!["callback-response:*".to_owned(), "callback-end:*".to_owned()];
             redis_helper.blocking_pub_sub(topics, move |payload: &str, pattern: &str, topic: Topic| {
@@ -165,9 +163,9 @@ impl RedisHelper {
      * - topic:     The topic (e.g. "callback-response:01:<identifier>")
      */
     pub fn blocking_pub_sub(&mut self, topics: Vec<String>, mut handler: impl FnMut(&str, &str, Topic) -> bool) {
-            let mut redis_subscription = self.redis_connection.as_pubsub();
+            let mut subscription = self.connection.as_pubsub();
             // will pushback message to self.waiting_messages of the PubSub instance
-            match redis_subscription.psubscribe(&topics) {
+            match subscription.psubscribe(&topics) {
                 Ok(()) => {}
                 Err(err) => {
                     log::error!("Could not subscribe to the topics: {err}");
@@ -178,7 +176,7 @@ impl RedisHelper {
 
             // Handle incomming messages
             loop {
-                let message: redis::Msg = redis_subscription.get_message().expect("");
+                let message: redis::Msg = subscription.get_message().expect("");
                 // Payload structure: <instance-id> <actual-content>
                 let payload: String = message
                     .get_payload()
@@ -197,7 +195,7 @@ impl RedisHelper {
                 };
             }
 
-            if let Err(err) = redis_subscription.unsubscribe(topics) {
+            if let Err(err) = subscription.unsubscribe(topics) {
                 log::error!("Could not unsubscribe from topics at the end: {}", err);
             }
         }
@@ -209,16 +207,16 @@ impl RedisHelper {
  * The URL format is redis://[<username>][:<password>@]<hostname>[:port][/<db>]
  * redis+unix:///<path>[?db=<db>[&pass=<password>][&user=<username>]]
  * unix:///<path>[?db=<db>][&pass=<password>][&user=<username>]]
+ * // TODO: Check whether connection with socket and TCP works
  */
-fn connect_to_redis(configuration: &StaticData) -> Result<redis::Connection, RedisError> {
-    // TODO: make real connection here
-    match redis::Client::open("") {
-        Ok(client) => match client.get_connection() {
-            Ok(connection) => Ok(connection),
-            Err(err) => Err(err),
-        },
-        Err(err) => Err(err),
-    }
+fn connect_to_redis(configuration: &StaticData, connection_name: &str) -> Result<redis::Connection, RedisError> {
+    let url = configuration.redis_path.as_ref().or(configuration.redis_url.as_ref()).expect("Configuration contains neither a redis_url nor a redis_path").clone();
+    let mut connection = redis::Client::open(url)?.get_connection()?;
+    match redis::cmd("CLIENT SETNAME").arg(connection_name).query::<String>(&mut connection) {
+        Ok(resp) => log::info!("Response: {}", resp),
+        Err(err) => log::error!("Error occured when setting client name: {}", err)
+    };
+    Ok(connection)
 }
 
     
