@@ -1,11 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
-use std::thread;
 
 use indoc::indoc;
-use rand::distributions::Alphanumeric;
-use rand::Rng;
-use serde_json;
 
 use rusty_weel::connection_wrapper::ConnectionWrapper;
 use rusty_weel::dsl::DSL;
@@ -13,8 +9,8 @@ use rusty_weel::dsl::DSL;
 use rusty_weel::data_types::{DynamicData, HTTPRequest, KeyValuePair, State, StaticData, HTTP};
 use rusty_weel::dslrealization::Weel;
 use rusty_weel::eval_helper::evaluate_expressions;
-use rusty_weel::redis_helper::{RedisHelper, Topic};
-use rusty_weel_macro::{get_str_from_value, inject};
+use rusty_weel::redis_helper::RedisHelper;
+use rusty_weel_macro::inject;
 
 
 fn main() {
@@ -44,7 +40,9 @@ fn main() {
     let local_weel = Some(Arc::clone(&weel));
 
     let model = move || {
-        // Block included into main:
+        inject!("/home/i17/git-repositories/ma-code/rusty-weel/resources/model_instance.eic");
+        // Inject start
+        /*
         weel.call(
             "a1",
             "bookAir",
@@ -112,7 +110,11 @@ fn main() {
                 );
             })
         });
+         */
+        // Inject end
     };
+
+
     // Executes the code and blocks until it is finished
     local_weel.as_ref().expect("Instance is not populated").start(model);
 }

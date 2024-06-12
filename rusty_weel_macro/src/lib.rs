@@ -9,9 +9,10 @@ use quote::quote;
 #[proc_macro]
 pub fn inject(input: TokenStream) -> TokenStream {
     // Strip "-symbol from string literal:
-    let main_content = open_file(input.to_string().replace("\"", "").as_str());
+    let path = input.to_string().replace("\"", "");
+    let main_content = open_file(&path);
     // Correct indentiation
-    let main_content = format!("\t{}", main_content.replace("\n", "\n\t"));
+    // let main_content = format!("\t{}", main_content.replace("\n", "\n\t"));
     main_content.parse().unwrap()
 }
 
@@ -49,5 +50,11 @@ pub fn get_str_from_value_simple(input: TokenStream) -> TokenStream {
 
 fn open_file(path: &str) -> String {
     println!("Trying to open path: {:?}", path);
-    std::fs::read_to_string(path).unwrap()
+    match std::fs::read_to_string(path) {
+        Ok(content) => content,
+        Err(err) => {
+            eprintln!("{}", err);
+            panic!("Could not read file");
+        }
+    }
 }

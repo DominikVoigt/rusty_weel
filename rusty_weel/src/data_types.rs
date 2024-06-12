@@ -41,7 +41,7 @@ pub enum State {
  */
 #[derive(Serialize, Deserialize, Debug)]
 pub struct StaticData {
-    pub id: String,
+    pub instance_id: String,
     pub host: String,
     pub base_url: String,
     pub redis_url: Option<String>,
@@ -116,7 +116,7 @@ impl StaticData {
 
     fn instance_url(&self) -> String {
         let mut path = PathBuf::from(self.base_url.as_str());
-        path.push(self.id.clone());
+        path.push(self.instance_id.clone());
         path.to_str()
             .expect("Path to instance is not valid UTF-8")
             .to_owned()
@@ -125,7 +125,7 @@ impl StaticData {
     pub fn get_instance_meta_data(&self) -> InstanceMetaData {
         InstanceMetaData {
             cpee_base_url: self.base_url().to_owned(),
-            instance_id: self.id.clone(),
+            instance_id: self.instance_id.clone(),
             instance_url: self.instance_url(),
             instance_uuid: self.uuid().to_owned(),
             info: self.info().to_owned(),

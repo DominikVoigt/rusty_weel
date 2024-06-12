@@ -1,4 +1,3 @@
-// Block included into main:
 weel.call(
     "a1",
     "bookAir",
@@ -22,7 +21,7 @@ weel.call(
 );
 weel.parallel_do(Option::None, "last", || {
     weel.loop_exec(weel.pre_test("data.persons > 0"), || {
-        weel.parallel_branch(data, |_local: &str| {
+        weel.parallel_branch(data, || {
             weel.call(
                 "a2",
                 "bookHotel",

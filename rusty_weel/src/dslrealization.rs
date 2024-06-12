@@ -55,11 +55,11 @@ fn vote(&self, vote_topic: &str, mut content: HashMap<String, String>) -> bool {
         static_data,
         &format!(
             "Instance {} Vote | voting on: {}",
-            static_data.id, vote_topic
+            static_data.instance_id, vote_topic
         ),
     );
     redis_helper
-        .extract_handler(&handler, &static_data.id)
+        .extract_handler(&handler, &static_data.instance_id)
         .iter()
         .for_each(|client| {
             // Generate random ASCII string of length VOTE_KEY_LENGTH
