@@ -9,6 +9,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+# Serialization
 serde = {version = "1.0.198", features = ["derive"]}
 serde_json = "1.0"
 json = "0.12.4"
@@ -16,17 +17,23 @@ serde_yaml = "0.9.34"
 
 redis = "0.25.3"
 
+# HTTP 
 http_helper ={ path = "../http_helper"}
 reqwest = {version="0.12.4", features = ["blocking"]}
 
+# Time
 chrono = {version = "0.4.38", features = ["serde"]}
+# Vote id generation
 rand = "0.8.5"
 once = "0.3.4"
 
+# Signal handling
+ctrlc = "3.4.4"
 
-indoc = "2"
-
+# Logging
 log = "0.4.21"
 simple_logger = "5.0.0"
 
+# Macros:
+indoc = "2"
 rusty-weel-macro ={ path = "../rusty_weel_macro"}
