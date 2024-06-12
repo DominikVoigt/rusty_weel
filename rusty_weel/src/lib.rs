@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 pub mod dsl;
-pub mod dslrealization;
+pub mod dsl_realization;
 pub mod data_types;
 
 pub mod connection_wrapper;

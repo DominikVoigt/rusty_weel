@@ -7,7 +7,7 @@ use rusty_weel::connection_wrapper::ConnectionWrapper;
 use rusty_weel::dsl::DSL;
 // Needed for inject!
 use rusty_weel::data_types::{DynamicData, HTTPRequest, KeyValuePair, State, StaticData, HTTP};
-use rusty_weel::dslrealization::{Weel, WeelError};
+use rusty_weel::dsl_realization::{Weel, WeelError};
 use rusty_weel::eval_helper::evaluate_expressions;
 use rusty_weel::redis_helper::RedisHelper;
 use rusty_weel_macro::inject;
