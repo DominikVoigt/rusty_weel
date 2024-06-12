@@ -7,7 +7,7 @@ use rusty_weel::connection_wrapper::ConnectionWrapper;
 use rusty_weel::dsl::DSL;
 // Needed for inject!
 use rusty_weel::data_types::{DynamicData, HTTPRequest, KeyValuePair, State, StaticData, HTTP};
-use rusty_weel::dslrealization::Weel;
+use rusty_weel::dslrealization::{Weel, WeelError};
 use rusty_weel::eval_helper::evaluate_expressions;
 use rusty_weel::redis_helper::RedisHelper;
 use rusty_weel_macro::inject;
@@ -15,9 +15,6 @@ use rusty_weel_macro::inject;
 
 fn main() {
     simple_logger::init_with_level(log::Level::Warn).unwrap();
-
-    let data = ""; // TODO: Load data from file -> Maybe as a struct: holds data as a single string, if accessing field -> parses string for field
-                   // TODO: Use execution handler and inform of this issue
 
     let static_data = StaticData::load("opts.yaml");
     let dynamic_data = DynamicData::load("context.yaml");
@@ -28,8 +25,9 @@ fn main() {
         static_data,
         dynamic_data,
         callback_keys,
-        state: State::Starting,
+        state: Mutex::new(State::Starting),
         open_votes: Mutex::new(HashSet::new()),
+        loop_guard: Mutex::new(HashMap::new()),
     };
     // create thread for callback subscriptions with redis
     RedisHelper::establish_callback_subscriptions(
@@ -37,11 +35,33 @@ fn main() {
         Arc::clone(&weel.callback_keys),
     );
     let weel = Arc::new(weel);
+    setup_signal_handler(&weel);
     let local_weel = Some(Arc::clone(&weel));
 
-    let model = move || {
-        inject!("/home/i17/git-repositories/ma-code/rusty-weel/resources/model_instance.eic");
+    let model = move || -> Result<(), WeelError> {
+        //inject!("/home/i17/git-repositories/ma-code/rusty-weel/resources/model_instance.eic");
         // Inject start
+        weel.call(
+            "a1",
+            "bookAir",
+            HTTPRequest {
+                label: "Book Airline 1",
+                method: HTTP::POST,
+                arguments: Some(vec![
+                    new_key_value_pair("from", "data.from"),
+                    new_key_value_pair("from", "data.to"),
+                    new_key_value_pair("persons", "data.persons"),
+                ]),
+            },
+            Option::None,
+            Option::None,
+            Some(indoc! {r###"
+                data.airlone = result.value(\'id')
+                data.costs += result.value('costs').to_f
+                status.update 1, 'Hotel'
+            "###}),
+            Option::None,
+        )?;
         /*
         weel.call(
             "a1",
@@ -112,11 +132,24 @@ fn main() {
         });
          */
         // Inject end
+        Ok(())
     };
 
 
     // Executes the code and blocks until it is finished
     local_weel.as_ref().expect("Instance is not populated").start(model);
+}
+
+fn setup_signal_handler(weel: &Arc<Weel>) {
+    let w = Arc::clone(weel);
+    
+    if let Err(err) = ctrlc::set_handler(move || {
+       log::info!("Received SIGINT/SIGTERM/SIGHUP. Set state to stopping...");
+       *w.state.lock().expect("Could not lock state mutex") = State::Stopping;
+       log::info!("Set state to stopping");
+    }) {
+        panic!("Could not setup SIGINT/SIGTERM/SIGHUP handler: {err}")
+    }
 }
 
 /**
@@ -137,7 +170,7 @@ pub fn new_key_value_pair_ex(
     let key = key_expression;
     let mut statement = HashMap::new();
     statement.insert("k".to_owned(), value_expression.to_owned());
-    // TODO: Should we lock *context* here as mutex or just pass copy?
+    // TODO: Should we lock `dynamic data` here as mutex or just pass copy? -> Do we want to modify it here?
     let eval_result = match evaluate_expressions(
         static_data.eval_backend_url.as_str(),
         dynamic_data,

@@ -33,10 +33,16 @@ impl RedisHelper {
             content.unwrap_or_else(|| -> HashMap<String, String> { HashMap::new() });
         // Todo: What should we put here? Json?
         content.insert("attributes".to_owned(), serde_json::to_string(&instace_meta_data.attributes).expect("Could not serialize attributes"));
-        self.send(instace_meta_data, "event", what, &content);
+        self.send("event", what, instace_meta_data, Some(&content));
     }
 
-    pub fn send(&mut self, instace_meta_data: InstanceMetaData, message_type: &str, event: &str, content: &HashMap<String, String>) -> () {
+    /**
+     * Sends message to the CPEE
+     * Meta data is provided via the InstanceMetaData
+     * providing content to the message is optional, the message otherwise contains {} for content
+     */
+    pub fn send(&mut self, message_type: &str, event: &str, instace_meta_data: InstanceMetaData, content: Option<&HashMap<String, String>>) -> () {
+        // TODO: Handle target / workers
         let cpee_url = instace_meta_data.cpee_base_url;
         let instance_id = instace_meta_data.instance_id;
         let instance_uuid = instace_meta_data.instance_uuid;
@@ -45,8 +51,7 @@ impl RedisHelper {
         let target = "";
         let (topic, name) = event.split_once("/")
                 .expect("event does not have correct structure: Misses / separator");
-        let content =
-            serde_json::to_string(content).expect("Could not serialize content to json string");
+        let content = content.map(|content| serde_json::to_string(content).expect("Could not serialize content to json string")).unwrap_or("{}".to_owned());
         let payload = json!({
             "cpee": cpee_url,
             "instance-url": format!("{}/{}", cpee_url, instance_id),
@@ -161,6 +166,7 @@ impl RedisHelper {
      * - payload:   The actual payload (without the id in front)
      * - pattern:   The pattern structure that matched (e.g. "callback-response:*")
      * - topic:     The topic (e.g. "callback-response:01:<identifier>")
+     * - 
      */
     pub fn blocking_pub_sub(&mut self, topics: Vec<String>, mut handler: impl FnMut(&str, &str, Topic) -> bool) {
             let mut subscription = self.connection.as_pubsub();
