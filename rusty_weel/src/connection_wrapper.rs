@@ -1,5 +1,5 @@
 use core::time;
-use std::{collections::HashMap, sync::Arc, time::SystemTime};
+use std::{collections::HashMap, sync::Arc, thread::sleep, time::{Duration, SystemTime}};
 
 use chrono::Duration;
 use http_helper::HTTPParameters;
@@ -12,6 +12,7 @@ pub struct ConnectionWrapper {
 
 const LOOP_GUARD_DELTA: f32 = 2.0;
 const UNGUARDED_CALLS: u32 = 100;
+const SLEEP_DURATION: u64 = 2;
 
 impl ConnectionWrapper {
     fn new(weel: Arc<Weel>) -> Self {
@@ -19,10 +20,10 @@ impl ConnectionWrapper {
     }
 
     // Make this 
-    pub fn loop_guard(&self, id: String, count: u32) -> bool {
+    pub fn loop_guard(&self, id: String, count: u32) {
         let loop_guard_attribute = self.weel.static_data.attributes.get("nednoamol");
         if loop_guard_attribute.is_some_and(|attrib| {attrib == "true"}) {
-            return false;
+            return;
         }
         match self.weel.loop_guard.lock().as_mut() {
             Ok(map) => {
@@ -41,7 +42,7 @@ impl ConnectionWrapper {
                 panic!("Could not acquire lock in loopguard")
             }
         }; 
-        true
+        sleep(Duration::from_secs(SLEEP_DURATION));
     }
 
     pub fn callback(&self, parameters: Vec<HTTPParameters>, headers: HashMap<String, String>) {}
