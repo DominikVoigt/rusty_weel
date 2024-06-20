@@ -14,7 +14,7 @@ use rusty_weel_macro::inject;
 
 
 fn main() {
-    simple_logger::init_with_level(log::Level::Warn).unwrap();
+    simple_logger::init_with_level(log::Level::Info).unwrap();
 
     let static_data = StaticData::load("opts.yaml");
     let dynamic_data = DynamicData::load("context.yaml");

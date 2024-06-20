@@ -161,7 +161,7 @@ impl ConnectionWrapper {
             .map(|item| item.expect("safe to unwrap").clone())
             .collect();
 
-            if self.weel.static_data.attributes.get("twin_engine").map(|attr| !attr.is_empty()).unwrap_or_else(|| false) {
+            if self.weel.static_data.attributes.get("twin_engine").map(|attr| !attr.is_empty()).unwrap_or(false) {
                 self.handler_endpoint_origin = self.handler_endpoints.clone();
                 let twin_engine: &str = &self.weel.static_data.attributes.get("twin_engine").expect("Cannot happen");
 
@@ -197,18 +197,18 @@ impl ConnectionWrapper {
         let mut params = Vec::new();
         match parameters.arguments.as_ref() {
             Some(args) => args.iter().for_each(|arg| {
-                    let value = arg.value.clone().unwrap_or_else(|| "".to_owned());
+                    let value = arg.value.clone().unwrap_or("".to_owned());
                     params.push(http_helper::RiddlParameters::SimpleParameter { name: arg.key.to_owned(), value, param_type: http_helper::ParameterType::Body });
                 }),
             None => {log::info!("Arguments provided to protocurl are empty");}
         };
-
-        headers.insert(key, val)
     }
 
     pub fn callback(&self, parameters: Vec<RiddlParameters>, headers: HashMap<String, String>) {}
 
     fn generate_headers(&self, data: InstanceMetaData, callback_id: &str) -> HeaderMap {
+        let position = self.position.as_ref().map(|x| x.as_str()).unwrap_or("");
+        let twin_target = data.attributes.get("twin_target");
         let mut headers = HeaderMap::new();
         headers.insert("CPEE-BASE",            HeaderValue::from_str(&data.cpee_base_url).expect("Could not fill header value"));
         headers.insert("CPEE-Instance",        HeaderValue::from_str(&data.instance_id).expect("Could not fill header value"));
@@ -216,9 +216,11 @@ impl ConnectionWrapper {
         headers.insert("CPEE-Instance-UUID",   HeaderValue::from_str(&data.instance_uuid).expect("Could not fill header value"));
         headers.insert("CPEE-CALLBACK",        HeaderValue::from_str(&format!("{}/callbacks/{}/", &data.instance_url, callback_id)).expect("Could not fill header value"));
         headers.insert("CPEE-CALLBACK-ID",     HeaderValue::from_str(callback_id).expect("Could not fill header value"));
-        headers.insert("CPEE-ACTIVITY",        HeaderValue::from_str(self.position.unwrap_or_else(f)).expect("Could not fill header value"));
-        headers.insert("CPEE-LABEL",           HeaderValue::from_str().expect("Could not fill header value"));
-        headers.insert("CPEE-TWIN-TARGET",     HeaderValue::from_str().expect("Could not fill header value"));
+        headers.insert("CPEE-ACTIVITY",        HeaderValue::from_str(&position).expect("Could not fill header value"));
+        headers.insert("CPEE-LABEL",           HeaderValue::from_str(&self.label).expect("Could not fill header value"));
+        if let Some(twin_target) = twin_target {
+            headers.insert("CPEE-TWIN-TARGET",     HeaderValue::from_str(twin_target).expect("Could not fill header value"));
+        }
     
         headers
     }

@@ -21,7 +21,7 @@ impl RedisHelper {
     /** Tries to create redis connection. Panics if this fails */
     pub fn new(static_data: &StaticData, connection_name: &str) -> Self {
         // TODO: Think about returning result instead of panic here.
-        let mut connection = connect_to_redis(static_data, connection_name)
+        let connection = connect_to_redis(static_data, connection_name)
                                         .expect("Could not establish initial redis connection");
         
 
@@ -30,7 +30,7 @@ impl RedisHelper {
  
     pub fn notify(&mut self, what: &str, content: Option<HashMap<String, String>>, instace_meta_data: InstanceMetaData) {
         let mut content: HashMap<String, String> =
-            content.unwrap_or_else(|| -> HashMap<String, String> { HashMap::new() });
+            content.unwrap_or(HashMap::new());
         // Todo: What should we put here? Json?
         content.insert("attributes".to_owned(), serde_json::to_string(&instace_meta_data.attributes).expect("Could not serialize attributes"));
         let content = serde_json::to_string(&content).expect("Could not serialize content to json string");
@@ -48,7 +48,7 @@ impl RedisHelper {
         let instance_id = instace_meta_data.instance_id;
         let instance_uuid = instace_meta_data.instance_uuid;
         let info = instace_meta_data.info;
-        let content = content.unwrap_or_else(|| "{}");
+        let content = content.unwrap_or("{}");
         let target = "";
         let (topic, name) = event.split_once("/")
                 .expect("event does not have correct structure: Misses / separator");
