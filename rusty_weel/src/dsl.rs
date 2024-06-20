@@ -1,8 +1,6 @@
-use std::error::Error;
+use crate::data_types::HTTPParams;
 
-use crate::data_types::HTTPRequest;
-
-pub trait DSL<T: Error> {
+pub trait DSL<T> {
     /**
      * Implements the invokation of external functionalities
      */
@@ -10,7 +8,7 @@ pub trait DSL<T: Error> {
         &self, 
         label: &str,
         endpoint_url: &str,
-        parameters: HTTPRequest,
+        parameters: HTTPParams,
         // Even though adding separate functions would be more idomatic for opt. parameters, the number and similar handling of these parameters would make it clunky to handle (2^4 variants)
         prepare_code: Option<&str>,
         update_code: Option<&str>,

@@ -4,14 +4,14 @@ use std::{collections::HashMap, path::PathBuf};
 use serde::{Deserialize, Serialize};
 
 //TODO: Think whether we can merge this with the http helper
-#[derive(Debug)]
-pub struct HTTPRequest {
+#[derive(Debug, Clone)]
+pub struct HTTPParams {
     pub label: &'static str,
     pub method: HTTP,
     pub arguments: Option<Vec<KeyValuePair>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum HTTP {
     GET,
     PUT,
@@ -23,7 +23,7 @@ pub enum HTTP {
 /*
 * Represents KVs with optional values
 */
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct KeyValuePair {
     pub key: &'static str,
     pub value: Option<String>,
@@ -94,27 +94,27 @@ impl StaticData {
         config
     }
 
-    fn uuid(&self) -> &str {
+    pub fn uuid(&self) -> &str {
         self.attributes
             .get("uuid")
             .expect("Attributes do not contain uuid")
     }
 
-    fn info(&self) -> &str {
+    pub fn info(&self) -> &str {
         self.attributes
             .get("info")
             .expect("Attributes do not contain info")
     }
 
-    fn host(&self) -> &str {
+    pub fn host(&self) -> &str {
         self.host.as_str()
     }
 
-    fn base_url(&self) -> &str {
+    pub fn base_url(&self) -> &str {
         self.base_url.as_str()
     }
 
-    fn instance_url(&self) -> String {
+    pub fn instance_url(&self) -> String {
         let mut path = PathBuf::from(self.base_url.as_str());
         path.push(self.instance_id.clone());
         path.to_str()

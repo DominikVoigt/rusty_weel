@@ -6,8 +6,8 @@ use indoc::indoc;
 use rusty_weel::connection_wrapper::ConnectionWrapper;
 use rusty_weel::dsl::DSL;
 // Needed for inject!
-use rusty_weel::data_types::{DynamicData, HTTPRequest, KeyValuePair, State, StaticData, HTTP};
-use rusty_weel::dsl_realization::{Weel, WeelError};
+use rusty_weel::data_types::{DynamicData, HTTPParams, KeyValuePair, State, StaticData, HTTP};
+use rusty_weel::dsl_realization::{Weel, Error};
 use rusty_weel::eval_helper::evaluate_expressions;
 use rusty_weel::redis_helper::RedisHelper;
 use rusty_weel_macro::inject;
@@ -36,15 +36,15 @@ fn main() {
     );
     let weel = Arc::new(weel);
     setup_signal_handler(&weel);
-    let local_weel = Some(Arc::clone(&weel));
+    let local_weel = Arc::clone(&weel);
 
-    let model = move || -> Result<(), WeelError> {
+    let model = move || -> Result<(), Error> {
         //inject!("/home/i17/git-repositories/ma-code/rusty-weel/resources/model_instance.eic");
         // Inject start
         weel.call(
             "a1",
             "bookAir",
-            HTTPRequest {
+            HTTPParams {
                 label: "Book Airline 1",
                 method: HTTP::POST,
                 arguments: Some(vec![
@@ -137,7 +137,7 @@ fn main() {
 
 
     // Executes the code and blocks until it is finished
-    local_weel.as_ref().expect("Instance is not populated").start(model);
+    local_weel.start(model);
 }
 
 fn setup_signal_handler(weel: &Arc<Weel>) {

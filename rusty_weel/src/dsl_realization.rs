@@ -1,6 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use std::error::Error;
-use std::fmt::{Debug, Display};
+use std::fmt::Debug;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::SystemTime;
@@ -10,7 +9,7 @@ use rand::Rng;
 use rusty_weel_macro::get_str_from_value;
 
 use crate::connection_wrapper::ConnectionWrapper;
-use crate::data_types::{DynamicData, HTTPRequest, State, StaticData};
+use crate::data_types::{DynamicData, HTTPParams, State, StaticData};
 use crate::dsl::DSL;
 use crate::redis_helper::{RedisHelper, Topic};
 
@@ -27,18 +26,18 @@ pub struct Weel {
     pub loop_guard: Mutex<HashMap<String, (u32, SystemTime)>>,
 }
 
-impl DSL<WeelError> for Weel {
+impl DSL<Error> for Weel {
     fn call(
         &self,
         label: &str,
         endpoint_name: &str,
-        parameters: HTTPRequest,
+        parameters: HTTPParams,
         // Even though adding separate functions would be more idomatic for opt. parameters, the number and similar handling of these parameters would make it clunky to handle (2^4 variants)
         prepare_code: Option<&str>,
         update_code: Option<&str>,
         finalize_code: Option<&str>,
         rescue_code: Option<&str>,
-    ) -> Result<(), WeelError> {
+    ) -> Result<()> {
         println!(
             "Calling activity {} with parameters: {:?}",
             label, parameters
@@ -63,14 +62,14 @@ impl DSL<WeelError> for Weel {
         wait: Option<u32>,
         cancel: &str,
         start_branches: impl Fn() + Sync,
-    ) -> Result<(), WeelError> {
+    ) -> Result<()> {
         println!("Calling parallel_do");
         println!("Executing lambda");
         start_branches();
         todo!()
     }
 
-    fn parallel_branch(&self, data: &str, lambda: impl Fn() + Sync) -> Result<(), WeelError> {
+    fn parallel_branch(&self, data: &str, lambda: impl Fn() + Sync) -> Result<()> {
         println!("Executing parallel branch");
         thread::scope(|scope| {
             scope.spawn(|| {
@@ -80,24 +79,24 @@ impl DSL<WeelError> for Weel {
         todo!()
     }
 
-    fn choose(&self, variant: &str, lambda: impl Fn() + Sync) -> Result<(), WeelError> {
+    fn choose(&self, variant: &str, lambda: impl Fn() + Sync) -> Result<()> {
         println!("Executing choose");
         lambda();
         todo!()
     }
 
-    fn alternative(&self, condition: &str, lambda: impl Fn() + Sync) -> Result<(), WeelError> {
+    fn alternative(&self, condition: &str, lambda: impl Fn() + Sync) -> Result<()> {
         println!("Executing alternative, ignoring condition: {}", condition);
         lambda();
         todo!()
     }
 
-    fn manipulate(&self, label: &str, name: Option<&str>, code: &str) -> Result<(), WeelError> {
+    fn manipulate(&self, label: &str, name: Option<&str>, code: &str) -> Result<()> {
         println!("Calling manipulate");
         todo!()
     }
 
-    fn loop_exec(&self, condition: bool, lambda: impl Fn() + Sync) -> Result<(), WeelError> {
+    fn loop_exec(&self, condition: bool, lambda: impl Fn() + Sync) -> Result<()> {
         println!("Executing loop!");
         lambda();
         todo!()
@@ -111,12 +110,12 @@ impl DSL<WeelError> for Weel {
         true
     }
 
-    fn stop(&self, label: &str) -> Result<(), WeelError> {
+    fn stop(&self, label: &str) -> Result<()> {
         println!("Stopping... just kidding");
         todo!()
     }
 
-    fn critical_do(&self, mutex_id: &str, lambda: impl Fn() + Sync) -> Result<(), WeelError> {
+    fn critical_do(&self, mutex_id: &str, lambda: impl Fn() + Sync) -> Result<()> {
         println!("in critical do");
         lambda();
         todo!()
@@ -128,22 +127,38 @@ impl Weel {
      * Starts execution
      * To pass it to execution thread we need Send + Sync
      */
-    pub fn start(&self, model: impl Fn() -> Result<(), WeelError> + Send + 'static) {
+    pub fn start(&self, model: impl Fn() -> Result<()> + Send + 'static) {
         let mut content = HashMap::new();
         content.insert("state".to_owned(), "running".to_owned());
         if self.vote("state/change", content) {
+            // TODO: instance.start
             // We take the closure out of instance code and pass it to the thread -> transfer ownership of closure
             let instance_thread = thread::spawn(model);
             // Take the join handle out of the member and join.
             let result = instance_thread.join();
             // TODO: Handle the result, especially a WeelError -> All methods return weel error in case of a
         } else {
-            // TODO: What does
+            // TODO: instance.stop
         }
     }
 
     // TODO: Implement stop
-    pub fn stop(&self) {}
+    pub fn stop(&self) {
+        /*
+            ### tell the instance to stop
+            @instance.stop
+            ### end all votes or it will not work
+            Thread.new do # doing stuff in trap context is a nono. but in a thread its fine :-)
+            @votes.each do |key|
+                CPEE::Message::send(:'vote-response',key,base,@id,uuid,info,true,@redis)
+            end
+            end
+         */
+        self.open_votes.lock().expect("Could not capture mutex").iter().for_each(|vote_id| {
+            self.redis_notifications_client.lock().expect("Could not acquire mutex").send("vote-response", vote_id, self.static_data.get_instance_meta_data(), 
+            Some("true"))
+        })
+    }
 
     fn vote(&self, vote_topic: &str, mut content: HashMap<String, String>) -> bool {
         let static_data = &self.static_data;
@@ -164,7 +179,7 @@ impl Weel {
             .iter()
             .for_each(|client| {
                 // Generate random ASCII string of length VOTE_KEY_LENGTH
-                let vote_id: String = generate_vote_key();
+                let vote_id: String = generate_random_key();
                 content.insert("key".to_owned(), vote_id.to_string());
                 content.insert(
                     "attributes".to_owned(),
@@ -172,12 +187,13 @@ impl Weel {
                         .expect("Could not serialize attributes"),
                 );
                 content.insert("subscription".to_owned(), client.clone());
+                let content = serde_json::to_string(&content).expect("Could not serialize content to json string");
                 votes.push(vote_id);
                 redis_helper.send(
                     "vote",
                     vote_topic,
                     static_data.get_instance_meta_data(),
-                    Some(&content),
+                    Some(content.as_str()),
                 )
             });
 
@@ -213,7 +229,7 @@ impl Weel {
                         .expect("Could not lock votes ")
                         .remove(&get_str_from_value!(message["name"]));
                     // TODO: should we really `cancel_callback m['name']` ?
-
+                    self.cancel_callback(message["name"].as_str().expect("Message does not contain name"));
                     let all_votes_collected = collected_votes.len() >= votes.len();
                     !all_votes_collected
                 },
@@ -233,37 +249,29 @@ impl Weel {
 }
 
 #[derive(Debug)]
-pub enum WeelError {}
+pub enum Error {
+    SyntaxError(String)
+}
 
-impl Display for WeelError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        Debug::fmt(&self, f)
+pub type Result<T> = std::result::Result<T, Error>;
+
+impl Error {
+    pub fn as_str(&self) -> &str {
+        match self {
+            Error::SyntaxError(message) => message.as_str(),
+        }
     }
 }
 
-impl Error for WeelError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        None
-    }
-
-    fn description(&self) -> &str {
-        "description() is deprecated; use Display"
-    }
-
-    fn cause(&self) -> Option<&dyn Error> {
-        self.source()
-    }
-}
-
-const VOTE_KEY_LENGTH: usize = 32;
+const KEY_LENGTH: usize = 32;
 
 /**
- * Generates random ASCII character string of length VOTE_KEY_LENGTH
+ * Generates random ASCII character string of length KEY_LENGTH
  */
-fn generate_vote_key() -> String {
+pub fn generate_random_key() -> String {
     rand::thread_rng()
         .sample_iter(&Alphanumeric)
-        .take(VOTE_KEY_LENGTH)
+        .take(KEY_LENGTH)
         .map(char::from)
         .collect()
 }

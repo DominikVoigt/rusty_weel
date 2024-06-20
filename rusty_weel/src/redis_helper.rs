@@ -1,6 +1,6 @@
 use std::{collections::{HashMap, HashSet}, sync::{Arc, Mutex}, thread::{self, sleep, JoinHandle}, time::Duration};
 
-use http_helper::HTTPParameters;
+use http_helper::RiddlParameters;
 use once::assert_has_not_been_called;
 use redis::{Commands, Connection, RedisError};
 use rusty_weel_macro::get_str_from_value;
@@ -28,12 +28,13 @@ impl RedisHelper {
         Self { connection }
     }
  
-    fn notify(&mut self, what: &str, content: Option<HashMap<String, String>>, instace_meta_data: InstanceMetaData) {
+    pub fn notify(&mut self, what: &str, content: Option<HashMap<String, String>>, instace_meta_data: InstanceMetaData) {
         let mut content: HashMap<String, String> =
             content.unwrap_or_else(|| -> HashMap<String, String> { HashMap::new() });
         // Todo: What should we put here? Json?
         content.insert("attributes".to_owned(), serde_json::to_string(&instace_meta_data.attributes).expect("Could not serialize attributes"));
-        self.send("event", what, instace_meta_data, Some(&content));
+        let content = serde_json::to_string(&content).expect("Could not serialize content to json string");
+        self.send("event", what, instace_meta_data, Some(content.as_str()));
     }
 
     /**
@@ -41,17 +42,16 @@ impl RedisHelper {
      * Meta data is provided via the InstanceMetaData
      * providing content to the message is optional, the message otherwise contains {} for content
      */
-    pub fn send(&mut self, message_type: &str, event: &str, instace_meta_data: InstanceMetaData, content: Option<&HashMap<String, String>>) -> () {
+    pub fn send(&mut self, message_type: &str, event: &str, instace_meta_data: InstanceMetaData, content: Option<&str>) -> () {
         // TODO: Handle target / workers
         let cpee_url = instace_meta_data.cpee_base_url;
         let instance_id = instace_meta_data.instance_id;
         let instance_uuid = instace_meta_data.instance_uuid;
         let info = instace_meta_data.info;
-
+        let content = content.unwrap_or_else(|| "{}");
         let target = "";
         let (topic, name) = event.split_once("/")
                 .expect("event does not have correct structure: Misses / separator");
-        let content = content.map(|content| serde_json::to_string(content).expect("Could not serialize content to json string")).unwrap_or("{}".to_owned());
         let payload = json!({
             "cpee": cpee_url,
             "instance-url": format!("{}/{}", cpee_url, instance_id),
@@ -267,7 +267,7 @@ fn convert_headers_to_map(message_json: &serde_json::Value) -> HashMap<String, S
 /**
  * Constructs parameters from query *panics* if parameters cannot be constructed due to incorrect internal structure
  */
-fn construct_parameters(message: &serde_json::Value) -> Vec<HTTPParameters> {
+fn construct_parameters(message: &serde_json::Value) -> Vec<RiddlParameters> {
     // Values should be an array of values
     let values = match message["content"]["values"].as_array() {
         Some(x) => x,
@@ -287,7 +287,7 @@ fn construct_parameters(message: &serde_json::Value) -> Vec<HTTPParameters> {
             if param_type == "simple" {
                 let header_name = get_str_from_value!(parameter[0]);
                 let header_value = get_str_from_value!(parameter[1][1]);
-                Some(HTTPParameters::SimpleParameter {
+                Some(RiddlParameters::SimpleParameter {
                     name: header_name,
                     value: header_value,
                     param_type: http_helper::ParameterType::Body,
@@ -296,7 +296,7 @@ fn construct_parameters(message: &serde_json::Value) -> Vec<HTTPParameters> {
                 let name = get_str_from_value!(parameter[0]);
                 let mime_type = get_str_from_value!(parameter[1][1]);
                 let content_path = get_str_from_value!(parameter[1][2]);
-                Some(HTTPParameters::ComplexParamter {
+                Some(RiddlParameters::ComplexParamter {
                     name,
                     mime_type,
                     content_handle: std::fs::File::open(content_path)

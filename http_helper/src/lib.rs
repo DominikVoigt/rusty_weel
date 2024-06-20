@@ -1,11 +1,11 @@
 use std::fs;
 
 pub enum ParameterType {
-    Header,
+    Query,
     Body
 }
 
-pub enum HTTPParameters {
+pub enum RiddlParameters {
     // Simple kv parameters, can be in body or header
     SimpleParameter {name: String, value: String, param_type: ParameterType,},
     // Body parameters, multi-part
