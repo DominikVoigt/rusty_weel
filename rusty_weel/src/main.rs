@@ -6,11 +6,12 @@ use indoc::indoc;
 use rusty_weel::connection_wrapper::ConnectionWrapper;
 use rusty_weel::dsl::DSL;
 // Needed for inject!
-use rusty_weel::data_types::{DynamicData, HTTPParams, KeyValuePair, State, StaticData, HTTP};
+use rusty_weel::data_types::{DynamicData, HTTPParams, KeyValuePair, State, StaticData};
 use rusty_weel::dsl_realization::{Weel, Error};
 use rusty_weel::eval_helper::evaluate_expressions;
 use rusty_weel::redis_helper::RedisHelper;
 use rusty_weel_macro::inject;
+use reqwest::Method;
 
 
 fn main() {
@@ -46,7 +47,7 @@ fn main() {
             "bookAir",
             HTTPParams {
                 label: "Book Airline 1",
-                method: HTTP::POST,
+                method: Method::POST,
                 arguments: Some(vec![
                     new_key_value_pair("from", "data.from"),
                     new_key_value_pair("from", "data.to"),
@@ -66,9 +67,9 @@ fn main() {
         weel.call(
             "a1",
             "bookAir",
-            HTTPRequest {
+            HTTPParams {
                 label: "Book Airline 1",
-                method: HTTP::POST,
+                method: Method::POST,
                 arguments: Some(vec![
                     new_key_value_pair("from", "data.from"),
                     new_key_value_pair("from", "data.to"),
@@ -83,7 +84,7 @@ fn main() {
                 status.update 1, 'Hotel'
             "###}),
             Option::None,
-        );
+        )?;
         weel.parallel_do(Option::None, "last", || {
             weel.loop_exec(weel.pre_test("data.persons > 0"), || {
                 weel.parallel_branch(data, || {

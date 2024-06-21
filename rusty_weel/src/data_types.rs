@@ -7,17 +7,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone)]
 pub struct HTTPParams {
     pub label: &'static str,
-    pub method: HTTP,
+    pub method: reqwest::Method,
     pub arguments: Option<Vec<KeyValuePair>>,
-}
-
-#[derive(Debug, Clone)]
-pub enum HTTP {
-    GET,
-    PUT,
-    POST,
-    DELETE,
-    PATCH,
 }
 
 /*

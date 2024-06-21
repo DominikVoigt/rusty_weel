@@ -6,6 +6,7 @@ use std::time::SystemTime;
 
 use rand::distributions::Alphanumeric;
 use rand::Rng;
+use reqwest::header::ToStrError;
 use rusty_weel_macro::get_str_from_value;
 
 use crate::connection_wrapper::ConnectionWrapper;
@@ -18,7 +19,7 @@ pub struct Weel {
     pub dynamic_data: DynamicData,
     pub state: Mutex<State>,
     // Contains all open callbacks from async connections, ArcMutex as it is shared between the instance (to insert callbacks) and the callback thread (RedisHelper)
-    pub callback_keys: Arc<Mutex<std::collections::HashMap<String, Arc<Mutex<ConnectionWrapper>>>>>,
+    pub callback_keys: Arc<Mutex<std::collections::HashMap<String, Arc<ConnectionWrapper>>>>,
     pub redis_notifications_client: Mutex<RedisHelper>,
     // Tracks all open votes via their ID. All voting needs to be finished before stopping.
     pub open_votes: Mutex<HashSet<String>>,
@@ -145,19 +146,30 @@ impl Weel {
     // TODO: Implement stop
     pub fn stop(&self) {
         /*
-            ### tell the instance to stop
-            @instance.stop
-            ### end all votes or it will not work
-            Thread.new do # doing stuff in trap context is a nono. but in a thread its fine :-)
-            @votes.each do |key|
-                CPEE::Message::send(:'vote-response',key,base,@id,uuid,info,true,@redis)
-            end
-            end
-         */
-        self.open_votes.lock().expect("Could not capture mutex").iter().for_each(|vote_id| {
-            self.redis_notifications_client.lock().expect("Could not acquire mutex").send("vote-response", vote_id, self.static_data.get_instance_meta_data(), 
-            Some("true"))
-        })
+           ### tell the instance to stop
+           @instance.stop
+           ### end all votes or it will not work
+           Thread.new do # doing stuff in trap context is a nono. but in a thread its fine :-)
+           @votes.each do |key|
+               CPEE::Message::send(:'vote-response',key,base,@id,uuid,info,true,@redis)
+           end
+           end
+        */
+        self.open_votes
+            .lock()
+            .expect("Could not capture mutex")
+            .iter()
+            .for_each(|vote_id| {
+                self.redis_notifications_client
+                    .lock()
+                    .expect("Could not acquire mutex")
+                    .send(
+                        "vote-response",
+                        vote_id,
+                        self.static_data.get_instance_meta_data(),
+                        Some("true"),
+                    )
+            })
     }
 
     fn vote(&self, vote_topic: &str, mut content: HashMap<String, String>) -> bool {
@@ -187,7 +199,8 @@ impl Weel {
                         .expect("Could not serialize attributes"),
                 );
                 content.insert("subscription".to_owned(), client.clone());
-                let content = serde_json::to_string(&content).expect("Could not serialize content to json string");
+                let content = serde_json::to_string(&content)
+                    .expect("Could not serialize content to json string");
                 votes.push(vote_id);
                 redis_helper.send(
                     "vote",
@@ -229,7 +242,11 @@ impl Weel {
                         .expect("Could not lock votes ")
                         .remove(&get_str_from_value!(message["name"]));
                     // TODO: should we really `cancel_callback m['name']` ?
-                    self.cancel_callback(message["name"].as_str().expect("Message does not contain name"));
+                    self.cancel_callback(
+                        message["name"]
+                            .as_str()
+                            .expect("Message does not contain name"),
+                    );
                     let all_votes_collected = collected_votes.len() >= votes.len();
                     !all_votes_collected
                 },
@@ -240,17 +257,49 @@ impl Weel {
         }
     }
 
+    pub fn callback(
+        &self,
+        hw: Arc<ConnectionWrapper>,
+        key: &str,
+        mut content: HashMap<String, String>,
+    ) {
+        content.insert("key".to_owned(), key.to_owned());
+        let content =
+            serde_json::to_string(&content).expect("could not serialize hashmap to string");
+        self.redis_notifications_client
+            .lock()
+            .expect("Could not acquire Mutex")
+            .send(
+                "callback",
+                "activity/content",
+                self.static_data.get_instance_meta_data(),
+                Some(&content),
+            );
+        self.callback_keys.lock().expect("could not acquire Mutex").insert(key.to_owned(), hw.clone());
+    }
+
     fn cancel_callback(&self, key: &str) {
         self.redis_notifications_client
             .lock()
             .expect("Could not acquire Mutex for notifications RedisHelper")
-            .send("callback-end", key, self.static_data.get_instance_meta_data(), None);
+            .send(
+                "callback-end",
+                key,
+                self.static_data.get_instance_meta_data(),
+                None,
+            );
     }
 }
 
 #[derive(Debug)]
 pub enum Error {
-    SyntaxError(String)
+    SyntaxError(String),
+    InvalidHeaderValue(reqwest::header::InvalidHeaderValue),
+    InvalidHeaderName(reqwest::header::InvalidHeaderName),
+    JsonError(serde_json::Error),
+    ReqwestError(reqwest::Error),
+    ToStrError(ToStrError),
+    IOError(std::io::Error),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -259,7 +308,49 @@ impl Error {
     pub fn as_str(&self) -> &str {
         match self {
             Error::SyntaxError(message) => message.as_str(),
+            Error::InvalidHeaderValue(_) => todo!(),
+            Error::InvalidHeaderName(_) => todo!(),
+            Error::ReqwestError(_) => todo!(),
+            Error::IOError(_) => todo!(),
+            Error::JsonError(_) => todo!(),
+            Error::ToStrError(_) => todo!(),
         }
+    }
+}
+
+impl From<reqwest::header::InvalidHeaderName> for Error {
+    fn from(value: reqwest::header::InvalidHeaderName) -> Self {
+        Error::InvalidHeaderName(value)
+    }
+}
+
+impl From<reqwest::header::InvalidHeaderValue> for Error {
+    fn from(value: reqwest::header::InvalidHeaderValue) -> Self {
+        Error::InvalidHeaderValue(value)
+    }
+}
+
+impl From<reqwest::Error> for Error {
+    fn from(value: reqwest::Error) -> Self {
+        Error::ReqwestError(value)
+    }
+}
+
+impl From<std::io::Error> for Error {
+    fn from(value: std::io::Error) -> Self {
+        Error::IOError(value)
+    }
+}
+
+impl From<serde_json::Error> for Error {
+    fn from(value: serde_json::Error) -> Self {
+        Error::JsonError(value)
+    }
+}
+
+impl From<reqwest::header::ToStrError> for Error {
+    fn from(value: reqwest::header::ToStrError) -> Self {
+        Error::ToStrError(value)
     }
 }
 

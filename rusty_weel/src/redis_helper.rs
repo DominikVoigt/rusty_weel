@@ -14,7 +14,7 @@ const CALLBACK_RESPONSE_ERROR_MESSAGE: &str =
  * Manages a single TCP connection with redis
  */
 pub struct RedisHelper {
-    pub connection: redis::Connection
+    pub connection: redis::Connection,
 }
 
 impl RedisHelper {
@@ -97,7 +97,7 @@ impl RedisHelper {
      * If the thread fails to subscribe, it will panic
      * // TODO: Seems to be semantically equal now -> **Review later**
      */
-    pub fn establish_callback_subscriptions(static_data: &StaticData, callback_keys: Arc<Mutex<HashMap<String, Arc<Mutex<ConnectionWrapper>>>>>) -> JoinHandle<()> {
+    pub fn establish_callback_subscriptions(&mut self, static_data: &StaticData, callback_keys: Arc<Mutex<HashMap<String, Arc<ConnectionWrapper>>>>) -> JoinHandle<()> {
         // Should only be called once in main!
         assert_has_not_been_called!();
         let connection: Connection;
@@ -138,8 +138,6 @@ impl RedisHelper {
                             let params = construct_parameters(&message_json);
                             callback_keys_guard.get(&topic.identifier)
                                                .expect("Cannot happen as we check containment previously and hold mutex throughout")
-                                               .lock()
-                                               .expect("Could not lock connection wrapper mutex")
                                                .callback(params, convert_headers_to_map(&message_json["content"]["headers"]));
                         }
                     }
