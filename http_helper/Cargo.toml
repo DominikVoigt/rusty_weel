@@ -5,4 +5,10 @@ edition = "2021"
 
 
 [dependencies]
-reqwest = {version="0.12.4", features = ["blocking"]}
+reqwest = "0.12.5"
+log = "0.4.21"
+base64 = "0.22.1"
+multipart = "0.18.0"
+tempfile = "3.10.1"
+derive_more = "0.99.18"
+mime = "0.3.17"

@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
+use derive_more::From;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::SystemTime;
@@ -12,6 +13,7 @@ use rusty_weel_macro::get_str_from_value;
 use crate::connection_wrapper::ConnectionWrapper;
 use crate::data_types::{DynamicData, HTTPParams, State, StaticData};
 use crate::dsl::DSL;
+use crate::eval_helper::EvalError;
 use crate::redis_helper::{RedisHelper, Topic};
 
 pub struct Weel {
@@ -291,7 +293,7 @@ impl Weel {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, From)]
 pub enum Error {
     SyntaxError(String),
     InvalidHeaderValue(reqwest::header::InvalidHeaderValue),
@@ -300,6 +302,10 @@ pub enum Error {
     ReqwestError(reqwest::Error),
     ToStrError(ToStrError),
     IOError(std::io::Error),
+    RedisError(redis::RedisError),
+    EvalError(EvalError),
+    StrUTF8Error(std::str::Utf8Error),
+    StringUTF8Error(std::string::FromUtf8Error),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -308,49 +314,14 @@ impl Error {
     pub fn as_str(&self) -> &str {
         match self {
             Error::SyntaxError(message) => message.as_str(),
-            Error::InvalidHeaderValue(_) => todo!(),
-            Error::InvalidHeaderName(_) => todo!(),
-            Error::ReqwestError(_) => todo!(),
-            Error::IOError(_) => todo!(),
             Error::JsonError(_) => todo!(),
-            Error::ToStrError(_) => todo!(),
+            Error::IOError(_) => todo!(),
+            Error::RedisError(_) => todo!(),
+            Error::CurlError(_) => todo!(),
+            Error::EvalError(_) => todo!(),
+            Error::StrUTF8Error(_) => todo!(),
+            Error::StringUTF8Error(_) => todo!(),
         }
-    }
-}
-
-impl From<reqwest::header::InvalidHeaderName> for Error {
-    fn from(value: reqwest::header::InvalidHeaderName) -> Self {
-        Error::InvalidHeaderName(value)
-    }
-}
-
-impl From<reqwest::header::InvalidHeaderValue> for Error {
-    fn from(value: reqwest::header::InvalidHeaderValue) -> Self {
-        Error::InvalidHeaderValue(value)
-    }
-}
-
-impl From<reqwest::Error> for Error {
-    fn from(value: reqwest::Error) -> Self {
-        Error::ReqwestError(value)
-    }
-}
-
-impl From<std::io::Error> for Error {
-    fn from(value: std::io::Error) -> Self {
-        Error::IOError(value)
-    }
-}
-
-impl From<serde_json::Error> for Error {
-    fn from(value: serde_json::Error) -> Self {
-        Error::JsonError(value)
-    }
-}
-
-impl From<reqwest::header::ToStrError> for Error {
-    fn from(value: reqwest::header::ToStrError) -> Self {
-        Error::ToStrError(value)
     }
 }
 

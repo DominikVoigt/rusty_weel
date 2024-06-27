@@ -3,9 +3,10 @@ use std::{collections::{HashMap, HashSet}, sync::{Arc, Mutex}, thread::{self, sl
 use http_helper::RiddlParameters;
 use once::assert_has_not_been_called;
 use redis::{Commands, Connection, RedisError};
+use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use rusty_weel_macro::get_str_from_value;
 use serde_json::json;
-use crate::{connection_wrapper::ConnectionWrapper, data_types::{InstanceMetaData, StaticData}};
+use crate::{connection_wrapper::ConnectionWrapper, data_types::{InstanceMetaData, StaticData}, dsl_realization::Result};
 
 const CALLBACK_RESPONSE_ERROR_MESSAGE: &str =
     "Callback-response had not the correct format, could not find whitespace separator";
@@ -72,8 +73,7 @@ impl RedisHelper {
             instance_id,
             serde_json::to_string(&payload).expect("Could not deserialize payload")
         );
-        let publish_result: Result<(), redis::RedisError> =
-            self.connection.publish(channel, payload);
+        let publish_result = self.connection.publish(channel, payload)?;
         if publish_result.is_err() {
             log_error_and_panic(
                 format!(
@@ -97,7 +97,7 @@ impl RedisHelper {
      * If the thread fails to subscribe, it will panic
      * // TODO: Seems to be semantically equal now -> **Review later**
      */
-    pub fn establish_callback_subscriptions(&mut self, static_data: &StaticData, callback_keys: Arc<Mutex<HashMap<String, Arc<ConnectionWrapper>>>>) -> JoinHandle<()> {
+    pub fn establish_callback_subscriptions(static_data: &StaticData, callback_keys: Arc<Mutex<HashMap<String, Arc<ConnectionWrapper>>>>) -> JoinHandle<()> {
         // Should only be called once in main!
         assert_has_not_been_called!();
         let connection: Connection;
@@ -136,9 +136,11 @@ impl RedisHelper {
                                 log_error_and_panic("message[content][headers] is either null, or ..[headers] is not a hash")
                             }
                             let params = construct_parameters(&message_json);
+                            let headers = convert_headers_to_map(&message_json["content"]["headers"]);
                             callback_keys_guard.get(&topic.identifier)
+                                                // TODO: This panic will not result in termination -> Detached thread panics    
                                                .expect("Cannot happen as we check containment previously and hold mutex throughout")
-                                               .callback(params, convert_headers_to_map(&message_json["content"]["headers"]));
+                                               .callback(params, headers);
                         }
                     }
                     "callback-end:*" => {
@@ -213,7 +215,7 @@ impl RedisHelper {
  * unix:///<path>[?db=<db>][&pass=<password>][&user=<username>]]
  * // TODO: Check whether connection with socket and TCP works
  */
-fn connect_to_redis(configuration: &StaticData, connection_name: &str) -> Result<redis::Connection, RedisError> {
+fn connect_to_redis(configuration: &StaticData, connection_name: &str) -> Result<redis::Connection> {
     let url = configuration.redis_path.as_ref().or(configuration.redis_url.as_ref()).expect("Configuration contains neither a redis_url nor a redis_path").clone();
     let mut connection = redis::Client::open(url)?.get_connection()?;
     match redis::cmd("CLIENT SETNAME").arg(connection_name).query::<String>(&mut connection) {
@@ -252,14 +254,13 @@ fn log_error_and_panic(log_msg: &str) -> ! {
 /**
  * Converts the headers in the callback response message into a hashmap (Key, Value) pairs
  */
-fn convert_headers_to_map(message_json: &serde_json::Value) -> HashMap<String, String> {
-    message_json.as_object()
-                .expect("We checked for being object prior, so this should never happen")
-                .iter()
-                .map(|(key, value)| {
-                    (key.to_owned(), value.as_str().expect(format!("Could not transform header value in object to string. Actual value: {:?}", value).as_str()).to_owned())
-                })
-                .collect()
+fn convert_headers_to_map(headers_json: &serde_json::Value) -> HashMap<String, String> {
+    let mut headers = HashMap::new();
+    for (key, value) in headers_json.as_object().expect("We checked for being object prior, so this should never happen").iter() {
+        let value = value.as_str().expect(format!("Could not transform header value in object to string. Actual value: {:?}", value).as_str());
+        headers.insert(key.clone(), value.to_owned());
+    }
+    headers
 }
 
 /**

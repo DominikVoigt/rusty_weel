@@ -38,3 +38,4 @@ simple_logger = "5.0.0"
 # Macros:
 indoc = "2"
 rusty-weel-macro ={ path = "../rusty_weel_macro"}
+derive_more = "0.99.18"
