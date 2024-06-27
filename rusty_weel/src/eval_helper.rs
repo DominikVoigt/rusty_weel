@@ -48,9 +48,9 @@ pub fn evaluate_expressions (
     let evaluation_request = client.perform()?;
     let response_code = client.response_code()?;
     let response_text = String::from_utf8(response_body)?;
-            let evaluations: HashMap<String, String> = serde_json::from_str(&response_text)
-                .expect("Failed to parse evaluations from response body");
-            Ok(evaluations)
+    let evaluations: HashMap<String, String> = serde_json::from_str(&response_text)
+        .expect("Failed to parse evaluations from response body");
+    Ok(evaluations)
 }
 
 pub fn evaluate_expression (
@@ -63,9 +63,9 @@ pub fn evaluate_expression (
     expressions.insert("k".to_owned(), expression.to_owned());
     let result = evaluate_expressions(eval_backend, dynamic_context, static_context,  expressions)?;
     match result.get("k") {
-                Some(x) => Ok(x.clone()),
-                None => {
-                    log::error!("failure creating new key value pair. Evaluation failed");
+        Some(x) => Ok(x.clone()),
+        None => {
+            log::error!("failure creating new key value pair. Evaluation failed");
             Err(Error::EvalError(EvalError::GeneralEvalError(format!("Result misses value"))))
         }
     }
