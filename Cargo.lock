@@ -471,12 +471,15 @@ name = "http_helper"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "bytes",
  "derive_more",
+ "form_urlencoded",
  "log 0.4.21",
  "mime 0.3.17",
  "multipart",
  "reqwest",
  "tempfile",
+ "url 2.5.2",
 ]
 
 [[package]]
@@ -1266,7 +1269,7 @@ dependencies = [
  "ryu",
  "sha1_smol",
  "socket2",
- "url 2.5.0",
+ "url 2.5.2",
 ]
 
 [[package]]
@@ -1335,7 +1338,7 @@ dependencies = [
  "tokio",
  "tokio-native-tls",
  "tower-service",
- "url 2.5.0",
+ "url 2.5.2",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -1950,9 +1953,9 @@ dependencies = [
 
 [[package]]
 name = "url"
-version = "2.5.0"
+version = "2.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "31e6302e3bb753d46e83516cae55ae196fc0c309407cf11ab35cc51a4c2a4633"
+checksum = "22784dbdf76fdde8af1aeda5622b546b422b6fc585325248a2bf9f5e41e94d6c"
 dependencies = [
  "form_urlencoded",
  "idna 0.5.0",

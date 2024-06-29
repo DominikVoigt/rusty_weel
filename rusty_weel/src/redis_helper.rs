@@ -1,9 +1,8 @@
 use std::{collections::{HashMap, HashSet}, sync::{Arc, Mutex}, thread::{self, sleep, JoinHandle}, time::Duration};
 
-use http_helper::RiddlParameters;
+use http_helper::Parameter;
 use once::assert_has_not_been_called;
-use redis::{Commands, Connection, RedisError};
-use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
+use redis::{Commands, Connection};
 use rusty_weel_macro::get_str_from_value;
 use serde_json::json;
 use crate::{connection_wrapper::ConnectionWrapper, data_types::{InstanceMetaData, StaticData}, dsl_realization::Result};
@@ -266,7 +265,7 @@ fn convert_headers_to_map(headers_json: &serde_json::Value) -> HashMap<String, S
 /**
  * Constructs parameters from query *panics* if parameters cannot be constructed due to incorrect internal structure
  */
-fn construct_parameters(message: &serde_json::Value) -> Vec<RiddlParameters> {
+fn construct_parameters(message: &serde_json::Value) -> Vec<Parameter> {
     // Values should be an array of values
     let values = match message["content"]["values"].as_array() {
         Some(x) => x,
@@ -286,7 +285,7 @@ fn construct_parameters(message: &serde_json::Value) -> Vec<RiddlParameters> {
             if param_type == "simple" {
                 let header_name = get_str_from_value!(parameter[0]);
                 let header_value = get_str_from_value!(parameter[1][1]);
-                Some(RiddlParameters::SimpleParameter {
+                Some(Parameter::SimpleParameter {
                     name: header_name,
                     value: header_value,
                     param_type: http_helper::ParameterType::Body,
@@ -295,7 +294,7 @@ fn construct_parameters(message: &serde_json::Value) -> Vec<RiddlParameters> {
                 let name = get_str_from_value!(parameter[0]);
                 let mime_type = get_str_from_value!(parameter[1][1]);
                 let content_path = get_str_from_value!(parameter[1][2]);
-                Some(RiddlParameters::ComplexParamter {
+                Some(Parameter::ComplexParameter {
                     name,
                     mime_type,
                     content_handle: std::fs::File::open(content_path)

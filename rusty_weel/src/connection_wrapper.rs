@@ -1,5 +1,4 @@
-use curl::easy::List;
-use http_helper::RiddlParameters;
+use http_helper::Parameters;
 use serde_json::{json, Value};
 use std::{
     collections::HashMap, sync::{Arc, Weak}, thread::sleep, time::{Duration, SystemTime}
@@ -200,16 +199,19 @@ impl ConnectionWrapper {
     /**
      * Variation of original proto curl implementation:
      *      - We no longer support the special prefixed arguments that are transformed into parameters, we convert all parameters into simple url encoded body parameters
+     *      - Only the standard headers that are generated in the `henerate_headers` method are send.
+     *      - All arguments wihtin the HTTPParams are send as Key-Value pairs as part of the body (application/x-www-form-urlencoded)
      */
     pub fn curl(self: &Arc<Self>, parameters: &HTTPParams) -> Result<()>{
         let weel = self.weel();
         let callback_id = generate_random_key();
         let mut headers: List = self.generate_headers(weel.static_data.get_instance_meta_data(), &callback_id);
         let mut params = Vec::new();
+        // Put arguemnts into SimpleParameters that will be part of the body-> Since we cannot upload files from the CPEE for now // TODO?
         match parameters.arguments.as_ref() {
             Some(args) => args.iter().for_each(|arg| {
                     let value = arg.value.clone().unwrap_or("".to_owned());
-                    params.push(http_helper::RiddlParameters::SimpleParameter { name: arg.key.to_owned(), value, param_type: http_helper::ParameterType::Body });
+                    params.push(http_helper::Parameter::SimpleParameter { name: arg.key.to_owned(), value, param_type: http_helper::ParameterType::Body });
                 }),
             None => {log::info!("Arguments provided to protocurl are empty");}
         };
@@ -217,14 +219,14 @@ impl ConnectionWrapper {
         let mut status: u16;
         let mut response_headers: HashMap<String, String>;
         loop {
-            let mut content = HashMap::new();
-            content.insert("activity_uuid".to_owned(), self.handler_activity_uuid.clone());
-            content.insert("label".to_owned(), self.label.clone());
+            let mut content_json = HashMap::new();
+            content_json.insert("activity_uuid".to_owned(), self.handler_activity_uuid.clone());
+            content_json.insert("label".to_owned(), self.label.clone());
             let position = self.position.as_ref().map(|x| x.clone()).unwrap_or("".to_owned());
-            content.insert("activity".to_owned(), position);
+            content_json.insert("activity".to_owned(), position);
             
             // TODO: Handler Passthrough? -> When task is called that was async and instance was stopped in between
-            weel.callback(Arc::clone(self), &callback_id, content);
+            weel.callback(Arc::clone(self), &callback_id, content_json);
             
             // TODO: Determine wheter we need to subsitute the url like in connection.rb
             let client = http_helper::Client::new(self.handler_endpoints.get(0).expect("No endpoint provided"))?;
