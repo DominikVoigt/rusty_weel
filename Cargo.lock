@@ -473,6 +473,7 @@ dependencies = [
  "base64 0.22.1",
  "bytes",
  "derive_more",
+ "form_urlencoded",
  "log 0.4.21",
  "mime 0.3.17",
  "multipart",
