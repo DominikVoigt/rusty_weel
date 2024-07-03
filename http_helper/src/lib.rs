@@ -428,9 +428,7 @@ fn get_name_and_content_type(headers: &Headers) -> Result<(String, Mime)> {
     };
     let content_type = match headers {
         Headers::HeaderMap(headers) => match headers.get(CONTENT_TYPE) {
-            Some(content_type) => {
-                content_type.to_str()?.trim().parse::<mime::Mime>()?
-            }
+            Some(content_type) => content_type.to_str()?.trim().parse::<mime::Mime>()?,
             None => APPLICATION_OCTET_STREAM,
         }
         .to_owned(),
@@ -619,96 +617,96 @@ mod test {
         }
     }
 
-    #[test]
-    fn test_url_generation() -> Result<()> {
-        let test_url = "https://www.testing.com?test=value&tes. == aba\"";
-        let client = Client::new(test_url, Method::GET)?;
-        println!("{:?}", client.parameters);
-        assert_eq!(
-            // checked with urlencoder.org
-            "https://www.testing.com/?test=value&tes.%20=%3D%20aba%22",
-            client.generate_url().to_string()
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn test_url_generation_with_params() -> Result<()> {
-        let test_url = "https://www.testing.com/?test=value&onlyname";
-        let mut client = Client::new(test_url, Method::GET)?;
-        let parameters = vec![
-            Parameter::SimpleParameter {
-                name: "a".to_owned(),
-                value: "a1".to_owned(),
-                param_type: ParameterType::Body,
-            },
-            Parameter::SimpleParameter {
-                name: "b".to_owned(),
-                value: "b1".to_owned(),
-                param_type: ParameterType::Query,
-            },
-            Parameter::SimpleParameter {
-                name: "c".to_owned(),
-                value: "".to_owned(),
-                param_type: ParameterType::Query,
-            },
-        ];
-        client.add_parameters(parameters);
-
-        assert_eq!(
-            "https://www.testing.com/?test=value&onlyname&a=a1&b=b1&c",
-            client.generate_url().to_string()
-        );
-        Ok(())
-    }
-
-    // requires netcat to run on localhost 5678
-    // tested by looking at the generated requests by netcat
-    // Results can be found in the test_files/http/request/simple_singular_request.txt
-    #[test]
-    fn test_building_singular_simple_body() -> Result<()> {
-        let test_url = "http://localhost:5678";
-        let mut client = Client::new(test_url, Method::POST)?;
-        client.add_parameter(Parameter::SimpleParameter {
-            name: "simple_param_ test".to_owned(),
-            value: "simple_value".to_owned(),
-            param_type: ParameterType::Body,
-        });
-        let mut request_builder = client.reqwest_client.request(Method::POST, test_url);
-        request_builder = client.generate_body(request_builder)?;
-        let request = request_builder.build()?;
-        let response = client.reqwest_client.execute(request)?;
-        assert_eq!(response.status().as_u16(), 200);
-        println!("{:?}", response.text().unwrap());
-        Ok(())
-    }
-
-    // requires netcat to run on localhost 5678
-    // tested by looking at the generated requests by netcat
-    // Results can be found in the test_files/http/request/complex_text_file_singular_request.txt
-    #[test]
-    fn test_building_singular_complex_text_body() -> Result<()> {
-        let test_url = "http://localhost:5678";
-        let mut client = Client::new(test_url, Method::POST)?;
-        let file = "./test_files/text/file_example.xml";
-        let file = fs::File::open(file)?;
-
-        client.add_parameter(Parameter::ComplexParameter {
-            name: "test_file".to_owned(),
-            mime_type: mime::TEXT_XML.to_string(),
-            content_handle: file,
-        });
-        let mut request_builder = client.reqwest_client.request(Method::POST, test_url);
-        request_builder = client.generate_body(request_builder)?;
-        let request = request_builder.build()?;
-        let response = client.reqwest_client.execute(request)?;
-        assert_eq!(response.status().as_u16(), 200);
-
-        Ok(())
-    }
-
     mod test_creation {
         use super::*;
+
+        #[test]
+        fn test_url_generation() -> Result<()> {
+            let test_url = "https://www.testing.com?test=value&tes. == aba\"";
+            let client = Client::new(test_url, Method::GET)?;
+            println!("{:?}", client.parameters);
+            assert_eq!(
+                // checked with urlencoder.org
+                "https://www.testing.com/?test=value&tes.%20=%3D%20aba%22",
+                client.generate_url().to_string()
+            );
+            Ok(())
+        }
+
+        #[test]
+        fn test_url_generation_with_params() -> Result<()> {
+            let test_url = "https://www.testing.com/?test=value&onlyname";
+            let mut client = Client::new(test_url, Method::GET)?;
+            let parameters = vec![
+                Parameter::SimpleParameter {
+                    name: "a".to_owned(),
+                    value: "a1".to_owned(),
+                    param_type: ParameterType::Body,
+                },
+                Parameter::SimpleParameter {
+                    name: "b".to_owned(),
+                    value: "b1".to_owned(),
+                    param_type: ParameterType::Query,
+                },
+                Parameter::SimpleParameter {
+                    name: "c".to_owned(),
+                    value: "".to_owned(),
+                    param_type: ParameterType::Query,
+                },
+            ];
+            client.add_parameters(parameters);
+
+            assert_eq!(
+                "https://www.testing.com/?test=value&onlyname&a=a1&b=b1&c",
+                client.generate_url().to_string()
+            );
+            Ok(())
+        }
+
+        // requires netcat to run on localhost 5678
+        // tested by looking at the generated requests by netcat
+        // Results can be found in the test_files/http/request/simple_singular_request.txt
+        #[test]
+        fn test_building_singular_simple_body() -> Result<()> {
+            let test_url = "http://localhost:5678";
+            let mut client = Client::new(test_url, Method::POST)?;
+            client.add_parameter(Parameter::SimpleParameter {
+                name: "simple_param_ test".to_owned(),
+                value: "simple_value".to_owned(),
+                param_type: ParameterType::Body,
+            });
+            let mut request_builder = client.reqwest_client.request(Method::POST, test_url);
+            request_builder = client.generate_body(request_builder)?;
+            let request = request_builder.build()?;
+            let response = client.reqwest_client.execute(request)?;
+            assert_eq!(response.status().as_u16(), 200);
+            println!("{:?}", response.text().unwrap());
+            Ok(())
+        }
+
+        // requires netcat to run on localhost 5678
+        // tested by looking at the generated requests by netcat
+        // Results can be found in the test_files/http/request/complex_text_file_singular_request.txt
+        #[test]
+        fn test_building_singular_complex_text_body() -> Result<()> {
+            let test_url = "http://localhost:5678";
+            let mut client = Client::new(test_url, Method::POST)?;
+            let file = "./test_files/text/file_example.xml";
+            let file = fs::File::open(file)?;
+
+            client.add_parameter(Parameter::ComplexParameter {
+                name: "test_file".to_owned(),
+                mime_type: mime::TEXT_XML.to_string(),
+                content_handle: file,
+            });
+            let mut request_builder = client.reqwest_client.request(Method::POST, test_url);
+            request_builder = client.generate_body(request_builder)?;
+            let request = request_builder.build()?;
+            let response = client.reqwest_client.execute(request)?;
+            assert_eq!(response.status().as_u16(), 200);
+
+            Ok(())
+        }
 
         // requires netcat to run on localhost 5678
         // tested by looking at the generated requests by netcat
