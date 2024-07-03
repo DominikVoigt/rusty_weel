@@ -151,7 +151,7 @@ impl Client {
     pub fn add_parameters(&mut self, parameters: Vec<Parameter>) {
         parameters
             .into_iter()
-            .for_each(|parameter| self.add_parameter(parameter));
+            .for_each(|parameter| {let _ = self.add_parameter(parameter);});
     }
 
     pub fn set_request_headers(&mut self, request_headers: HeaderMap) {
@@ -428,7 +428,10 @@ fn get_name_and_content_type(headers: &Headers) -> Result<(String, Mime)> {
     };
     let content_type = match headers {
         Headers::HeaderMap(headers) => match headers.get(CONTENT_TYPE) {
-            Some(content_type) => content_type.to_str()?.parse::<mime::Mime>()?,
+            Some(content_type) => {
+                println!("Content type: {}", content_type.to_str()?);
+                content_type.to_str()?.trim().parse::<mime::Mime>()?
+            }
             None => APPLICATION_OCTET_STREAM,
         }
         .to_owned(),
@@ -660,6 +663,8 @@ mod test {
     }
 
     // requires netcat to run on localhost 5678
+    // tested by looking at the generated requests by netcat
+    // Results can be found in the test_files/http/request/simple_singular_request.txt
     #[test]
     fn test_building_singular_simple_body() -> Result<()> {
         let test_url = "http://localhost:5678";
@@ -679,6 +684,8 @@ mod test {
     }
 
     // requires netcat to run on localhost 5678
+    // tested by looking at the generated requests by netcat
+    // Results can be found in the test_files/http/request/complex_text_file_singular_request.txt
     #[test]
     fn test_building_singular_complex_text_body() -> Result<()> {
         let test_url = "http://localhost:5678";
@@ -704,6 +711,8 @@ mod test {
     }
 
     // requires netcat to run on localhost 5678
+    // tested by looking at the generated requests by netcat
+    // Results can be found in the test_files/http/request/complex_jpg_file_singular_request.txt
     #[test]
     fn test_building_singular_complex_binary_body() -> Result<()> {
         let test_url = "http://localhost:5678";
@@ -729,7 +738,9 @@ mod test {
         Ok(())
     }
 
-    // requires netcat run on localhost 5678
+    // requires netcat to run on localhost 5678
+    // tested by looking at the generated requests by netcat
+    // Results can be found in the test_files/http/request/simple_multipart_request.txt
     #[test]
     fn test_building_multipart_simple_body() -> Result<()> {
         let test_url = "http://localhost:5678";
@@ -758,10 +769,9 @@ mod test {
         Ok(())
     }
 
-    /**
-     * Creates a multipart POST request with a jpg, json and XML file
-     * netcat
-     */
+    // requires netcat to run on localhost 5678
+    // tested by looking at the generated requests by netcat
+    // Results can be found in the test_files/http/request/complex_mixed_multipart_request.txt
     #[test]
     fn test_building_multipart_complex_body() -> Result<()> {
         let test_url = "http://localhost:5678";
@@ -772,14 +782,6 @@ mod test {
         client.add_parameter(Parameter::ComplexParameter {
             name: "test_file".to_owned(),
             mime_type: mime::IMAGE_JPEG.to_string(),
-            content_handle: file,
-        });
-
-        let test_file = "./test_files/text/file_example.json";
-        let file = fs::File::open(test_file)?;
-        client.add_parameter(Parameter::ComplexParameter {
-            name: "test_file".to_owned(),
-            mime_type: mime::APPLICATION_JSON.to_string(),
             content_handle: file,
         });
 
@@ -806,7 +808,61 @@ mod test {
         Ok(())
     }
 
-    
+    #[test]
+    fn test_simple_parameter_parsing() -> Result<()> {
+        let headers =
+            parse_headers_from_file("./test_files/http/headers/simple_singular_headers.txt")?;
+        println!("Headers: {:?}", headers);
+        let body = fs::read("./test_files/http/bodies/simple_singular_body.txt")?;
+        let result = parse_part(Headers::HeaderMap(headers), &body)?;
+        println!("{:?}", result);
+        Ok(())
+    }
+
+    #[test]
+    fn test_complex_parameter_parsing() -> Result<()> {
+        let headers = parse_headers_from_file(
+            "./test_files/http/headers/complex_text_file_singular_headers.txt",
+        )?;
+        println!("Headers: {:?}", headers);
+        let body = fs::read("./test_files/http/bodies/complex_text_file_singular_body.txt")?;
+        let mut result = parse_part(Headers::HeaderMap(headers), &body)?;
+        match &result.pop() {
+            Some(element) => match &element {
+                Parameter::SimpleParameter { .. } => panic!("Should not happen"),
+                Parameter::ComplexParameter { mut content_handle, .. } => {
+                    let mut buffer = Vec::new();
+                    content_handle.read_to_end(&mut buffer)?;
+                    assert_eq!(body, buffer)
+                }
+            },
+            None => panic!("Should not happen"),
+        };
+        println!("{:?}", result);
+        Ok(())
+    }
+
+    fn parse_headers_from_file(path: &str) -> Result<HeaderMap> {
+        let header_string = fs::read_to_string(path)?.replace("\r", "");
+
+        let mut headers = HeaderMap::new();
+        header_string
+            .split("\n")
+            .map(|header| -> Result<(HeaderName, HeaderValue)> {
+                let (name, value) = header
+                    .split_once(":")
+                    .ok_or(Error::HeaderParseError("Does not contain :".to_owned()))?;
+                Ok((HeaderName::from_str(name)?, HeaderValue::from_str(value)?))
+            })
+            .filter_map(|result| match result {
+                Ok((header_name, header_value)) => Some((header_name, header_value)),
+                Err(_) => None,
+            })
+            .for_each(|entry| {
+                headers.insert(entry.0, entry.1);
+            });
+        Ok(headers)
+    }
 
     #[test]
     /**
