@@ -12,7 +12,7 @@ use reqwest::{
 };
 use std::{
     fs,
-    io::{Read, Write},
+    io::{Read, Seek, Write},
     str::FromStr,
 };
 
@@ -149,9 +149,9 @@ impl Client {
     }
 
     pub fn add_parameters(&mut self, parameters: Vec<Parameter>) {
-        parameters
-            .into_iter()
-            .for_each(|parameter| {let _ = self.add_parameter(parameter);});
+        parameters.into_iter().for_each(|parameter| {
+            let _ = self.add_parameter(parameter);
+        });
     }
 
     pub fn set_request_headers(&mut self, request_headers: HeaderMap) {
@@ -429,7 +429,6 @@ fn get_name_and_content_type(headers: &Headers) -> Result<(String, Mime)> {
     let content_type = match headers {
         Headers::HeaderMap(headers) => match headers.get(CONTENT_TYPE) {
             Some(content_type) => {
-                println!("Content type: {}", content_type.to_str()?);
                 content_type.to_str()?.trim().parse::<mime::Mime>()?
             }
             None => APPLICATION_OCTET_STREAM,
@@ -449,6 +448,7 @@ fn get_name_and_content_type(headers: &Headers) -> Result<(String, Mime)> {
 fn parse_flat_data(content_type: &str, body: &[u8], name: &str) -> Result<Vec<Parameter>> {
     let mut content = tempfile::tempfile()?;
     content.write(&body)?;
+    content.rewind()?;
     Ok(vec![Parameter::ComplexParameter {
         name: name.to_owned(),
         mime_type: content_type.to_owned(),
@@ -690,14 +690,12 @@ mod test {
     fn test_building_singular_complex_text_body() -> Result<()> {
         let test_url = "http://localhost:5678";
         let mut client = Client::new(test_url, Method::POST)?;
-        let test_file_dir = "./test_files/text";
-        for file in fs::read_dir(test_file_dir)? {
-            let file = file?.path();
+        let file = "./test_files/text/file_example.xml";
             let file = fs::File::open(file)?;
 
             client.add_parameter(Parameter::ComplexParameter {
                 name: "test_file".to_owned(),
-                mime_type: mime::APPLICATION_JSON.to_string(),
+            mime_type: mime::TEXT_XML.to_string(),
                 content_handle: file,
             });
             let mut request_builder = client.reqwest_client.request(Method::POST, test_url);
@@ -705,10 +703,12 @@ mod test {
             let request = request_builder.build()?;
             let response = client.reqwest_client.execute(request)?;
             assert_eq!(response.status().as_u16(), 200);
-        }
 
         Ok(())
     }
+
+    mod test_creation {
+        use super::*;
 
     // requires netcat to run on localhost 5678
     // tested by looking at the generated requests by netcat
@@ -806,7 +806,11 @@ mod test {
         assert_eq!(response.status().as_u16(), 200);
         println!("{:?}", response.text().unwrap());
         Ok(())
+        }
     }
+
+    mod test_parsing {
+        use super::*;
 
     #[test]
     fn test_simple_parameter_parsing() -> Result<()> {
@@ -814,8 +818,21 @@ mod test {
             parse_headers_from_file("./test_files/http/headers/simple_singular_headers.txt")?;
         println!("Headers: {:?}", headers);
         let body = fs::read("./test_files/http/bodies/simple_singular_body.txt")?;
-        let result = parse_part(Headers::HeaderMap(headers), &body)?;
-        println!("{:?}", result);
+            let mut result = parse_part(Headers::HeaderMap(headers), &body)?;
+            assert_eq!(result.len(), 1);
+            let result = result.pop().unwrap();
+            match result {
+                Parameter::SimpleParameter {
+                    name,
+                    value,
+                    param_type,
+                } => {
+                    assert_eq!(name, "simple_param_ test");
+                    assert_eq!(value, "simple_value");
+                    assert!(matches!(param_type, ParameterType::Body));
+                }
+                Parameter::ComplexParameter { .. } => panic!("Should be simple_parameter"),
+            }
         Ok(())
     }
 
@@ -827,16 +844,17 @@ mod test {
         println!("Headers: {:?}", headers);
         let body = fs::read("./test_files/http/bodies/complex_text_file_singular_body.txt")?;
         let mut result = parse_part(Headers::HeaderMap(headers), &body)?;
-        match &result.pop() {
-            Some(element) => match &element {
+            println!("{:?}", result);
+            match result.pop().unwrap() {
                 Parameter::SimpleParameter { .. } => panic!("Should not happen"),
-                Parameter::ComplexParameter { mut content_handle, .. } => {
+                Parameter::ComplexParameter {
+                    mut content_handle, ..
+                } => {
+                    println!("{:?}", content_handle);
                     let mut buffer = Vec::new();
                     content_handle.read_to_end(&mut buffer)?;
                     assert_eq!(body, buffer)
                 }
-            },
-            None => panic!("Should not happen"),
         };
         println!("{:?}", result);
         Ok(())
@@ -862,6 +880,7 @@ mod test {
                 headers.insert(entry.0, entry.1);
             });
         Ok(headers)
+        }
     }
 
     #[test]
