@@ -691,18 +691,18 @@ mod test {
         let test_url = "http://localhost:5678";
         let mut client = Client::new(test_url, Method::POST)?;
         let file = "./test_files/text/file_example.xml";
-            let file = fs::File::open(file)?;
+        let file = fs::File::open(file)?;
 
-            client.add_parameter(Parameter::ComplexParameter {
-                name: "test_file".to_owned(),
+        client.add_parameter(Parameter::ComplexParameter {
+            name: "test_file".to_owned(),
             mime_type: mime::TEXT_XML.to_string(),
-                content_handle: file,
-            });
-            let mut request_builder = client.reqwest_client.request(Method::POST, test_url);
-            request_builder = client.generate_body(request_builder)?;
-            let request = request_builder.build()?;
-            let response = client.reqwest_client.execute(request)?;
-            assert_eq!(response.status().as_u16(), 200);
+            content_handle: file,
+        });
+        let mut request_builder = client.reqwest_client.request(Method::POST, test_url);
+        request_builder = client.generate_body(request_builder)?;
+        let request = request_builder.build()?;
+        let response = client.reqwest_client.execute(request)?;
+        assert_eq!(response.status().as_u16(), 200);
 
         Ok(())
     }
@@ -710,114 +710,114 @@ mod test {
     mod test_creation {
         use super::*;
 
-    // requires netcat to run on localhost 5678
-    // tested by looking at the generated requests by netcat
-    // Results can be found in the test_files/http/request/complex_jpg_file_singular_request.txt
-    #[test]
-    fn test_building_singular_complex_binary_body() -> Result<()> {
-        let test_url = "http://localhost:5678";
-        let mut client = Client::new(test_url, Method::POST)?;
-        let test_file = "./test_files/binary/16x16.jpg";
-        let file = fs::File::open(test_file)?;
+        // requires netcat to run on localhost 5678
+        // tested by looking at the generated requests by netcat
+        // Results can be found in the test_files/http/request/complex_jpg_file_singular_request.txt
+        #[test]
+        fn test_building_singular_complex_binary_body() -> Result<()> {
+            let test_url = "http://localhost:5678";
+            let mut client = Client::new(test_url, Method::POST)?;
+            let test_file = "./test_files/binary/16x16.jpg";
+            let file = fs::File::open(test_file)?;
 
-        client.add_parameter(Parameter::ComplexParameter {
-            name: "test_file".to_owned(),
-            mime_type: mime::APPLICATION_OCTET_STREAM.to_string(),
-            content_handle: file,
-        });
-        let mut request_builder = client.reqwest_client.request(Method::POST, test_url);
-        request_builder = client.generate_body(request_builder)?;
-        let request = request_builder.build()?;
+            client.add_parameter(Parameter::ComplexParameter {
+                name: "test_file".to_owned(),
+                mime_type: mime::APPLICATION_OCTET_STREAM.to_string(),
+                content_handle: file,
+            });
+            let mut request_builder = client.reqwest_client.request(Method::POST, test_url);
+            request_builder = client.generate_body(request_builder)?;
+            let request = request_builder.build()?;
 
-        let response = client.reqwest_client.execute(request)?;
-        println!("{:?}", response);
-        assert_eq!(response.status().as_u16(), 200);
+            let response = client.reqwest_client.execute(request)?;
+            println!("{:?}", response);
+            assert_eq!(response.status().as_u16(), 200);
 
-        let body = response.bytes()?;
-        let _ = fs::write("./output/output.jpg", body);
-        Ok(())
-    }
+            let body = response.bytes()?;
+            let _ = fs::write("./output/output.jpg", body);
+            Ok(())
+        }
 
-    // requires netcat to run on localhost 5678
-    // tested by looking at the generated requests by netcat
-    // Results can be found in the test_files/http/request/simple_multipart_request.txt
-    #[test]
-    fn test_building_multipart_simple_body() -> Result<()> {
-        let test_url = "http://localhost:5678";
-        let mut client = Client::new(test_url, Method::POST)?;
-        client.add_parameter(Parameter::SimpleParameter {
-            name: "simple_param_0test".to_owned(),
-            value: "simple_value0".to_owned(),
-            param_type: ParameterType::Body,
-        });
-        client.add_parameter(Parameter::SimpleParameter {
-            name: "simple_param_1test".to_owned(),
-            value: "simple_value1".to_owned(),
-            param_type: ParameterType::Body,
-        });
-        client.add_parameter(Parameter::SimpleParameter {
-            name: "simple_param_2test".to_owned(),
-            value: "simple_value2".to_owned(),
-            param_type: ParameterType::Body,
-        });
-        let mut request_builder = client.reqwest_client.request(Method::POST, test_url);
-        request_builder = client.generate_body(request_builder)?;
-        let request = request_builder.build()?;
-        let response = client.reqwest_client.execute(request)?;
-        assert_eq!(response.status().as_u16(), 200);
-        println!("{:?}", response.text().unwrap());
-        Ok(())
-    }
+        // requires netcat to run on localhost 5678
+        // tested by looking at the generated requests by netcat
+        // Results can be found in the test_files/http/request/simple_multipart_request.txt
+        #[test]
+        fn test_building_multipart_simple_body() -> Result<()> {
+            let test_url = "http://localhost:5678";
+            let mut client = Client::new(test_url, Method::POST)?;
+            client.add_parameter(Parameter::SimpleParameter {
+                name: "simple_param_0test".to_owned(),
+                value: "simple_value0".to_owned(),
+                param_type: ParameterType::Body,
+            });
+            client.add_parameter(Parameter::SimpleParameter {
+                name: "simple_param_1test".to_owned(),
+                value: "simple_value1".to_owned(),
+                param_type: ParameterType::Body,
+            });
+            client.add_parameter(Parameter::SimpleParameter {
+                name: "simple_param_2test".to_owned(),
+                value: "simple_value2".to_owned(),
+                param_type: ParameterType::Body,
+            });
+            let mut request_builder = client.reqwest_client.request(Method::POST, test_url);
+            request_builder = client.generate_body(request_builder)?;
+            let request = request_builder.build()?;
+            let response = client.reqwest_client.execute(request)?;
+            assert_eq!(response.status().as_u16(), 200);
+            println!("{:?}", response.text().unwrap());
+            Ok(())
+        }
 
-    // requires netcat to run on localhost 5678
-    // tested by looking at the generated requests by netcat
-    // Results can be found in the test_files/http/request/complex_mixed_multipart_request.txt
-    #[test]
-    fn test_building_multipart_complex_body() -> Result<()> {
-        let test_url = "http://localhost:5678";
-        let mut client = Client::new(test_url, Method::POST)?;
+        // requires netcat to run on localhost 5678
+        // tested by looking at the generated requests by netcat
+        // Results can be found in the test_files/http/request/complex_mixed_multipart_request.txt
+        #[test]
+        fn test_building_multipart_complex_body() -> Result<()> {
+            let test_url = "http://localhost:5678";
+            let mut client = Client::new(test_url, Method::POST)?;
 
-        let test_file = "./test_files/binary/16x16.jpg";
-        let file = fs::File::open(test_file)?;
-        client.add_parameter(Parameter::ComplexParameter {
-            name: "test_file".to_owned(),
-            mime_type: mime::IMAGE_JPEG.to_string(),
-            content_handle: file,
-        });
+            let test_file = "./test_files/binary/16x16.jpg";
+            let file = fs::File::open(test_file)?;
+            client.add_parameter(Parameter::ComplexParameter {
+                name: "test_file".to_owned(),
+                mime_type: mime::IMAGE_JPEG.to_string(),
+                content_handle: file,
+            });
 
-        let test_file = "./test_files/text/file_example.xml";
-        let file = fs::File::open(test_file)?;
-        client.add_parameter(Parameter::ComplexParameter {
-            name: "test_file".to_owned(),
-            mime_type: mime::TEXT_XML.to_string(),
-            content_handle: file,
-        });
+            let test_file = "./test_files/text/file_example.xml";
+            let file = fs::File::open(test_file)?;
+            client.add_parameter(Parameter::ComplexParameter {
+                name: "test_file".to_owned(),
+                mime_type: mime::TEXT_XML.to_string(),
+                content_handle: file,
+            });
 
-        client.add_parameter(Parameter::SimpleParameter {
-            name: "test".to_owned(),
-            value: "test_value".to_owned(),
-            param_type: ParameterType::Body,
-        });
+            client.add_parameter(Parameter::SimpleParameter {
+                name: "test".to_owned(),
+                value: "test_value".to_owned(),
+                param_type: ParameterType::Body,
+            });
 
-        let mut request_builder = client.reqwest_client.request(Method::POST, test_url);
-        request_builder = client.generate_body(request_builder)?;
-        let request = request_builder.build()?;
-        let response = client.reqwest_client.execute(request)?;
-        assert_eq!(response.status().as_u16(), 200);
-        println!("{:?}", response.text().unwrap());
-        Ok(())
+            let mut request_builder = client.reqwest_client.request(Method::POST, test_url);
+            request_builder = client.generate_body(request_builder)?;
+            let request = request_builder.build()?;
+            let response = client.reqwest_client.execute(request)?;
+            assert_eq!(response.status().as_u16(), 200);
+            println!("{:?}", response.text().unwrap());
+            Ok(())
         }
     }
 
     mod test_parsing {
         use super::*;
 
-    #[test]
-    fn test_simple_parameter_parsing() -> Result<()> {
-        let headers =
-            parse_headers_from_file("./test_files/http/headers/simple_singular_headers.txt")?;
-        println!("Headers: {:?}", headers);
-        let body = fs::read("./test_files/http/bodies/simple_singular_body.txt")?;
+        #[test]
+        fn test_simple_parameter_parsing() -> Result<()> {
+            let headers =
+                parse_headers_from_file("./test_files/http/headers/simple_singular_headers.txt")?;
+            println!("Headers: {:?}", headers);
+            let body = fs::read("./test_files/http/bodies/simple_singular_body.txt")?;
             let mut result = parse_part(Headers::HeaderMap(headers), &body)?;
             assert_eq!(result.len(), 1);
             let result = result.pop().unwrap();
@@ -833,17 +833,17 @@ mod test {
                 }
                 Parameter::ComplexParameter { .. } => panic!("Should be simple_parameter"),
             }
-        Ok(())
-    }
+            Ok(())
+        }
 
-    #[test]
-    fn test_complex_parameter_parsing() -> Result<()> {
-        let headers = parse_headers_from_file(
-            "./test_files/http/headers/complex_text_file_singular_headers.txt",
-        )?;
-        println!("Headers: {:?}", headers);
-        let body = fs::read("./test_files/http/bodies/complex_text_file_singular_body.txt")?;
-        let mut result = parse_part(Headers::HeaderMap(headers), &body)?;
+        #[test]
+        fn test_complex_parameter_parsing() -> Result<()> {
+            let headers = parse_headers_from_file(
+                "./test_files/http/headers/complex_text_file_singular_headers.txt",
+            )?;
+            println!("Headers: {:?}", headers);
+            let body = fs::read("./test_files/http/bodies/complex_text_file_singular_body.txt")?;
+            let mut result = parse_part(Headers::HeaderMap(headers), &body)?;
             println!("{:?}", result);
             match result.pop().unwrap() {
                 Parameter::SimpleParameter { .. } => panic!("Should not happen"),
@@ -855,31 +855,31 @@ mod test {
                     content_handle.read_to_end(&mut buffer)?;
                     assert_eq!(body, buffer)
                 }
-        };
-        println!("{:?}", result);
-        Ok(())
-    }
+            };
+            println!("{:?}", result);
+            Ok(())
+        }
 
-    fn parse_headers_from_file(path: &str) -> Result<HeaderMap> {
-        let header_string = fs::read_to_string(path)?.replace("\r", "");
+        fn parse_headers_from_file(path: &str) -> Result<HeaderMap> {
+            let header_string = fs::read_to_string(path)?.replace("\r", "");
 
-        let mut headers = HeaderMap::new();
-        header_string
-            .split("\n")
-            .map(|header| -> Result<(HeaderName, HeaderValue)> {
-                let (name, value) = header
-                    .split_once(":")
-                    .ok_or(Error::HeaderParseError("Does not contain :".to_owned()))?;
-                Ok((HeaderName::from_str(name)?, HeaderValue::from_str(value)?))
-            })
-            .filter_map(|result| match result {
-                Ok((header_name, header_value)) => Some((header_name, header_value)),
-                Err(_) => None,
-            })
-            .for_each(|entry| {
-                headers.insert(entry.0, entry.1);
-            });
-        Ok(headers)
+            let mut headers = HeaderMap::new();
+            header_string
+                .split("\n")
+                .map(|header| -> Result<(HeaderName, HeaderValue)> {
+                    let (name, value) = header
+                        .split_once(":")
+                        .ok_or(Error::HeaderParseError("Does not contain :".to_owned()))?;
+                    Ok((HeaderName::from_str(name)?, HeaderValue::from_str(value)?))
+                })
+                .filter_map(|result| match result {
+                    Ok((header_name, header_value)) => Some((header_name, header_value)),
+                    Err(_) => None,
+                })
+                .for_each(|entry| {
+                    headers.insert(entry.0, entry.1);
+                });
+            Ok(headers)
         }
     }
 
