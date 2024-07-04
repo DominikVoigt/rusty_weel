@@ -423,7 +423,14 @@ fn get_name_and_content_type(headers: &Headers) -> Result<(String, Mime)> {
             Some(content_id) => content_id.to_str()?.trim().replace("\"", ""),
             None => "result".to_owned(),
         },
-        Headers::PartHeaders(headers) => (*headers.name).to_owned(),
+        Headers::PartHeaders(headers) => {
+            // Get arc as ref
+            let mut name = &*headers.name;
+            if name.len() == 0 {
+                name = "result";
+            }
+            name.to_owned()
+        }
     };
     let content_type = match headers {
         Headers::HeaderMap(headers) => match headers.get(CONTENT_TYPE) {
@@ -488,133 +495,7 @@ fn parse_multipart(body: &[u8], boundary: &str) -> Result<Vec<Parameter>> {
 #[cfg(test)]
 mod test {
     use std::io::{Read, Seek};
-
-    use mime::BOUNDARY;
-
     use super::*;
-    mod testing_libs {
-        use super::*;
-        /**
-         * Checks for parsed equality, but note: Only equal if all is equal including parameters
-         */
-        #[test]
-        fn check_parsed_equalities() -> Result<()> {
-            let mime_parsed = "multipart/form-data".parse::<mime::Mime>()?;
-            let mime = mime::MULTIPART_FORM_DATA;
-            assert_eq!(mime_parsed, mime);
-
-            let mime_parsed = "application/json".parse::<mime::Mime>()?;
-            let mime = mime::APPLICATION_JSON;
-            assert_eq!(mime_parsed, mime);
-
-            let mime_parsed = "ApplICation/JSoN".parse::<mime::Mime>()?;
-            let mime = mime::APPLICATION_JSON;
-            assert_eq!(mime_parsed, mime);
-
-            let mime_parsed = "text/csv".parse::<mime::Mime>()?;
-            let mime = mime::TEXT_CSV;
-            assert_eq!(mime_parsed, mime);
-
-            let mime_parsed = "text/csv; charset=utf-8".parse::<mime::Mime>()?;
-            let mime = mime::TEXT_CSV_UTF_8;
-            assert_eq!(mime_parsed, mime);
-
-            let mime_parsed = "text/csv; charset=utf-8".parse::<mime::Mime>()?;
-            let mime = mime::TEXT_CSV;
-            assert_ne!(mime_parsed, mime);
-
-            let mime_parsed = "text/plain; charset=utf-8".parse::<mime::Mime>()?;
-            let mime = mime::TEXT_PLAIN;
-            assert_eq!(mime_parsed.essence_str(), mime);
-            Ok(())
-        }
-
-        /**
-         * Tests parsing boundaries with and without the quotation marks
-         */
-        #[test]
-        fn test_boundary_parsing() -> Result<()> {
-            // Basic case without quotation marks
-            let mime_parsed =
-                "multipart/form-data; boundary=askdfjaskfnasd".parse::<mime::Mime>()?;
-
-            assert_eq!(
-                "askdfjaskfnasd",
-                mime_parsed.get_param(BOUNDARY).expect("Oups")
-            );
-            assert_ne!(
-                "\"askdfjaskfnasd\"",
-                mime_parsed.get_param(BOUNDARY).expect("Oups")
-            );
-
-            let mime = mime::MULTIPART_FORM_DATA;
-            // essence_str does not include parameters:
-            assert_eq!(mime_parsed.essence_str(), mime.essence_str());
-
-            let mime_parsed =
-                "multipart/form-data; boundary=\"askdfjaskfnasd\"".parse::<mime::Mime>()?;
-            let mime = mime::MULTIPART_FORM_DATA;
-
-            assert_eq!(
-                "askdfjaskfnasd",
-                mime_parsed.get_param(BOUNDARY).expect("Oups")
-            );
-            assert_ne!(
-                "\"askdfjaskfnasd\"",
-                mime_parsed.get_param(BOUNDARY).expect("Oups")
-            );
-
-            assert_ne!(mime, mime_parsed);
-            // essence_str does not include parameters:
-            assert_eq!(mime_parsed.essence_str(), mime.essence_str());
-            Ok(())
-        }
-
-        #[test]
-        fn test_essences() -> Result<()> {
-            let mime = mime::APPLICATION_JSON;
-            println!("{}", mime.essence_str());
-
-            let mime = mime::TEXT_CSV_UTF_8;
-            println!("{}", mime.essence_str());
-
-            Ok(())
-        }
-
-        #[test]
-        fn mime_string() -> Result<()> {
-            let mime = mime::TEXT_PLAIN_UTF_8;
-            println!("{}", mime.essence_str());
-            println!("{}", mime.to_string());
-
-            let mime = mime::APPLICATION_WWW_FORM_URLENCODED;
-            println!("{}", mime.to_string());
-
-            Ok(())
-        }
-
-        /**
-         * This tests checks whether the URL parameters are encoded into URL correctly
-         * -> Does not encode the special characters in the url
-         * -> Thus we need our own code
-         */
-        #[test]
-        fn test_reqwest() -> Result<()> {
-            let test_url = "http://localhost:5678?a==$=&=+=,=/=;=?=@ b&c=d";
-            let mut client = Client::new(test_url, Method::POST)?;
-            client.add_parameter(Parameter::SimpleParameter {
-                name: "simple_param_test".to_owned(),
-                value: "simple_value".to_owned(),
-                param_type: ParameterType::Body,
-            });
-            let mut request_builder = client.reqwest_client.request(Method::POST, test_url);
-            request_builder = client.generate_body(request_builder)?;
-            let request = request_builder.build()?;
-            let response = client.reqwest_client.execute(request);
-            println!("{:?}", response);
-            Ok(())
-        }
-    }
 
     mod test_creation {
         use super::*;
@@ -860,9 +741,8 @@ mod test {
 
         #[test]
         fn test_complex_parameter_parsing_binary_file() -> Result<()> {
-            let headers = parse_headers_from_file(
-                "./test_files/http/headers/jpg_file_singular_headers.txt",
-            )?;
+            let headers =
+                parse_headers_from_file("./test_files/http/headers/jpg_file_singular_headers.txt")?;
             let body = fs::read("./test_files/http/bodies/jpg_file_singular_body.txt")?;
             let mut result = parse_part(Headers::HeaderMap(headers), &body)?;
             match result.pop().unwrap() {
@@ -886,9 +766,8 @@ mod test {
 
         #[test]
         fn test_text_multipart_parsing() -> Result<()> {
-            let headers = parse_headers_from_file(
-                "./test_files/http/headers/text_multipart_headers.txt",
-            )?;
+            let headers =
+                parse_headers_from_file("./test_files/http/headers/text_multipart_headers.txt")?;
             println!("Headers: {:?}", headers);
             let body = fs::read("./test_files/http/bodies/text_multipart_body.txt")?;
             let result = parse_part(Headers::HeaderMap(headers), &body)?;
@@ -897,14 +776,18 @@ mod test {
                 println!("Checking parameter {}", index);
                 match parameter {
                     Parameter::SimpleParameter { .. } => panic!("Should not happen"),
-                    Parameter::ComplexParameter { name, mime_type, mut content_handle } => {
+                    Parameter::ComplexParameter {
+                        name,
+                        mime_type,
+                        mut content_handle,
+                    } => {
                         assert_eq!(mime_type, TEXT_PLAIN_UTF_8.to_string());
                         assert_eq!(name, format!("simple_param_{}test", index));
-                        
+
                         let mut content = String::new();
                         content_handle.read_to_string(&mut content)?;
                         assert_eq!(content, format!("simple_value{}", index));
-                    },
+                    }
                 }
             }
 
@@ -913,13 +796,44 @@ mod test {
 
         #[test]
         fn test_mixed_multipart_parsing() -> Result<()> {
-            let headers = parse_headers_from_file(
-                "./test_files/http/headers/mixed_multipart_headers.txt",
-            )?;
+            let headers =
+                parse_headers_from_file("./test_files/http/headers/mixed_multipart_headers.txt")?;
             println!("Headers: {:?}", headers);
             let body = fs::read("./test_files/http/bodies/mixed_multipart_body.txt")?;
-            let result = parse_part(Headers::HeaderMap(headers), &body)?;
+            let mut result = parse_part(Headers::HeaderMap(headers), &body)?;
             assert_eq!(result.len(), 3);
+            result.iter().for_each(|parameter| {
+                assert!(matches!(parameter, Parameter::ComplexParameter { .. }))
+            });
+            let expected_names = ["test_jpg", "test_xml", "test_simple"];
+            let expected_mime_types = ["image/jpeg", "text/xml", "text/plain; charset=utf-8"];
+
+            let text_value: Vec<u8> = "test_value".bytes().collect();
+            let xml_content: Vec<u8> =
+                fs::read("./test_files/text/file_example.xml").expect("Failed reading xml");
+            let image: Vec<u8> =
+                fs::read("./test_files/binary/16x16.jpg").expect("Failed reading jpg");
+            let expected_content = [image, xml_content, text_value];
+ 
+            result
+                .iter_mut()
+                .enumerate()
+                .for_each(|(index, parameter)| match parameter {
+                    Parameter::SimpleParameter { .. } => panic!("Cannot happen."),
+                    Parameter::ComplexParameter {
+                        name,
+                        mime_type,
+                        content_handle,
+                    } => {
+                        assert_eq!(name, expected_names[index]);
+                        assert_eq!(mime_type, expected_mime_types[index]);
+                        
+                        let mut content = Vec::new();
+                        content_handle.read_to_end(&mut content).expect("Error reading parameter content");
+                        assert_eq!(content, expected_content[index]);
+                    }
+                });
+
             println!("{:?}", result);
             Ok(())
         }
@@ -934,7 +848,10 @@ mod test {
                     let (name, value) = header
                         .split_once(":")
                         .ok_or(Error::HeaderParseError("Does not contain :".to_owned()))?;
-                    Ok((HeaderName::from_str(name.trim())?, HeaderValue::from_str(value.trim())?))
+                    Ok((
+                        HeaderName::from_str(name.trim())?,
+                        HeaderValue::from_str(value.trim())?,
+                    ))
                 })
                 .filter_map(|result| match result {
                     Ok((header_name, header_value)) => Some((header_name, header_value)),
