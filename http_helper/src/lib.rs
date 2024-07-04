@@ -258,18 +258,18 @@ impl Client {
         let request = request_builder.build()?;
         let response = self.reqwest_client.execute(request)?;
 
-        RawResponse {
+        Ok(RawResponse {
             headers: response.headers().clone(),
             status_code: response.status().as_u16(),
             body: response.bytes()?,
-        };
-        todo!()
+        })
     }
 
     /**
      * Executes the request and consumes the client as the headers and parameters are consumed by the request
      */
     pub fn execute(self) -> Result<Vec<Parameter>> {
+        // TODO: What to do in case of a different status_code
         let raw = self.execute_raw()?;
 
         raw.parse_response()
@@ -537,7 +537,7 @@ mod test {
             client.add_parameters(parameters);
 
             assert_eq!(
-                "https://www.testing.com/?test=value&onlyname&a=a1&b=b1&c",
+                "https://www.testing.com/?test=value&onlyname&b=b1&c",
                 client.generate_url().to_string()
             );
             Ok(())
@@ -546,6 +546,7 @@ mod test {
         // requires netcat to run on localhost 5678
         // tested by looking at the generated requests by netcat
         // Results can be found in the test_files/http/request/simple_singular_request.txt
+        // For now is only used to generate bodies and manual inspection
         #[test]
         fn test_building_singular_simple_body() -> Result<()> {
             let test_url = "http://localhost:5678";
@@ -567,6 +568,7 @@ mod test {
         // requires netcat to run on localhost 5678
         // tested by looking at the generated requests by netcat
         // Results can be found in the test_files/http/request/text_file_singular_request.txt
+        // For now is only used to generate bodies and manual inspection
         #[test]
         fn test_building_singular_complex_text_body() -> Result<()> {
             let test_url = "http://localhost:5678";
@@ -591,6 +593,7 @@ mod test {
         // requires netcat to run on localhost 5678
         // tested by looking at the generated requests by netcat
         // Results can be found in the test_files/http/request/jpg_file_singular_request.txt
+        // For now is only used to generate bodies and manual inspection
         #[test]
         fn test_building_singular_complex_binary_body() -> Result<()> {
             let test_url = "http://localhost:5678";
@@ -619,6 +622,7 @@ mod test {
         // requires netcat to run on localhost 5678
         // tested by looking at the generated requests by netcat
         // Results can be found in the test_files/http/request/text_multipart_request.txt
+        // For now is only used to generate bodies and manual inspection
         #[test]
         fn test_building_text_multipart() -> Result<()> {
             let test_url = "http://localhost:5678";
@@ -650,6 +654,7 @@ mod test {
         // requires netcat to run on localhost 5678
         // tested by looking at the generated requests by netcat
         // Results can be found in the test_files/http/request/mixed_multipart_request.txt
+        // For now is only used to generate bodies and manual inspection
         #[test]
         fn test_building_mixed_multipart() -> Result<()> {
             let test_url = "http://localhost:5678";
