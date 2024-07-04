@@ -1,3 +1,0 @@
-content-type: text/xml
-content-length: 214
-host: localhost:5678
