@@ -52,7 +52,6 @@ pub enum HttpVerb {
     PUT,
     POST,
     DELETE,
-    UPDATE,
     PATCH,
 }
 
@@ -173,22 +172,6 @@ impl Client {
             .headers
             .insert(HeaderName::from_str(name)?, HeaderValue::from_str(value)?))
     }
-
-    /**
-     * If the method is a GET, all simple parameters are turned into query parameters
-    fn mark_query_parameters(&mut self) {
-        for parameter in &mut self.parameters {
-            match parameter {
-                Parameter::SimpleParameter { param_type, .. } => {
-                    if self.method == Method::GET {
-                        *param_type = ParameterType::Query;
-                    }
-                }
-                _ => continue,
-            }
-        }
-    }
-    */
 
     /**
      * Generates the complete request URL including the query parameters.
@@ -869,7 +852,6 @@ mod test {
         }
     }
 
-    #[test]
     /**
      * Copies bytes from the 16x16.jpg from the multipart directly into a new file to check for correctness
      */
