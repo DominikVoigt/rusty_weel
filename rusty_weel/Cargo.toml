@@ -39,3 +39,6 @@ simple_logger = "5.0.0"
 indoc = "2"
 rusty-weel-macro ={ path = "../rusty_weel_macro"}
 derive_more = "0.99.18"
+
+[dev-dependencies]
+rand = "0.8.5"

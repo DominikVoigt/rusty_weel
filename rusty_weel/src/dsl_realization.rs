@@ -225,7 +225,7 @@ impl Weel {
                 .lock()
                 .expect("could not lock votes")
                 .extend(votes.clone());
-
+            // TODO: Check whether topics have correct structure, check blocking_pub_sub function documentation.
             let topics = votes
                 .iter()
                 .map(|entry| format!("vote-response: {entry}"))
