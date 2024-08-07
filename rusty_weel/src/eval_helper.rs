@@ -19,6 +19,7 @@ pub fn evaluate_expressions (
     static_context: &StaticData,
     expressions: HashMap<String, String>,
 ) -> Result<HashMap<String, String>, Error> {
+    /*
     let mut client = Easy::new();
 
     // Handle serialization outside of json! macro as it will panic otherwise
@@ -43,7 +44,6 @@ pub fn evaluate_expressions (
     client.post(true);
     client.post_fields_copy(body.as_bytes());
 
-    let response_body = client.respons
 
     let evaluation_request = client.perform()?;
     let response_code = client.response_code()?;
@@ -51,6 +51,8 @@ pub fn evaluate_expressions (
     let evaluations: HashMap<String, String> = serde_json::from_str(&response_text)
         .expect("Failed to parse evaluations from response body");
     Ok(evaluations)
+     */
+    todo!()
 }
 
 pub fn evaluate_expression (
