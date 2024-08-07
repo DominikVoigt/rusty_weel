@@ -66,6 +66,13 @@ pub struct RawResponse {
     pub status_code: u16,
 }
 
+
+pub struct ParsedResponse {
+    pub headers: HeaderMap,
+    pub content: Vec<Parameter>,
+    pub status_code: u16,
+}
+
 /**
  * Abstraction on top of libcurl
  */
@@ -251,7 +258,7 @@ impl Client {
     /**
      * Executes the request and consumes the client as the headers and parameters are consumed by the request
      */
-    pub fn execute(self) -> Result<Vec<Parameter>> {
+    pub fn execute(self) -> Result<ParsedResponse> {
         // TODO: What to do in case of a different status_code
         let raw = self.execute_raw()?;
 
@@ -372,8 +379,12 @@ fn construct_multipart(
 }
 
 impl RawResponse {
-    fn parse_response(self) -> Result<Vec<Parameter>> {
-        parse_part(Headers::HeaderMap(self.headers), &self.body)
+    fn parse_response(self) -> Result<ParsedResponse> {
+        Ok(ParsedResponse {
+            headers: self.headers.clone(),
+            content: parse_part(Headers::HeaderMap(self.headers), &self.body)?,
+            status_code: self.status_code,
+        })
     }
 }
 
@@ -855,7 +866,7 @@ mod test {
     /**
      * Copies bytes from the 16x16.jpg from the multipart directly into a new file to check for correctness
      */
-    fn copy_result() -> Result<()> {
+    fn _copy_result() -> Result<()> {
         let test_file = "./scripts/output-multipart-mixed.txt";
         let mut file = fs::File::open(test_file)?;
         file.seek(std::io::SeekFrom::Start(0x190))?;
@@ -864,6 +875,4 @@ mod test {
         fs::write("./scripts/output.jpg", buffer)?;
         Ok(())
     }
-
-    // TODO: Test handling with unquoted and quoted boundaries
 }
