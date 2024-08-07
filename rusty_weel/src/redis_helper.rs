@@ -96,7 +96,7 @@ impl RedisHelper {
      * If the thread fails to subscribe, it will panic
      * // TODO: Seems to be semantically equal now -> **Review later**
      */
-    pub fn establish_callback_subscriptions(static_data: &StaticData, callback_keys: Arc<Mutex<HashMap<String, Arc<ConnectionWrapper>>>>) -> JoinHandle<()> {
+    pub fn establish_callback_subscriptions(static_data: &StaticData, callback_keys: Arc<Mutex<HashMap<String, Arc<ConnectionWrapper>>>>) -> JoinHandle<Result<()>> {
         // Should only be called once in main!
         assert_has_not_been_called!();
         let connection: Connection;
@@ -116,7 +116,7 @@ impl RedisHelper {
             }
         };
 
-        thread::spawn(move || {
+        thread::spawn(move || -> Result<()> {
             let mut redis_helper = RedisHelper {
                 connection
             };
@@ -124,10 +124,10 @@ impl RedisHelper {
             redis_helper.blocking_pub_sub(topics, move |payload: &str, pattern: &str, topic: Topic| {
                 match pattern {
                     "callback-response:*" => {
-                        let callback_keys_guard = callback_keys
+                        let callback_keys = callback_keys
                             .lock()
                             .expect("Could not lock mutex in callback thread");
-                        if callback_keys_guard.contains_key(&topic.identifier) {
+                        if callback_keys.contains_key(&topic.identifier) {
                             let message_json = json!(payload);
                             if message_json["content"]["headers"].is_null()
                                 || !message_json["content"]["headers"].is_object()
@@ -136,7 +136,7 @@ impl RedisHelper {
                             }
                             let params = construct_parameters(&message_json);
                             let headers = convert_headers_to_map(&message_json["content"]["headers"]);
-                            callback_keys_guard.get(&topic.identifier)
+                            callback_keys.get(&topic.identifier)
                                                 // TODO: This panic will not result in termination -> Detached thread panics    
                                                .expect("Cannot happen as we check containment previously and hold mutex throughout")
                                                .callback(params, headers);
@@ -154,7 +154,8 @@ impl RedisHelper {
                 };
                 // This should loop indefinitely
                 Ok(true)
-            });
+            })?;
+            Ok(())
         })
     }
 
@@ -342,6 +343,13 @@ mod test {
         let mut connection = connect_to_redis(&config, "test_connection_TCP").unwrap();
         assert_eq!("test_connection_TCP", redis::cmd("CLIENT").arg("GETNAME").query::<String>(&mut connection).unwrap());
     }
+
+    #[test]
+    fn test_blocking_pub_sub() {
+        let redis = RedisHelper::new(&get_unix_socket_configuration(), "pub_sub_test");
+
+    }
+
 
     fn get_unix_socket_configuration() -> StaticData {
         let home = std::env::var("HOME").unwrap();

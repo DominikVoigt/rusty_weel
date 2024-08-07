@@ -256,11 +256,11 @@ impl Weel {
                         message["name"]
                             .as_str()
                             .expect("Message does not contain name"),
-                    );
+                    )?;
                     let all_votes_collected = collected_votes.len() >= votes.len();
-                    !all_votes_collected
+                    Ok(!all_votes_collected)
                 },
-            );
+            )?;
             Ok(!collected_votes.contains(&false))
         } else {
             Ok(true)
