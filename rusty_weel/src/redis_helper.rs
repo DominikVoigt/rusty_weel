@@ -2,10 +2,10 @@ use std::{collections::{HashMap, HashSet}, sync::{Arc, Mutex}, thread::{self, sl
 
 use http_helper::Parameter;
 use once::assert_has_not_been_called;
-use redis::{Commands, Connection};
+use redis::{Commands, Connection, RedisResult};
 use rusty_weel_macro::get_str_from_value;
 use serde_json::json;
-use crate::{connection_wrapper::ConnectionWrapper, data_types::{InstanceMetaData, StaticData}, dsl_realization::Result};
+use crate::{connection_wrapper::ConnectionWrapper, data_types::{InstanceMetaData, StaticData}, dsl_realization::{Result, Error}};
 
 const CALLBACK_RESPONSE_ERROR_MESSAGE: &str =
     "Callback-response had not the correct format, could not find whitespace separator";
@@ -18,31 +18,36 @@ pub struct RedisHelper {
 }
 
 impl RedisHelper {
-    /** Tries to create redis connection. Panics if this fails */
+    /** Tries to create redis connection.
+     *  Panics if this fails
+     * connection_name: Name of the connection displayed within the redis instance 
+     */
     pub fn new(static_data: &StaticData, connection_name: &str) -> Self {
         // TODO: Think about returning result instead of panic here.
         let connection = connect_to_redis(static_data, connection_name)
                                         .expect("Could not establish initial redis connection");
         
-
         Self { connection }
     }
  
-    pub fn notify(&mut self, what: &str, content: Option<HashMap<String, String>>, instace_meta_data: InstanceMetaData) {
+    pub fn notify(&mut self, what: &str, content: Option<HashMap<String, String>>, instace_meta_data: InstanceMetaData) -> Result<()>{
         let mut content: HashMap<String, String> =
             content.unwrap_or(HashMap::new());
         // Todo: What should we put here? Json?
         content.insert("attributes".to_owned(), serde_json::to_string(&instace_meta_data.attributes).expect("Could not serialize attributes"));
         let content = serde_json::to_string(&content).expect("Could not serialize content to json string");
-        self.send("event", what, instace_meta_data, Some(content.as_str()));
+        self.send("event", what, instace_meta_data, Some(content.as_str()))?;
+        Ok(())
     }
 
     /**
-     * Sends message to the CPEE
+     * Publishes messages on a channel (mainly to send to CPEE)
+     * Channel is defined via <message_type>:<target>:<event>
+     * The content of the message consists of instance metadata and the provided content 
      * Meta data is provided via the InstanceMetaData
-     * providing content to the message is optional, the message otherwise contains {} for content
+     * Providing content to the message is optional, the message otherwise contains {} for content
      */
-    pub fn send(&mut self, message_type: &str, event: &str, instace_meta_data: InstanceMetaData, content: Option<&str>) -> () {
+    pub fn send(&mut self, message_type: &str, event: &str, instace_meta_data: InstanceMetaData, content: Option<&str>) -> Result<()> {
         // TODO: Handle target / workers
         let cpee_url = instace_meta_data.cpee_base_url;
         let instance_id = instace_meta_data.instance_id;
@@ -72,15 +77,10 @@ impl RedisHelper {
             instance_id,
             serde_json::to_string(&payload).expect("Could not deserialize payload")
         );
-        let publish_result = self.connection.publish(channel, payload)?;
-        if publish_result.is_err() {
-            log_error_and_panic(
-                format!(
-                    "Error occured when publishing message to redis during send: {:?}",
-                    publish_result.expect_err("Not possible to reach")
-                )
-                .as_str(),
-            )
+        let publish_result: RedisResult<()> = self.connection.publish(channel, payload);
+        match publish_result {
+            Ok(()) => Ok(()),
+            Err(error) => Err(Error::from(error)),
         }
     }
 
@@ -153,21 +153,20 @@ impl RedisHelper {
                     }
                 };
                 // This should loop indefinitely
-                true
+                Ok(true)
             });
         })
     }
 
     /**
      * Uses the provided connection to establish a pub-sub channel
-     * Waits for messages until the closure returns false (do not continue)
+     * Waits for messages until the closure returns false (do not continue) or an error. Will return the error in the result enum
      * The handler gets 3 parameters:
      * - payload:   The actual payload (without the id in front)
      * - pattern:   The pattern structure that matched (e.g. "callback-response:*")
      * - topic:     The topic (e.g. "callback-response:01:<identifier>")
-     * - 
      */
-    pub fn blocking_pub_sub(&mut self, topics: Vec<String>, mut handler: impl FnMut(&str, &str, Topic) -> bool) {
+    pub fn blocking_pub_sub(&mut self, topics: Vec<String>, mut handler: impl FnMut(&str, &str, Topic) -> Result<bool>) -> Result<()>{
             let mut subscription = self.connection.as_pubsub();
             // will pushback message to self.waiting_messages of the PubSub instance
             match subscription.psubscribe(&topics) {
@@ -195,7 +194,7 @@ impl RedisHelper {
                     .expect("Could not get pattern  in callback thread");
                 
                 let topic: Topic = split_topic(message.get_channel_name());
-                if !handler(payload, &pattern, topic) {
+                if !handler(payload, &pattern, topic)? {
                     break;
                 };
             }
@@ -203,6 +202,7 @@ impl RedisHelper {
             if let Err(err) = subscription.unsubscribe(topics) {
                 log::error!("Could not unsubscribe from topics at the end: {}", err);
             }
+            Ok(())
         }
 }
 
@@ -215,10 +215,11 @@ impl RedisHelper {
  * // TODO: Check whether connection with socket and TCP works
  */
 fn connect_to_redis(configuration: &StaticData, connection_name: &str) -> Result<redis::Connection> {
+    // Note: Socket takes precedence as it is way faster
     let url = configuration.redis_path.as_ref().or(configuration.redis_url.as_ref()).expect("Configuration contains neither a redis_url nor a redis_path").clone();
     let mut connection = redis::Client::open(url)?.get_connection()?;
-    match redis::cmd("CLIENT SETNAME").arg(connection_name).query::<String>(&mut connection) {
-        Ok(resp) => log::info!("Response: {}", resp),
+    match redis::cmd("CLIENT").arg("SETNAME").arg(connection_name).query::<String>(&mut connection) {
+        Ok(resp) => log::info!("Setting Client Name Response: {}", resp),
         Err(err) => log::error!("Error occured when setting client name: {}", err)
     };
     Ok(connection)
@@ -309,4 +310,73 @@ fn construct_parameters(message: &serde_json::Value) -> Vec<Parameter> {
             }
         })
         .collect()
+}
+
+mod test {
+    use super::*;
+
+    fn init_logger() {
+        simple_logger::init_with_level(log::Level::Info).unwrap();
+    }
+
+    /**
+     * Setup: Expects a redis instance running with a UNIX socket to be located at /run/redis.sock
+     * Ensures that the UNIX socket connection works
+     */
+    #[test]
+    fn test_connection_socket() {
+        init_logger();
+        let config = get_unix_socket_configuration();
+        let mut connection = connect_to_redis(&config, "test_connection_unix").unwrap();
+        assert_eq!("test_connection_unix", redis::cmd("CLIENT").arg("GETNAME").query::<String>(&mut connection).unwrap());
+    } 
+
+    /**
+     * Setup: Redis instance running and listening on port 6379 (default port)
+     * Ensures that the TCP connection works
+     */
+    #[test]
+    fn test_connection_tcp() {
+        init_logger();
+        let config = get_tcp_configuration();
+        let mut connection = connect_to_redis(&config, "test_connection_TCP").unwrap();
+        assert_eq!("test_connection_TCP", redis::cmd("CLIENT").arg("GETNAME").query::<String>(&mut connection).unwrap());
+    }
+
+    fn get_unix_socket_configuration() -> StaticData {
+        let home = std::env::var("HOME").unwrap();
+        let expanded_path = format!("{}/redis/redis.sock", home);
+        StaticData {
+            instance_id: "test_id".to_owned(),
+            host: "localhost".to_owned(),
+            base_url: "localhost/cpee".to_owned(),
+            redis_url: None,
+            redis_path: Some(format!("unix://{}", expanded_path)),
+            redis_db: 0,
+            global_executionhandlers: "".to_owned(),
+            executionhandlers: "".to_owned(),
+            executionhandler: "".to_owned(),
+            eval_language: "".to_owned(),
+            eval_backend_url: "".to_owned(),
+            attributes: HashMap::new(),
+        }
+    }
+
+    fn get_tcp_configuration() -> StaticData {
+        StaticData {
+            instance_id: "test_id".to_owned(),
+            host: "localhost".to_owned(),
+            base_url: "localhost/cpee".to_owned(),
+            // Default port
+            redis_url: Some("redis://localhost:6379".to_owned()),
+            redis_path: None,
+            redis_db: 0,
+            global_executionhandlers: "".to_owned(),
+            executionhandlers: "".to_owned(),
+            executionhandler: "".to_owned(),
+            eval_language: "".to_owned(),
+            eval_backend_url: "".to_owned(),
+            attributes: HashMap::new(),
+        }
+    }
 }

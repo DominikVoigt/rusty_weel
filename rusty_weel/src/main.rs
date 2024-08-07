@@ -19,7 +19,7 @@ fn main() {
 
     let static_data = StaticData::load("opts.yaml");
     let dynamic_data = DynamicData::load("context.yaml");
-    let callback_keys: Arc<Mutex<HashMap<String, Arc<Mutex<ConnectionWrapper>>>>> =
+    let callback_keys: Arc<Mutex<HashMap<String, Arc<ConnectionWrapper>>>> =
         Arc::new(Mutex::new(HashMap::new()));
     let weel = Weel {
         redis_notifications_client: Mutex::new(RedisHelper::new(&static_data, "notifications")),

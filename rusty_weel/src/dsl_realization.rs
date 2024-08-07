@@ -1,6 +1,6 @@
+use derive_more::From;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
-use derive_more::From;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::SystemTime;
@@ -130,23 +130,28 @@ impl Weel {
      * Starts execution
      * To pass it to execution thread we need Send + Sync
      */
-    pub fn start(&self, model: impl Fn() -> Result<()> + Send + 'static) {
+    pub fn start(&self, model: impl Fn() -> Result<()> + Send + 'static) -> Result<()> {
         let mut content = HashMap::new();
         content.insert("state".to_owned(), "running".to_owned());
-        if self.vote("state/change", content) {
+        if self.vote("state/change", content)? {
             // TODO: instance.start
             // We take the closure out of instance code and pass it to the thread -> transfer ownership of closure
             let instance_thread = thread::spawn(model);
             // Take the join handle out of the member and join.
             let result = instance_thread.join();
             // TODO: Handle the result, especially a WeelError -> All methods return weel error in case of a
+            match result {
+                Ok(_) => todo!(),
+                Err(_) => todo!(),
+            }
         } else {
             // TODO: instance.stop
-        }
+        };
+        Ok(())
     }
 
     // TODO: Implement stop
-    pub fn stop(&self) {
+    pub fn stop(&self) -> Result<()> {
         /*
            ### tell the instance to stop
            @instance.stop
@@ -157,24 +162,27 @@ impl Weel {
            end
            end
         */
-        self.open_votes
+        for vote_id in self
+            .open_votes
             .lock()
             .expect("Could not capture mutex")
             .iter()
-            .for_each(|vote_id| {
-                self.redis_notifications_client
-                    .lock()
-                    .expect("Could not acquire mutex")
-                    .send(
-                        "vote-response",
-                        vote_id,
-                        self.static_data.get_instance_meta_data(),
-                        Some("true"),
-                    )
-            })
+        {
+            self.redis_notifications_client
+                .lock()
+                .expect("Could not acquire mutex")
+                // TODO: Ignore error for now
+                .send(
+                    "vote-response",
+                    vote_id,
+                    self.static_data.get_instance_meta_data(),
+                    Some("true"),
+                )?;
+        }
+        Ok(())
     }
 
-    fn vote(&self, vote_topic: &str, mut content: HashMap<String, String>) -> bool {
+    fn vote(&self, vote_topic: &str, mut content: HashMap<String, String>) -> Result<bool> {
         let static_data = &self.static_data;
         let (topic, name) = vote_topic
             .split_once("/")
@@ -188,29 +196,29 @@ impl Weel {
                 static_data.instance_id, vote_topic
             ),
         );
-        redis_helper
+        for client in redis_helper
             .extract_handler(&handler, &static_data.instance_id)
             .iter()
-            .for_each(|client| {
-                // Generate random ASCII string of length VOTE_KEY_LENGTH
-                let vote_id: String = generate_random_key();
-                content.insert("key".to_owned(), vote_id.to_string());
-                content.insert(
-                    "attributes".to_owned(),
-                    serde_json::to_string(&static_data.attributes)
-                        .expect("Could not serialize attributes"),
-                );
-                content.insert("subscription".to_owned(), client.clone());
-                let content = serde_json::to_string(&content)
-                    .expect("Could not serialize content to json string");
-                votes.push(vote_id);
-                redis_helper.send(
-                    "vote",
-                    vote_topic,
-                    static_data.get_instance_meta_data(),
-                    Some(content.as_str()),
-                )
-            });
+        {
+            // Generate random ASCII string of length VOTE_KEY_LENGTH
+            let vote_id: String = generate_random_key();
+            content.insert("key".to_owned(), vote_id.to_string());
+            content.insert(
+                "attributes".to_owned(),
+                serde_json::to_string(&static_data.attributes)
+                    .expect("Could not serialize attributes"),
+            );
+            content.insert("subscription".to_owned(), client.clone());
+            let content = serde_json::to_string(&content)
+                .expect("Could not serialize content to json string");
+            votes.push(vote_id);
+            redis_helper.send(
+                "vote",
+                vote_topic,
+                static_data.get_instance_meta_data(),
+                Some(content.as_str()),
+            )?;
+        }
 
         if votes.len() > 0 {
             self.open_votes
@@ -253,9 +261,9 @@ impl Weel {
                     !all_votes_collected
                 },
             );
-            !collected_votes.contains(&false)
+            Ok(!collected_votes.contains(&false))
         } else {
-            true
+            Ok(true)
         }
     }
 
@@ -264,7 +272,7 @@ impl Weel {
         hw: Arc<ConnectionWrapper>,
         key: &str,
         mut content: HashMap<String, String>,
-    ) {
+    ) -> Result<()> {
         content.insert("key".to_owned(), key.to_owned());
         let content =
             serde_json::to_string(&content).expect("could not serialize hashmap to string");
@@ -276,11 +284,15 @@ impl Weel {
                 "activity/content",
                 self.static_data.get_instance_meta_data(),
                 Some(&content),
-            );
-        self.callback_keys.lock().expect("could not acquire Mutex").insert(key.to_owned(), hw.clone());
+            )?;
+        self.callback_keys
+            .lock()
+            .expect("could not acquire Mutex")
+            .insert(key.to_owned(), hw.clone());
+        Ok(())
     }
 
-    fn cancel_callback(&self, key: &str) {
+    fn cancel_callback(&self, key: &str) -> Result<()> {
         self.redis_notifications_client
             .lock()
             .expect("Could not acquire Mutex for notifications RedisHelper")
@@ -289,7 +301,8 @@ impl Weel {
                 key,
                 self.static_data.get_instance_meta_data(),
                 None,
-            );
+            )?;
+        Ok(())
     }
 }
 
@@ -306,6 +319,7 @@ pub enum Error {
     EvalError(EvalError),
     StrUTF8Error(std::str::Utf8Error),
     StringUTF8Error(std::string::FromUtf8Error),
+    HttpHelperError(http_helper::Error),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -317,10 +331,14 @@ impl Error {
             Error::JsonError(_) => todo!(),
             Error::IOError(_) => todo!(),
             Error::RedisError(_) => todo!(),
-            Error::CurlError(_) => todo!(),
             Error::EvalError(_) => todo!(),
             Error::StrUTF8Error(_) => todo!(),
             Error::StringUTF8Error(_) => todo!(),
+            Error::InvalidHeaderValue(_) => todo!(),
+            Error::InvalidHeaderName(_) => todo!(),
+            Error::ReqwestError(_) => todo!(),
+            Error::ToStrError(_) => todo!(),
+            Error::HttpHelperError(_) => todo!(),
         }
     }
 }
