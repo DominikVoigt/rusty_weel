@@ -1,7 +1,9 @@
-use http_helper::Parameters;
+
+use http_helper::Parameter;
+use reqwest::{header::{HeaderMap, HeaderName, HeaderValue, CONTENT_TYPE}, Method};
 use serde_json::{json, Value};
 use std::{
-    collections::HashMap, sync::{Arc, Weak}, thread::sleep, time::{Duration, SystemTime}
+    collections::HashMap, str::FromStr, sync::{Arc, Weak}, thread::sleep, time::{Duration, SystemTime}
 };
 
 
@@ -48,15 +50,15 @@ impl ConnectionWrapper {
     }
 
     pub fn loop_guard(&self, id: String) {
-        let loop_guard_attribute = self.weel().static_data.attributes.get("nednoamol");
+        let attributes = &self.weel().static_data.attributes;
+        let loop_guard_attribute = attributes.get("nednoamol");
         if loop_guard_attribute.is_some_and(|attrib| attrib == "true") {
             return;
         }
         match self.weel().loop_guard.lock().as_mut() {
             Ok(map) => {
-                let condition;
                 let last = map.get(&id);
-                condition = match last {
+                let condition = match last {
                     Some(entry) => {
                         let count = entry.0 + 1;
                         let last_call_time = entry.1;
@@ -98,7 +100,7 @@ impl ConnectionWrapper {
                 "state/change",
                 Some(content),
                 weel.static_data.get_instance_meta_data(),
-            )
+            );
     }
 
     pub fn inform_syntax_error(&self, err: Error, code: &str) {
@@ -115,7 +117,7 @@ impl ConnectionWrapper {
                 "description/error",
                 Some(content),
                 weel.static_data.get_instance_meta_data(),
-            )
+            );
     }
 
     pub fn inform_connectionwrapper_error(&self, err: Error) {
@@ -132,7 +134,7 @@ impl ConnectionWrapper {
                 "executionhandler/error",
                 Some(content),
                 weel.static_data.get_instance_meta_data(),
-            )
+            );
     }
 
     pub fn inform_position_change(&self, ipc: Option<HashMap<String, String>>) {
@@ -145,7 +147,7 @@ impl ConnectionWrapper {
                 "position/change",
                 ipc,
                 weel.static_data.get_instance_meta_data(),
-            )
+            );
     }
 
     /**
@@ -178,7 +180,7 @@ impl ConnectionWrapper {
 
     pub fn additional(&self) -> Value {
         let weel = self.weel();
-        let data = weel.static_data;
+        let data = &weel.static_data;
         json!(
             {
                 "attributes": weel.static_data.attributes,
@@ -205,7 +207,7 @@ impl ConnectionWrapper {
     pub fn curl(self: &Arc<Self>, parameters: &HTTPParams) -> Result<()>{
         let weel = self.weel();
         let callback_id = generate_random_key();
-        let mut headers: List = self.generate_headers(weel.static_data.get_instance_meta_data(), &callback_id);
+        let headers: HeaderMap = self.generate_headers(weel.static_data.get_instance_meta_data(), &callback_id)?;
         let mut params = Vec::new();
         // Put arguemnts into SimpleParameters that will be part of the body-> Since we cannot upload files from the CPEE for now // TODO?
         match parameters.arguments.as_ref() {
@@ -217,7 +219,7 @@ impl ConnectionWrapper {
         };
 
         let mut status: u16;
-        let mut response_headers: HashMap<String, String>;
+        let mut response_headers: HeaderMap;
         loop {
             let mut content_json = HashMap::new();
             content_json.insert("activity_uuid".to_owned(), self.handler_activity_uuid.clone());
@@ -229,29 +231,27 @@ impl ConnectionWrapper {
             weel.callback(Arc::clone(self), &callback_id, content_json);
             
             // TODO: Determine wheter we need to subsitute the url like in connection.rb
-            let client = http_helper::Client::new(self.handler_endpoints.get(0).expect("No endpoint provided"))?;
-            client.set_request_headers(headers);
+            let mut client = http_helper::Client::new(self.handler_endpoints.get(0).expect("No endpoint provided"), Method::GET)?;
+            client.set_request_headers(headers.clone());
             
             // Run request
-            status = response.status();
-            let status_code = status.as_u16();
-            response_headers = response.headers().clone();
+            let response = client.execute()?;
+            let status_code = response.status_code;
+            response_headers = response.headers;
             // TODO: Check whether this access content_type
-            let content_type = match response_headers.get(CONTENT_TYPE) {
+            let content_type = match response_headers.get(CONTENT_TYPE.as_str()) {
                 Some(header) => header.to_str()?,
-                // TODO: Should we use this as default type or octet-stream
                 None => "application/octet-stream",
             };
-            // TODO: Structurize result
-
 
             // TODO: decide whether we still need the if status == 561 ...... block -> Yes we need it
 
+            /*
             // TODO: rewrite this condition and give it a better name
             if status_code < 200 || status_code >= 300  {
                 // TODO: What to do with the commented out ruby code?
                 // TODO: Why write to file and not just keep it in memory? Too large?
-                let param = RiddlParameters::ComplexParamter { name: "error".to_owned(), mime_type: "application_json".to_owned(), content_handle: tmp};
+                let param = Parameter::ComplexParamter { name: "error".to_owned(), mime_type: "application_json".to_owned(), content_handle: tmp};
                 self.callback(vec![param], response_headers)
             } else {
                 let callback_header_is_set = match response_headers.get("CPEE_CALLBACK") {
@@ -261,54 +261,48 @@ impl ConnectionWrapper {
                     None => false,
                 };
 
-                let content_length = usize::try_from(response.content_length().unwrap_or(0))?;
-                // TODO: Vec (heap) or slice (stack)?
-                let mut response_body: Vec<u8> = Vec::with_capacity(content_length);
-                response.read_to_end(&mut response_body);
-
-                response_file.write_all(response_body);
-                let response_body_is_empty = response_file.
                 if callback_header_is_set {
                     if response_body.is_empty() {
                         
                     } else {
-                        response_headers.insert("CPEE_UPDATE", HeaderValue::from_str("true").expect("This cannot fail"));
+                        response_headers.insert("CPEE_UPDATE".to_owned(), HeaderValue::from_str("true").expect("This cannot fail"));
                         
-                        self.callback(vec![RiddlParameters::ComplexParamter { name: "response".to_owned(), mime_type: content_type.to_owned(), content_handle: response_file }], response_headers)
+                        self.callback(vec![Parameter::ComplexParamter { name: "response".to_owned(), mime_type: content_type.to_owned(), content_handle: response_file }], response_headers)
                     }
                 }
                  
             }
+             */
         }
 
         todo!()
     }
 
-    pub fn callback(&self, parameters: Vec<RiddlParameters>, headers: HashMap<String, String>) {
+    pub fn callback(&self, parameters: Vec<Parameter>, headers: HashMap<String, String>) {
 
     }
 
-    fn generate_headers(&self, data: InstanceMetaData, callback_id: &str) -> List {
+    fn generate_headers(&self, data: InstanceMetaData, callback_id: &str) -> Result<HeaderMap> {
         let position = self.position.as_ref().map(|x| x.as_str()).unwrap_or("");
         let twin_target = data.attributes.get("twin_target");
-        let mut headers = List::new();
-        headers.append(&format!("{}: {}", "CPEE-BASE",            &data.cpee_base_url));
-        headers.append(&format!("{}: {}", "CPEE-Instance",        &data.instance_id));
-        headers.append(&format!("{}: {}", "CPEE-Instance-URL",    &data.instance_url));
-        headers.append(&format!("{}: {}", "CPEE-Instance-UUID",   &data.instance_uuid));
-        headers.append(&format!("{}: {}", "CPEE-CALLBACK",        &format!("{}/callbacks/{}/", &data.instance_url, callback_id)));
-        headers.append(&format!("{}: {}", "CPEE-CALLBACK-ID",     callback_id));
-        headers.append(&format!("{}: {}", "CPEE-ACTIVITY",        &position));
-        headers.append(&format!("{}: {}", "CPEE-LABEL",           &self.label));
+        let mut headers = HeaderMap::new();
+        headers.append("CPEE-BASE",            HeaderValue::from_str(&data.cpee_base_url)?);
+        headers.append("CPEE-Instance",        HeaderValue::from_str(&data.instance_id)?);
+        headers.append("CPEE-Instance-URL",    HeaderValue::from_str(&data.instance_url)?);
+        headers.append("CPEE-Instance-UUID",   HeaderValue::from_str(&data.instance_uuid)?);
+        headers.append("CPEE-CALLBACK",        HeaderValue::from_str(&format!("{}/callbacks/{}/", &data.instance_url, callback_id))?);
+        headers.append("CPEE-CALLBACK-ID",     HeaderValue::from_str(callback_id)?);
+        headers.append("CPEE-ACTIVITY",        HeaderValue::from_str(&position)?);
+        headers.append("CPEE-LABEL",           HeaderValue::from_str(&self.label)?);
         if let Some(twin_target) = twin_target {
-            headers.append(&format!("{}: {}", "CPEE-TWIN-TARGET", twin_target));
+            headers.append("CPEE-TWIN-TARGET", HeaderValue::from_str(twin_target)?);
         }
 
         for attribute in data.attributes.iter() {
             let key: String = format!("CPEE-ATTR-{}", attribute.0.replace("_", "-"));
-            headers.append(&format!("{}: {}", &key, attribute.1));
+            headers.append(HeaderName::from_str(&key)?, HeaderValue::from_str(attribute.1)?);
         }
-        headers
+        Ok(headers)
     }
 
     /**
