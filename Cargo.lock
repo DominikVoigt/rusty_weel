@@ -1444,7 +1444,6 @@ dependencies = [
  "once",
  "rand 0.8.5",
  "redis",
- "reqwest",
  "rusty-weel-macro",
  "serde",
  "serde_json",

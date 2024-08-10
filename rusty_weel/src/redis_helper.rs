@@ -24,6 +24,8 @@ const CALLBACK_RESPONSE_ERROR_MESSAGE: &str =
  */
 pub struct RedisHelper {
     pub connection: redis::Connection,
+    workers: u32,
+    last: u32,
 }
 
 impl RedisHelper {
@@ -32,12 +34,27 @@ impl RedisHelper {
      * connection_name: Name of the connection displayed within the redis instance
      */
     pub fn new(static_data: &StaticData, connection_name: &str) -> Self {
+        let workers = static_data.redis_workers;
         // TODO: Think about returning result instead of panic here.
         let connection = connect_to_redis(static_data, connection_name)
             .expect("Could not establish initial redis connection");
 
-        Self { connection }
+        Self {
+            connection,
+            workers,
+            last: workers,
+        }
     }
+
+    fn target_worker(&mut self) -> u32 {
+        self.last = if self.last >= self.workers {
+            0
+        } else {
+            self.last + 1
+        };
+        self.last
+    }
+
 
     pub fn notify(
         &mut self,
@@ -46,7 +63,7 @@ impl RedisHelper {
         instace_meta_data: InstanceMetaData,
     ) -> Result<()> {
         let mut content: HashMap<String, String> = content.unwrap_or(HashMap::new());
-        // Todo: What should we put here? Json?
+        // TODO: We do add attributes_translated here, do we need to do this?
         content.insert(
             "attributes".to_owned(),
             serde_json::to_string(&instace_meta_data.attributes)
@@ -59,11 +76,13 @@ impl RedisHelper {
     }
 
     /**
-     * Publishes messages on a channel (mainly to send to CPEE)
+     * Publishes messages on a channel (pubsub) (mainly to send to CPEE)
      * Channel is defined via <message_type>:<target>:<event>
      * The content of the message consists of instance metadata and the provided content
      * Meta data is provided via the InstanceMetaData
      * Providing content to the message is optional, the message otherwise contains {} for content
+     * 
+     * Will return an error if the publishing to redis fails
      */
     pub fn send(
         &mut self,
@@ -78,7 +97,7 @@ impl RedisHelper {
         let instance_uuid = instace_meta_data.instance_uuid;
         let info = instace_meta_data.info;
         let content = content.unwrap_or("{}");
-        let target = "";
+        let target_worker = self.target_worker();
         let (topic, name) = event
             .split_once("/")
             .expect("event does not have correct structure: Misses / separator");
@@ -95,7 +114,7 @@ impl RedisHelper {
             "instance-uuid": instance_uuid,
             "instance-name": info
         });
-        let channel: String = format!("{}:{}:{}", message_type, target, event);
+        let channel: String = format!("{}:{}:{}", message_type, target_worker, event);
         // Construct complete payload out of: <instance-id> <actual-payload>
         let payload: String = format!(
             "{} {}",
@@ -120,7 +139,7 @@ impl RedisHelper {
      * If it subscribed to the necessary topics, it will start a new thread that handles incomming redis messages
      * The thread receives a shared reference to the controller.
      * This method should be called exactly once, if it is called a second time, it will panic to prevent an accidental invokation.
-     * If the thread fails to subscribe, it will panic
+     * 
      * // TODO: Seems to be semantically equal now -> **Review later**
      */
     pub fn establish_callback_subscriptions(
@@ -130,6 +149,9 @@ impl RedisHelper {
         // Should only be called once in main!
         assert_has_not_been_called!();
         let connection: Connection;
+        let workers = static_data.redis_workers;
+        let last = workers;
+
         loop {
             // Create redis connection for subscriptions and their handling
             let connection_result = connect_to_redis(
@@ -153,7 +175,11 @@ impl RedisHelper {
         }
 
         thread::spawn(move || -> Result<()> {
-            let mut redis_helper = RedisHelper { connection };
+            let mut redis_helper = RedisHelper {
+                connection,
+                workers,
+                last,
+            };
             let topics = vec![
                 "callback-response:*".to_owned(),
                 "callback-end:*".to_owned(),
@@ -164,7 +190,7 @@ impl RedisHelper {
                         let callback_keys = callback_keys
                             .lock()
                             .expect("Could not lock mutex in callback thread");
-                        if callback_keys.contains_key(&topic.identifier) {
+                        if callback_keys.contains_key(&topic.type_) {
                             let message_json = json!(payload);
                             if message_json["content"]["headers"].is_null()
                                 || !message_json["content"]["headers"].is_object()
@@ -173,23 +199,24 @@ impl RedisHelper {
                             }
                             let params = construct_parameters(&message_json);
                             let headers = convert_headers_to_map(&message_json["content"]["headers"]);
-                            callback_keys.get(&topic.identifier)
+                            callback_keys.get(&topic.type_)
                                                 // TODO: This panic will not result in termination -> Detached thread panics    
                                                .expect("Cannot happen as we check containment previously and hold mutex throughout")
                                                .callback(params, headers);
                         }
                     }
                     "callback-end:*" => {
+                        // TODO: Issue: We will not learn when this fails as the thread is detached and a panic here will not let the program panic
                         callback_keys
                             .lock()
                             .expect("Mutex of callback_keys was poisoned")
-                            .remove(&topic.identifier);
+                            .remove(&topic.type_);
                     }
                     x => {
                         println!("Received on channel {} the payload: {}", x, payload);
                     }
                 };
-                // This should loop indefinitely
+                // This should loop indefinitely:
                 Ok(true)
             })?;
             Ok(())
@@ -199,11 +226,14 @@ impl RedisHelper {
     /**
      * Uses the provided connection to establish a pub-sub channel
      * Waits for messages until the closure returns false (do not continue) or an error. Will return the error in the result enum
+     *
      * The handler gets 3 parameters:
      * - payload:   The actual payload (without the id in front)
      * - pattern:   The pattern structure that matched (e.g. "callback-response:*")
      * - topic:     The topic (e.g. "callback-response:01:<identifier>")
-     *              Topic has to have the structure <prefix>:<worker>:<identifier>
+     *              Topic has to have the structure <message_type>:<target>:<event>
+     * 
+     * Will return an error if the un-subscribing fails
      */
     pub fn blocking_pub_sub(
         &mut self,
@@ -212,14 +242,7 @@ impl RedisHelper {
     ) -> Result<()> {
         let mut subscription = self.connection.as_pubsub();
         // will pushback message to self.waiting_messages of the PubSub instance
-        match subscription.psubscribe(&topic_patterns) {
-            Ok(()) => {}
-            Err(err) => {
-                log::error!("Could not subscribe to the topics: {err}");
-                // This is unrecoverable -> panic thread
-                panic!("Could not subscribe to the topics: {err}")
-            }
-        }
+        subscription.psubscribe(&topic_patterns)?;
 
         // Handle incomming CPEE messages with the structure <instance_id> <payload>
         loop {
@@ -232,11 +255,9 @@ impl RedisHelper {
             let (_instance_id, payload) = payload
                 .split_once(" ")
                 .expect(CALLBACK_RESPONSE_ERROR_MESSAGE);
-            let pattern: String = message
-                .get_pattern()
-                .expect("Could not get pattern  in callback thread");
-            println!("Pattern: {}, Topic: {}, Payload: {}", pattern, message.get_channel_name(), payload);
-            let topic: Topic = split_topic(message.get_channel_name());
+            let pattern: String = message.get_pattern().expect("Could not get pattern");
+
+            let topic: Topic = split_topic(message.get_channel_name())?;
             if !handler(payload, &pattern, topic)? {
                 break;
             };
@@ -244,6 +265,7 @@ impl RedisHelper {
 
         if let Err(err) = subscription.unsubscribe(topic_patterns) {
             log::error!("Could not unsubscribe from topics at the end: {}", err);
+            return Err(Error::from(err))
         }
         Ok(())
     }
@@ -282,18 +304,27 @@ fn connect_to_redis(
 
 #[derive(Debug)]
 pub struct Topic {
-    pub prefix: String,
+    // Since type is a keyword
+    pub type_: String,
     pub worker: String,
-    pub identifier: String,
+    pub event: String,
 }
 
-fn split_topic(topic: &str) -> Topic {
+/**
+ * In the cpee each topic has a fixed structure:
+ * <message_type>:<target>:<event>
+ */
+fn split_topic(topic: &str) -> Result<Topic> {
     // Topic string should have structure: <prefix>:<worker-id>:<identifier>
     let mut topic: Vec<String> = topic.split(":").map(String::from).collect();
-    Topic {
-        prefix: topic.remove(0),
-        worker: topic.remove(1),
-        identifier: topic.remove(2),
+    if topic.len() != 3 {
+        Err(Error::SyntaxError(format!("Topic did not have the expected structure of <prefix>:<worker-id>:<identifier> but was: {}", topic.join(":"))))
+    } else {
+        Ok(Topic {
+            event: topic.pop().unwrap(),
+            worker: topic.pop().unwrap(),
+            type_: topic.pop().unwrap(),
+        })
     }
 }
 
@@ -421,8 +452,12 @@ mod test {
     }
 
     use log::error;
-    use rand::{seq::SliceRandom, thread_rng};
 
+    /**
+     * Tests whether the publish and subscribe cycle with redis works.
+     * Creates a separate thread that publishes test messages.
+     * Main thread subscribes to the messages and checks whether the correct messages are received
+     */
     #[test]
     fn test_blocking_pub_sub() {
         init_logger();
@@ -436,39 +471,116 @@ mod test {
                     }
                 };
             let instance_id = 6;
-            let topic_ids = vec![1, 3, 5];
+            let mut iter = 0;
             loop {
-                let topic_id = topic_ids.get(0).unwrap();
                 // let topic_id = topic_ids.choose(&mut thread_rng()).unwrap()
                 match connection.publish::<String, String, i32>(
-                    format!("test_topic:01:{}", topic_id),
-                    format!("{} {}", instance_id, "test_payload")
+                    "event:01:test_state/changed".to_owned(),
+                    format!("{} {}", instance_id, "test_payload"),
                 ) {
-                    Ok(_) => {},
+                    Ok(_) => {}
                     Err(err) => error!("Error publishing: {err}"),
                 }
-                sleep(Duration::from_secs(3));
+                sleep(Duration::from_secs(1));
+                iter = iter + 1;
+                if iter > 3 {
+                    let _ = connection.publish::<String, String, i32>(
+                        "event:01:test_state/changed".to_owned(),
+                        format!("{} {}", instance_id, "stop"),
+                    );
+                    break;
+                }
             }
         });
 
         let mut redis = RedisHelper::new(&get_unix_socket_configuration(), "pub_sub_test");
         redis
             .blocking_pub_sub(
-                vec!["test_topic:*".to_owned()],
+                vec!["event:*".to_owned()],
                 |payload: &str, pattern: &str, topic: Topic| {
                     println!(
-                        "Pattern: {}\nTopic: {}\nPayload:{:?}",
-                        pattern, payload, topic
+                        "Pattern: {}\nTopic: {:?}\nPayload:{}",
+                        pattern, topic, payload
                     );
-                    Ok(true)
+                    assert_eq!("event", topic.type_);
+                    assert_eq!("01", topic.worker);
+                    assert_eq!("test_state/changed", topic.event);
+                    if payload == "stop" {
+                        Ok(false)
+                    } else {
+                        Ok(true)
+                    }
                 },
             )
             .unwrap();
     }
 
+    #[test]
+    fn test_send() -> Result<()>{
+        let rec_thread = thread::spawn(|| -> Result<()> {
+            let mut redis_receiver =
+                RedisHelper::new(&get_unix_socket_configuration(), "test_connection");
+            redis_receiver.blocking_pub_sub(
+                vec!["event:*".to_owned()],
+                |payload: &str, pattern: &str, topic: Topic| {
+                    let expected_payload = json!({
+                        "cpee": "localhost/cpee",
+                        "instance-url": format!("{}/{}", "localhost/cpee", "test_id"),
+                        "instance": "test_id",
+                        "topic": "test_state",
+                        "type": "event",
+                        "name": "changed",
+                        "content": "test_payload",
+                        "instance-uuid": "test_uuid",
+                        "instance-name": "test_info"
+                    }).to_string();
+                    println!("Payload:\n{payload}");
+
+                    // Remove timestamp as it will not be consistent
+                    let mut modified_payload = Vec::new();
+                    let mut item_index = 0;
+                    for item in payload.split(",") {
+                        item_index = item_index + 1;
+                        if item_index == 8 {
+                            continue;
+                        }
+                        modified_payload.push(item.to_owned());
+                    };
+                    let payload = modified_payload.join(",");
+                    println!("Modified payload: {payload}");
+                    
+                    assert_eq!(expected_payload, payload);
+                    assert_eq!("event:*", pattern);
+                    assert_eq!("event", topic.type_);
+                    assert_eq!(0, topic.worker.parse::<u32>().unwrap());
+                    assert_eq!("test_state/changed", topic.event);
+                    return Ok(false);
+                },
+            )?;
+            Ok(())
+        });
+        let mut redis_sender =
+            RedisHelper::new(&get_unix_socket_configuration(), "test_connection");
+
+        redis_sender.send("event", "test_state/changed", get_unix_socket_configuration().get_instance_meta_data(), Some("test_payload"))?;  
+        let result = rec_thread.join();
+        match result {
+            Ok(inner) => match inner {
+                Ok(ok) => println!("All fine"),
+                Err(_) => panic!("Error within blocking_pub_sub"),
+            },
+            Err(_) => panic!("Thread paniced"),
+        }
+        Ok(())
+    }
+
     fn get_unix_socket_configuration() -> StaticData {
         let home = std::env::var("HOME").unwrap();
         let expanded_path = format!("{}/redis/redis.sock", home);
+        let mut attributes = HashMap::new();
+        attributes.insert("uuid".to_owned(), "test_uuid".to_owned());
+        attributes.insert("info".to_owned(), "test_info".to_owned());
+
         StaticData {
             instance_id: "test_id".to_owned(),
             host: "localhost".to_owned(),
@@ -476,12 +588,13 @@ mod test {
             redis_url: None,
             redis_path: Some(format!("unix://{}", expanded_path)),
             redis_db: 0,
+            redis_workers: 2,
             global_executionhandlers: "".to_owned(),
             executionhandlers: "".to_owned(),
             executionhandler: "".to_owned(),
             eval_language: "".to_owned(),
             eval_backend_url: "".to_owned(),
-            attributes: HashMap::new(),
+            attributes,
         }
     }
 
@@ -494,6 +607,7 @@ mod test {
             redis_url: Some("redis://localhost:6379".to_owned()),
             redis_path: None,
             redis_db: 0,
+            redis_workers: 2,
             global_executionhandlers: "".to_owned(),
             executionhandlers: "".to_owned(),
             executionhandler: "".to_owned(),

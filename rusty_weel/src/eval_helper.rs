@@ -1,9 +1,11 @@
-use std::{collections::HashMap, fmt::Display};
+use std::{collections::HashMap, fmt::Display, io::{Read, Seek, Write}};
 
 use log;
 use serde_json::json;
+use http_helper::{Client, Mime, Parameter, APPLICATION_JSON};
+use tempfile::tempfile;
 
-use crate::{data_types::{DynamicData, StaticData}, dsl_realization::Error};
+use crate::{data_types::{DynamicData, StaticData}, dsl_realization::{Result, Error}};
 
 /**
  * Sends a list of expressions and the context to evaluate them in to the evaluation backend
@@ -11,28 +13,36 @@ use crate::{data_types::{DynamicData, StaticData}, dsl_realization::Error};
  *  - Request body could not be parsed
  *  - Post request fails / Evaluation fails
  */
-// TODO: Currently the context passed to the evaluated is currently only the data, not endpoints/attributes -> Do we also need these?
-// TODO: Yes we need to pass all contained in ManipulateStructure (weel.rb)?
 pub fn evaluate_expressions (
     eval_backend: &str,
     dynamic_context: &DynamicData,
     static_context: &StaticData,
     expressions: HashMap<String, String>,
-) -> Result<HashMap<String, String>, Error> {
-    /*
-    let mut client = Easy::new();
+) -> Result<HashMap<String, String>> {
+    let mut client = Client::new(eval_backend, http_helper::Method::POST)?;
 
     // Handle serialization outside of json! macro as it will panic otherwise
     let static_context = match serde_json::to_string(&static_context) { Ok(x) => x, Err(err) => return Err(Error::EvalError(EvalError::GeneralEvalError(format!("Could not serialize static context: {}", err)))) };
+    let static_context_file = tempfile()?;
+    static_context_file.write_all(static_context.as_bytes());
+    static_context_file.rewind();
+
     let dynamic_context = match serde_json::to_string(&dynamic_context) { Ok(x) => x, Err(err) => return Err(Error::EvalError(EvalError::GeneralEvalError(format!("Could not serialize static context: {}", err)))) };
-    let expressions = match serde_json::to_string(&expressions) { Ok(x) => x, Err(err) => return Err(Error::EvalError(EvalError::GeneralEvalError(format!("Could not serialize expressions: {}", err)))) };
+    let dynamic_context_file = tempfile()?;
+    dynamic_context_file.write_all(dynamic_context.as_bytes());
+    dynamic_context_file.rewind();
     
+    let expressions = match serde_json::to_string(&expressions) { Ok(x) => x, Err(err) => return Err(Error::EvalError(EvalError::GeneralEvalError(format!("Could not serialize expressions: {}", err)))) };
+    let expressions_file = tempfile()?;
+    expressions_file.write_all(expressions.as_bytes());
+    expressions_file.rewind();
+
     let body = json!(
-    {
-        "static_context": static_context,
-        "static_context": dynamic_context,
-        "statements": expressions
-    });
+        {
+            "static_context": static_context,
+            "static_context": dynamic_context,
+            "statements": expressions
+        });
     let body = match serde_json::to_string(&body) {
         Ok(x) => x,
         Err(err) => {
@@ -40,19 +50,29 @@ pub fn evaluate_expressions (
             return Err(Error::EvalError(EvalError::GeneralEvalError(format!("Could not serialize json objection for serailization request: {}", err))));
         }
     };
-    client.url(eval_backend);
-    client.post(true);
-    client.post_fields_copy(body.as_bytes());
+    client.add_parameter(Parameter::ComplexParameter { name: "static_context".to_owned(), mime_type: APPLICATION_JSON, content_handle: static_context_file });
+    client.add_parameter(Parameter::ComplexParameter { name: "dynamic_context".to_owned(), mime_type: APPLICATION_JSON, content_handle: dynamic_context_file });
+    client.add_parameter(Parameter::ComplexParameter { name: "expressions".to_owned(), mime_type: APPLICATION_JSON, content_handle: expressions_file });
+    
+    let result = client.execute()?;
+    // Get the expressions parameter from the parsed response
+    let result = result.content.iter().find_map(|parameter| -> Option<String> {
+        if parameter.name == "expressions" {
+            match parameter {
+                Parameter::SimpleParameter { name, value, param_type } => Some(value.clone()),
+                Parameter::ComplexParameter { name, mime_type, content_handle } => {
+                    let mut result = String::new();
+                    content_handle.read_to_string(&mut result);
+                    Some(result)
+                },
+            }
+        } else {
+            None
+        }
+    });
 
-
-    let evaluation_request = client.perform()?;
-    let response_code = client.response_code()?;
-    let response_text = String::from_utf8(response_body)?;
-    let evaluations: HashMap<String, String> = serde_json::from_str(&response_text)
-        .expect("Failed to parse evaluations from response body");
+    let evaluations: HashMap<String, String> = serde_json::from_str(&result)?;
     Ok(evaluations)
-     */
-    todo!()
 }
 
 pub fn evaluate_expression (
@@ -60,7 +80,7 @@ pub fn evaluate_expression (
     dynamic_context: &DynamicData,
     static_context: &StaticData,
     expression: &str
-) -> Result<String, Error> {
+) -> Result<String> {
     let mut expressions = HashMap::new();
     expressions.insert("k".to_owned(), expression.to_owned());
     let result = evaluate_expressions(eval_backend, dynamic_context, static_context,  expressions)?;

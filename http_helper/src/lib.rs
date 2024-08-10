@@ -1,6 +1,5 @@
 use bytes::Buf;
 use derive_more::From;
-use mime::{FromStrError, Mime, APPLICATION_OCTET_STREAM, BOUNDARY};
 use multipart::server::{FieldHeaders, ReadEntry};
 use reqwest::{
     blocking::{
@@ -8,13 +7,16 @@ use reqwest::{
         RequestBuilder,
     },
     header::{HeaderMap, HeaderName, HeaderValue, ToStrError, CONTENT_TYPE},
-    Method, Url,
+    Url,
 };
 use std::{
     fs,
     io::{Read, Seek, Write},
     str::FromStr,
 };
+
+pub use mime::*;
+pub use reqwest::Method;
 
 use urlencoding::encode;
 

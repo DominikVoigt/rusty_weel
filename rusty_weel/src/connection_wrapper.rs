@@ -234,6 +234,7 @@ impl ConnectionWrapper {
             let mut client = http_helper::Client::new(self.handler_endpoints.get(0).expect("No endpoint provided"), Method::GET)?;
             client.set_request_headers(headers.clone());
             
+            /*
             // Run request
             let response = client.execute()?;
             let status_code = response.status_code;
@@ -246,7 +247,6 @@ impl ConnectionWrapper {
 
             // TODO: decide whether we still need the if status == 561 ...... block -> Yes we need it
 
-            /*
             // TODO: rewrite this condition and give it a better name
             if status_code < 200 || status_code >= 300  {
                 // TODO: What to do with the commented out ruby code?

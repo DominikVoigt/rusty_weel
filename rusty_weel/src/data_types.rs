@@ -38,6 +38,7 @@ pub struct StaticData {
     pub redis_url: Option<String>,
     pub redis_path: Option<String>,
     pub redis_db: i64,
+    pub redis_workers: u32,
     pub global_executionhandlers: String,
     pub executionhandlers: String,
     pub executionhandler: String,
