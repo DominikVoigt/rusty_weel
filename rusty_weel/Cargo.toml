@@ -19,6 +19,7 @@ redis = "0.25.3"
 
 # HTTP 
 http_helper ={ path = "../http_helper"}
+reqwest = "0.12.5"
 tempfile = "3.10.1"
 
 # Time
