@@ -50,7 +50,7 @@ fn main() {
                 method: Method::POST,
                 arguments: Some(vec![
                     new_key_value_pair("from", "data.from"),
-                    new_key_value_pair("from", "data.to"),
+                    new_key_value_pair("to", "data.to"),
                     new_key_value_pair("persons", "data.persons"),
                 ]),
             },
@@ -63,7 +63,6 @@ fn main() {
             "###}),
             Option::None,
         )?;
-        /*
         weel.call(
             "a1",
             "bookAir",
@@ -72,7 +71,7 @@ fn main() {
                 method: Method::POST,
                 arguments: Some(vec![
                     new_key_value_pair("from", "data.from"),
-                    new_key_value_pair("from", "data.to"),
+                    new_key_value_pair("to", "data.to"),
                     new_key_value_pair("persons", "data.persons"),
                 ]),
             },
@@ -85,15 +84,16 @@ fn main() {
             "###}),
             Option::None,
         )?;
-        weel.parallel_do(Option::None, "last", || {
-            weel.loop_exec(weel.pre_test("data.persons > 0"), || {
-                weel.parallel_branch(data, || {
+
+        weel.parallel_do(Option::None, "last", || -> Result<()> {
+            weel.loop_exec(weel.pre_test("data.persons > 0"), || -> Result<()> {
+                weel.parallel_branch(/*data,*/ || -> Result<()> {
                     weel.call(
                         "a2",
                         "bookHotel",
-                        HTTPRequest {
+                        HTTPParams {
                             label: "Book Hotel",
-                            method: HTTP::POST,
+                            method: Method::POST,
                             arguments: Some(vec![new_key_value_pair("to", "data.to")]),
                         },
                         Option::None,
@@ -103,7 +103,8 @@ fn main() {
                                 data.costs += result.value('costs').to_f
                             "###}),
                         Option::None,
-                    );
+                    )?;
+                    Ok(())
                 });
                 weel.manipulate(
                     "a3",
@@ -111,9 +112,13 @@ fn main() {
                     indoc! {r###"
                     data.persons -= 1
                 "###},
-                )
-            })
-        });
+                )?;
+                Ok(())
+            });
+            Ok(())
+        })?;
+
+        /*
         weel.choose("exclusive", || {
             weel.alternative("data.costs > 700", || {
                 weel.call(

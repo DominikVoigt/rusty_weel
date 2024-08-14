@@ -21,6 +21,7 @@ pub struct Weel {
     pub dynamic_data: DynamicData,
     pub state: Mutex<State>,
     // Contains all open callbacks from async connections, ArcMutex as it is shared between the instance (to insert callbacks) and the callback thread (RedisHelper)
+    // TODO: Do we really need Arc wrapping connection wrapper if the hashmap just "owns it directly?"
     pub callback_keys: Arc<Mutex<std::collections::HashMap<String, Arc<ConnectionWrapper>>>>,
     pub redis_notifications_client: Mutex<RedisHelper>,
     // Tracks all open votes via their ID. All voting needs to be finished before stopping.
@@ -29,7 +30,7 @@ pub struct Weel {
     pub loop_guard: Mutex<HashMap<String, (u32, SystemTime)>>,
 }
 
-impl DSL<Error> for Weel {
+impl DSL for Weel {
     fn call(
         &self,
         label: &str,
@@ -64,15 +65,15 @@ impl DSL<Error> for Weel {
         &self,
         wait: Option<u32>,
         cancel: &str,
-        start_branches: impl Fn() + Sync,
+        start_branches: impl Fn() -> Result<()> + Sync,
     ) -> Result<()> {
         println!("Calling parallel_do");
         println!("Executing lambda");
-        start_branches();
+        // start_branches();
         todo!()
     }
 
-    fn parallel_branch(&self, data: &str, lambda: impl Fn() + Sync) -> Result<()> {
+    fn parallel_branch(&self, /*data: &str,*/ lambda: impl Fn() -> Result<()> + Sync) -> Result<()> {
         println!("Executing parallel branch");
         thread::scope(|scope| {
             scope.spawn(|| {
@@ -82,13 +83,13 @@ impl DSL<Error> for Weel {
         todo!()
     }
 
-    fn choose(&self, variant: &str, lambda: impl Fn() + Sync) -> Result<()> {
+    fn choose(&self, variant: &str, lambda: impl Fn() -> Result<()> + Sync) -> Result<()> {
         println!("Executing choose");
         lambda();
         todo!()
     }
 
-    fn alternative(&self, condition: &str, lambda: impl Fn() + Sync) -> Result<()> {
+    fn alternative(&self, condition: &str, lambda: impl Fn() -> Result<()> + Sync) -> Result<()> {
         println!("Executing alternative, ignoring condition: {}", condition);
         lambda();
         todo!()
@@ -99,7 +100,7 @@ impl DSL<Error> for Weel {
         todo!()
     }
 
-    fn loop_exec(&self, condition: bool, lambda: impl Fn() + Sync) -> Result<()> {
+    fn loop_exec(&self, condition: bool, lambda: impl Fn() -> Result<()> + Sync) -> Result<()> {
         println!("Executing loop!");
         lambda();
         todo!()
@@ -118,7 +119,7 @@ impl DSL<Error> for Weel {
         todo!()
     }
 
-    fn critical_do(&self, mutex_id: &str, lambda: impl Fn() + Sync) -> Result<()> {
+    fn critical_do(&self, mutex_id: &str, lambda: impl Fn() -> Result<()> + Sync) -> Result<()> {
         println!("in critical do");
         lambda();
         todo!()

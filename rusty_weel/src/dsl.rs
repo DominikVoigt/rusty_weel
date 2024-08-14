@@ -1,6 +1,6 @@
-use crate::data_types::HTTPParams;
+use crate::{data_types::HTTPParams, dsl_realization::Result};
 
-pub trait DSL<T> {
+pub trait DSL {
     /**
      * Implements the invokation of external functionalities
      */
@@ -14,18 +14,18 @@ pub trait DSL<T> {
         update_code: Option<&str>,
         finalize_code: Option<&str>,
         rescue_code: Option<&str>,
-    ) -> Result<(), T>;
+    ) -> Result<()>;
 
     /**
      * Implements script tasks that do not need to invoke functionalities
      */
-    fn manipulate(&self, label: &str, name: Option<&str>, code: &str) -> Result<(), T>;
+    fn manipulate(&self, label: &str, name: Option<&str>, code: &str) -> Result<()>;
 
-    fn loop_exec(&self, condition: bool, lambda: impl Fn() + Sync) -> Result<(), T>;
+    fn loop_exec(&self, condition: bool, lambda: impl Fn() -> Result<()> + Sync) -> Result<()>;
 
-    fn pre_test(&self, condition: &str) -> bool;
+    fn pre_test(&self, condition: &str) -> Result<bool>;
 
-    fn post_test(&self, condition: &str) -> bool;
+    fn post_test(&self, condition: &str) -> Result<bool>;
 
     /**
      * Implements the parallel/event gateway -> Executes the provided branches in parallel
@@ -33,25 +33,25 @@ pub trait DSL<T> {
      *        - Value: Will wait for the specified number of branches to return
      * `cancel` - Determines on which task the termination of a branch is decided on: either the first or last task in a branch
      */
-    fn parallel_do(&self, wait: Option<u32>, cancel: &str, lambda: impl Fn() + Sync) -> Result<(), T>;
+    fn parallel_do(&self, wait: Option<u32>, cancel: &str, lambda: impl Fn() -> Result<()> + Sync) -> Result<()>;
 
     /**
      * One of the parallel branches within a parallel do, has to create the threads and then wait for sync with the parallel_do for execution
      */
-    fn parallel_branch(&self, data: &str, lambda: impl Fn() + Sync) -> Result<(), T>;
+    fn parallel_branch(&self, /*data: &str,*/ lambda: impl Fn() -> Result<()> + Sync) -> Result<()>;
 
     /**
      * Guards critical block
      * All sections with the same mutex_id share the mutex
      */
-    fn critical_do(&self, mutex_id: &str, lambda: impl Fn() + Sync) -> Result<(), T>;
+    fn critical_do(&self, mutex_id: &str, lambda: impl Fn() -> Result<()> + Sync) -> Result<()>;
 
     /**
      * Implements
      */
-    fn choose(&self, variant: &str, lambda: impl Fn() + Sync) -> Result<(), T>;
+    fn choose(&self, variant: &str, lambda: impl Fn() -> Result<()> + Sync) -> Result<()>;
 
-    fn alternative(&self, condition: &str, lambda: impl Fn() + Sync) -> Result<(), T>;
+    fn alternative(&self, condition: &str, lambda: impl Fn() -> Result<()> + Sync) -> Result<()>;
 
-    fn stop(&self, label: &str)  -> Result<(), T>;
+    fn stop(&self, label: &str)  -> Result<()>;
 }
