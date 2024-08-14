@@ -1,4 +1,5 @@
 use derive_more::From;
+use std::any::TypeId;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::sync::{Arc, Mutex};
@@ -100,18 +101,18 @@ impl DSL for Weel {
         todo!()
     }
 
-    fn loop_exec(&self, condition: bool, lambda: impl Fn() -> Result<()> + Sync) -> Result<()> {
+    fn loop_exec(&self, condition: Result<bool>, lambda: impl Fn() -> Result<()> + Sync) -> Result<()> {
         println!("Executing loop!");
         lambda();
         todo!()
     }
 
-    fn pre_test(&self, condition: &str) -> bool {
-        false
+    fn pre_test(&self, condition: &str) -> Result<bool> {
+        todo!()
     }
 
-    fn post_test(&self, condition: &str) -> bool {
-        true
+    fn post_test(&self, condition: &str) -> Result<bool> {
+        todo!()
     }
 
     fn stop(&self, label: &str) -> Result<()> {
@@ -131,23 +132,28 @@ impl Weel {
      * Starts execution
      * To pass it to execution thread we need Send + Sync
      */
-    pub fn start(&self, model: impl Fn() -> Result<()> + Send + 'static) -> Result<()> {
+    pub fn start(&self, model: impl Fn() -> Result<()> + Send + 'static) {
         let mut content = HashMap::new();
         content.insert("state".to_owned(), "running".to_owned());
-        if self.vote("state/change", content)? {
-            // TODO: instance.start
-            // We take the closure out of instance code and pass it to the thread -> transfer ownership of closure
-            let instance_thread = thread::spawn(model);
-            // Take the join handle out of the member and join.
-            let result = instance_thread.join();
-            // TODO: Handle the result, especially a WeelError -> All methods return weel error in case of a
-            match result {
-                Ok(_) => todo!(),
-                Err(_) => todo!(),
-            }
-        } else {
-            // TODO: instance.stop
-        };
+        match self.vote("state/change", content) {
+            Ok(voted_start) => {        
+                if voted_start {
+                    // TODO: instance.start
+                    // We take the closure out of instance code and pass it to the thread -> transfer ownership of closure
+                    let instance_thread = thread::spawn(model);
+                    // Take the join handle out of the member and join.
+                    let result = instance_thread.join();
+                    // TODO: Handle the result, especially a WeelError -> All methods return weel error in case of a
+                    match result {
+                        Ok(_) => todo!(),
+                        Err(err) => handle_join_error(err),
+                    }
+                } else {
+                    // TODO: instance.stop
+                };
+            },
+            Err(err) => handle_error(err),
+        }
         Ok(())
     }
 
@@ -305,6 +311,20 @@ impl Weel {
             )?;
         Ok(())
     }
+}
+
+fn handle_join_error(err: Box<dyn std::any::Any + Send>) {
+    if TypeId::of::<String>() == err.type_id() {
+        let x = err.downcast::<String>();
+        match x {
+            Ok(x) => log::error!("Model thread paniced: {}", x),
+            Err(err) => log::error!("Model thread paniced but provided panic result cannot be cast into a String."),
+        }
+    };
+}
+
+fn handle_error(err: Error) {
+    todo!()
 }
 
 #[derive(Debug, From)]

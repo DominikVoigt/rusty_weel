@@ -21,7 +21,7 @@ pub trait DSL {
      */
     fn manipulate(&self, label: &str, name: Option<&str>, code: &str) -> Result<()>;
 
-    fn loop_exec(&self, condition: bool, lambda: impl Fn() -> Result<()> + Sync) -> Result<()>;
+    fn loop_exec(&self, condition: Result<bool>, lambda: impl Fn() -> Result<()> + Sync) -> Result<()>;
 
     fn pre_test(&self, condition: &str) -> Result<bool>;
 
