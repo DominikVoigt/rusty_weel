@@ -20,11 +20,14 @@ pub struct KeyValuePair {
     pub value: Option<String>,
 }
 
+#[derive(Debug, PartialEq)]
 pub enum State {
+    Ready,
     Starting,
     Running,
     Stopping,
     Stopped,
+    Finishing,
 }
 
 /**
