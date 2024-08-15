@@ -2,6 +2,7 @@ use derive_more::From;
 use std::any::TypeId;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
+use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::SystemTime;
@@ -21,6 +22,7 @@ pub struct Weel {
     pub static_data: StaticData,
     pub dynamic_data: DynamicData,
     pub state: Mutex<State>,
+    pub positions: Mutex<Vec<String>>,
     // Contains all open callbacks from async connections, ArcMutex as it is shared between the instance (to insert callbacks) and the callback thread (RedisHelper)
     // TODO: Do we really need Arc wrapping connection wrapper if the hashmap just "owns it directly?"
     pub callback_keys: Arc<Mutex<std::collections::HashMap<String, Arc<ConnectionWrapper>>>>,
@@ -132,42 +134,71 @@ impl Weel {
      * Starts execution
      * To pass it to execution thread we need Send + Sync
      */
-    pub fn start(&self, model: impl Fn() -> Result<()> + Send + 'static) {
+    pub fn start(&self, model: impl Fn() -> Result<()> + Send + 'static, stop_signal_sender: Sender<()>) {
         let mut content = HashMap::new();
         content.insert("state".to_owned(), "running".to_owned());
         match self.vote("state/change", content) {
             Ok(voted_start) => {        
                 if voted_start {
-                    // TODO: instance.start
-                    // We take the closure out of instance code and pass it to the thread -> transfer ownership of closure
+                    self.positions.lock().unwrap().clear(); 
+                    *self.state.lock().unwrap() = State::Running;
+
+                    // TODO: implement the __weel_control_flow logic
                     let instance_thread = thread::spawn(model);
-                    // Take the join handle out of the member and join.
-                    let result = instance_thread.join();
-                    // TODO: Handle the result, especially a WeelError -> All methods return weel error in case of a
-                    match result {
-                        Ok(_) => todo!(),
+                    let join_result = instance_thread.join();
+                    // Signal stop thread that execution of model ended:
+                    let send_result = stop_signal_sender.send(());
+                    if matches!(send_result, Err(_)) {
+                        log::error!("Error sending termination signal for model thread. Receiver must have been dropped.")
+                    }
+
+                    match join_result {
+                        Ok(result) => {
+                            match result {
+                                Ok(()) => {
+                                    match *self.state.lock().unwrap() {
+                                        State::Running | State::Finishing => todo!(),
+                                        State::Stopping => {},
+                                        _ => {
+                                                //Do nothing
+                                            }
+                                    }
+                                },
+                                Err(err) => handle_error(err),
+                            }
+                        }
                         Err(err) => handle_join_error(err),
                     }
                 } else {
-                    // TODO: instance.stop
+                    self.abort_start();
                 };
             },
             Err(err) => handle_error(err),
         }
     }
 
-    // TODO: Implement stop
-    pub fn stop(&self) -> Result<()> {
-        /*
-           ### tell the instance to stop
-           @instance.stop
-           ### end all votes or it will not work
-           Thread.new do # doing stuff in trap context is a nono. but in a thread its fine :-)
-           @votes.each do |key|
-               CPEE::Message::send(:'vote-response',key,base,@id,uuid,info,true,@redis)
-           end
-           end
-        */
+    fn abort_start(&self) {
+        let mut state = self.state.lock().expect("Could not lock state mutex");
+        // Should only be called when the start is aborted through voting (aka. weel is still in ready state):
+        assert_eq!(*state, State::Ready);
+        *state = State::Stopped;
+    }
+
+    pub fn stop(&self, stop_signal_receiver: Receiver<()>) -> Result<()> {
+        let mut state = self.state.lock().expect("Could not lock state mutex");
+        match *state {
+            State::Ready => *state = State::Stopped,
+            State::Running => {
+                // TODO: Where will this be set to stopped?
+                *state = State::Stopping;
+                let rec_result = stop_signal_receiver.recv();
+                if matches!(rec_result, Err(_)) {
+                    log::error!("Error receiving termination signal for model thread. Sender must have been dropped.")
+                }
+            },
+            _ => log::info!("Instance stop was called but instance is in state: {:?}", *state),
+        }
+       
         for vote_id in self
             .open_votes
             .lock()
@@ -177,7 +208,6 @@ impl Weel {
             self.redis_notifications_client
                 .lock()
                 .expect("Could not acquire mutex")
-                // TODO: Ignore error for now
                 .send(
                     "vote-response",
                     vote_id,
@@ -193,7 +223,7 @@ impl Weel {
         let (topic, name) = vote_topic
             .split_once("/")
             .expect("Vote topic did not contain / separator");
-        let handler = format!("{}/{}/{}", topic, "vote", name);
+        let handler = format!("{}/vote/{}", topic, name);
         let mut votes: Vec<String> = Vec::new();
         let mut redis_helper: RedisHelper = RedisHelper::new(
             static_data,
@@ -203,7 +233,7 @@ impl Weel {
             ),
         );
         for client in redis_helper
-            .extract_handler(&handler, &static_data.instance_id)
+            .extract_handler(&static_data.instance_id, &handler)
             .iter()
         {
             // Generate random ASCII string of length VOTE_KEY_LENGTH
@@ -211,6 +241,7 @@ impl Weel {
             content.insert("key".to_owned(), vote_id.to_string());
             content.insert(
                 "attributes".to_owned(),
+                // TODO: Check whether these are already "translated"
                 serde_json::to_string(&static_data.attributes)
                     .expect("Could not serialize attributes"),
             );
