@@ -1,0 +1,15 @@
+instance_id: test_id
+host: test_id
+base_url: test_id
+redis_url: null
+redis_path: test_id
+redis_db: 0
+redis_workers: 2
+global_executionhandlers: exhs
+executionhandlers: exh
+executionhandler: rust
+eval_language: ruby
+eval_backend_url: ruby_backend_url
+attributes:
+  uuid: test-uuid
+  modeltype: CPEE

@@ -154,7 +154,6 @@ impl Weel {
             },
             Err(err) => handle_error(err),
         }
-        Ok(())
     }
 
     // TODO: Implement stop
