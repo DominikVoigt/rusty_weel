@@ -159,7 +159,7 @@ impl Client {
 
     pub fn add_parameters(&mut self, parameters: Vec<Parameter>) {
         parameters.into_iter().for_each(|parameter| {
-            let _ = self.add_parameter(parameter);
+            self.add_parameter(parameter);
         });
     }
 

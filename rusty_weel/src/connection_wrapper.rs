@@ -1,13 +1,10 @@
 use http_helper::Parameter;
-use reqwest::{
-    header::{HeaderMap, HeaderName, HeaderValue, CONTENT_TYPE},
-    Method,
-};
+use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde_json::{json, Value};
 use std::{
     collections::HashMap,
     str::FromStr,
-    sync::{Arc, Weak},
+    sync::{Arc, Mutex, Weak},
     thread::sleep,
     time::{Duration, SystemTime},
 };
@@ -23,7 +20,7 @@ pub struct ConnectionWrapper {
     // Continue object for thread synchronization -> TODO: See whether we need this/how we implement this
     handler_continue: Option<()>,
     // See proto_curl in connection.rb
-    handler_passthrough: Option<String>,
+    handler_passthrough: Mutex<Option<String>>,
     // TODO: Unsure about this type:
     handler_return_value: Option<String>,
     // TODO: Determine this type:
@@ -35,18 +32,21 @@ pub struct ConnectionWrapper {
     label: String,
 }
 
+// Determines whether recurring calls are too close together (in seconds)
 const LOOP_GUARD_DELTA: f32 = 2.0;
+// Determines how many calls can be made in total before an activity might be throttled
 const UNGUARDED_CALLS: u32 = 100;
+// Determines how many seconds the call should be delayed (for throttling)
 const SLEEP_DURATION: u64 = 2;
 
 impl ConnectionWrapper {
-    fn new(weel: Arc<Weel>, position: Option<String>, handler_continue: Option<()>) -> Self {
+    pub fn new(weel: Arc<Weel>, position: Option<String>, handler_continue: Option<()>) -> Self {
         let weel = Arc::downgrade(&weel);
         ConnectionWrapper {
             weel,
             position,
             handler_continue,
-            handler_passthrough: None,
+            handler_passthrough: Mutex::new(None),
             handler_return_value: None,
             handler_return_options: None,
             handler_endpoints: Vec::new(),
@@ -66,18 +66,18 @@ impl ConnectionWrapper {
         match self.weel().loop_guard.lock().as_mut() {
             Ok(map) => {
                 let last = map.get(&id);
-                let condition = match last {
+                let should_throttle = match last {
+                    // Some: loop guard was hite prior to this -> increase count
                     Some(entry) => {
                         let count = entry.0 + 1;
                         let last_call_time = entry.1;
                         map.insert(id, (count, SystemTime::now()));
 
-                        // true if the current loop guard check is within 2 seconds
                         let last_call_too_close = last_call_time
                             .elapsed()
                             .expect("last call is in the future")
                             .as_secs_f32()
-                            > LOOP_GUARD_DELTA;
+                            < LOOP_GUARD_DELTA;
                         let threshold_passed = count > UNGUARDED_CALLS;
                         last_call_too_close && threshold_passed
                     }
@@ -86,72 +86,51 @@ impl ConnectionWrapper {
                         false
                     }
                 };
+                if should_throttle {
+                    sleep(Duration::from_secs(SLEEP_DURATION));
+                }
             }
             Err(err) => {
                 log::error!("Could not acquire lock {err}");
                 panic!("Could not acquire lock in loopguard")
             }
         };
-        sleep(Duration::from_secs(SLEEP_DURATION));
     }
 
-    pub fn inform_state_change(&self, new_state: &str) {
+    pub fn inform_state_change(&self, new_state: &str) -> Result<()> {
         let mut content = HashMap::new();
         content.insert("state".to_owned(), new_state.to_owned());
 
-        let weel = self.weel();
-        weel.redis_notifications_client
-            .lock()
-            .expect("Failed to lock mutex")
-            .notify(
-                "state/change",
-                Some(content),
-                weel.static_data.get_instance_meta_data(),
-            );
+        self.inform("state/change", Some(content))
     }
 
-    pub fn inform_syntax_error(&self, err: Error, code: &str) {
+    pub fn inform_syntax_error(&self, err: Error, code: &str) -> Result<()> {
         let mut content = HashMap::new();
         // TODO: mess = err.backtrace ? err.backtrace[0].gsub(/([\w -_]+):(\d+):in.*/,'\\1, Line \2: ') : ''
         content.insert("message".to_owned(), err.as_str().to_owned());
 
-        let weel = self.weel();
-        weel.redis_notifications_client
-            .lock()
-            .expect("Could not acquire mutex")
-            .notify(
-                "description/error",
-                Some(content),
-                weel.static_data.get_instance_meta_data(),
-            );
+        self.inform("description/error", Some(content))
     }
 
-    pub fn inform_connectionwrapper_error(&self, err: Error) {
+    pub fn inform_connectionwrapper_error(&self, err: Error) -> Result<()> {
         let mut content = HashMap::new();
         // TODO: mess = err.backtrace ? err.backtrace[0].gsub(/([\w -_]+):(\d+):in.*/,'\\1, Line \2: ') : ''
         content.insert("message".to_owned(), err.as_str().to_owned());
 
-        let weel = self.weel();
-        weel.redis_notifications_client
-            .lock()
-            .expect("Could not acquire mutex")
-            .notify(
-                "executionhandler/error",
-                Some(content),
-                weel.static_data.get_instance_meta_data(),
-            );
+        self.inform("executionhandler/error", Some(content))
     }
 
-    pub fn inform_position_change(&self, ipc: Option<HashMap<String, String>>) {
+    pub fn inform_position_change(&self, ipc: Option<HashMap<String, String>>) -> Result<()> {
+        self.inform("position/change", ipc)
+    }
+
+    fn inform(&self, what: &str, content: Option<HashMap<String, String>>) -> Result<()> {
         let weel = self.weel();
         weel.redis_notifications_client
             .lock()
             .expect("Could not acquire mutex")
-            .notify(
-                "position/change",
-                ipc,
-                weel.static_data.get_instance_meta_data(),
-            );
+            .notify(what, content, weel.static_data.get_instance_meta_data())?;
+        Ok(())
     }
 
     /**
@@ -181,7 +160,7 @@ impl ConnectionWrapper {
                 }
                 None => {
                     // Do nothing
-                },
+                }
             }
         }
     }
@@ -224,32 +203,40 @@ impl ConnectionWrapper {
      * Variation of original proto curl implementation:
      *      - We no longer support the special prefixed arguments that are transformed into parameters, we convert all parameters into simple url encoded body parameters
      *      - Only the standard headers that are generated in the `henerate_headers` method are send.
-     *      - All arguments wihtin the HTTPParams are send as Key-Value pairs as part of the body (application/x-www-form-urlencoded)
+     *      - All arguments within the HTTPParams are send as Key-Value pairs as part of the body (application/x-www-form-urlencoded)
+     *          -> TODO: Our implementation does multipart, is this fine?
      */
     pub fn curl(self: &Arc<Self>, parameters: &HTTPParams) -> Result<()> {
         let weel = self.weel();
         let callback_id = generate_random_key();
+        *self.handler_passthrough.lock().unwrap() = Some(callback_id.clone());
+
+        // Generate headers
         let headers: HeaderMap =
             self.generate_headers(weel.static_data.get_instance_meta_data(), &callback_id)?;
-        let mut params = Vec::new();
         // Put arguemnts into SimpleParameters that will be part of the body-> Since we cannot upload files from the CPEE for now // TODO?
-        match parameters.arguments.as_ref() {
-            Some(args) => args.iter().for_each(|arg| {
-                let value = arg.value.clone().unwrap_or("".to_owned());
-                params.push(http_helper::Parameter::SimpleParameter {
-                    name: arg.key.to_owned(),
-                    value,
-                    param_type: http_helper::ParameterType::Body,
-                });
-            }),
-            None => {
-                log::info!("Arguments provided to protocurl are empty");
-            }
-        };
 
         let mut status: u16;
         let mut response_headers: HeaderMap;
+        let mut content: Vec<Parameter>;
         loop {
+            // Compute parameters
+            let mut params = Vec::new();
+            // Params could contain file handles (complex parameters) and thus cannot be cloned -> We cannot clone so we recompute them here
+            match parameters.arguments.as_ref() {
+                Some(args) => args.iter().for_each(|arg| {
+                    let value = arg.value.clone().unwrap_or("".to_owned());
+                    params.push(http_helper::Parameter::SimpleParameter {
+                        name: arg.key.to_owned(),
+                        value,
+                        param_type: http_helper::ParameterType::Body,
+                    });
+                }),
+                None => {
+                    log::info!("Arguments provided to protocurl are empty");
+                }
+            };
+
             let mut content_json = HashMap::new();
             content_json.insert(
                 "activity_uuid".to_owned(),
@@ -264,20 +251,24 @@ impl ConnectionWrapper {
             content_json.insert("activity".to_owned(), position);
 
             // TODO: Handler Passthrough? -> When task is called that was async and instance was stopped in between
-            weel.callback(Arc::clone(self), &callback_id, content_json);
+            weel.callback(Arc::clone(self), &callback_id, content_json)?;
 
             // TODO: Determine wheter we need to subsitute the url like in connection.rb
             let mut client = http_helper::Client::new(
                 self.handler_endpoints.get(0).expect("No endpoint provided"),
-                Method::GET,
+                parameters.method.clone(),
             )?;
             client.set_request_headers(headers.clone());
+            client.add_parameters(params);
 
-            /*
-            // Run request
             let response = client.execute()?;
             let status_code = response.status_code;
             response_headers = response.headers;
+            content = response.content;
+
+            if status == 561 {}
+            /*
+            // Run request
             // TODO: Check whether this access content_type
             let content_type = match response_headers.get(CONTENT_TYPE.as_str()) {
                 Some(header) => header.to_str()?,
@@ -321,7 +312,6 @@ impl ConnectionWrapper {
 
     fn generate_headers(&self, data: InstanceMetaData, callback_id: &str) -> Result<HeaderMap> {
         let position = self.position.as_ref().map(|x| x.as_str()).unwrap_or("");
-        let twin_target = data.attributes.get("twin_target");
         let mut headers = HeaderMap::new();
         headers.append("CPEE-BASE", HeaderValue::from_str(&data.cpee_base_url)?);
         headers.append("CPEE-Instance", HeaderValue::from_str(&data.instance_id)?);
@@ -343,6 +333,8 @@ impl ConnectionWrapper {
         headers.append("CPEE-CALLBACK-ID", HeaderValue::from_str(callback_id)?);
         headers.append("CPEE-ACTIVITY", HeaderValue::from_str(&position)?);
         headers.append("CPEE-LABEL", HeaderValue::from_str(&self.label)?);
+
+        let twin_target = data.attributes.get("twin_target");
         if let Some(twin_target) = twin_target {
             headers.append("CPEE-TWIN-TARGET", HeaderValue::from_str(twin_target)?);
         }
@@ -364,9 +356,7 @@ impl ConnectionWrapper {
         match self.weel.upgrade() {
             Some(weel) => weel,
             None => {
-                log::error!(
-                    "Weel instance no longer exists, this instance should have been dropped..."
-                );
+                log::error!("Weel instance no longer exists, this connection wrapper instance should have been dropped...");
                 // Todo: What should we do here?
                 panic!()
             }

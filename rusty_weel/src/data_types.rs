@@ -20,17 +20,20 @@ pub struct KeyValuePair {
     pub value: Option<String>,
 }
 
+#[derive(Debug, PartialEq)]
 pub enum State {
+    Ready,
     Starting,
     Running,
     Stopping,
     Stopped,
+    Finishing,
 }
 
 /**
  * Contains all the meta data that is never changing during execution
  */
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct StaticData {
     pub instance_id: String,
     pub host: String,
@@ -79,9 +82,9 @@ pub struct TaskMetaData {
 }
 
 impl StaticData {
-    pub fn load(path: &str) -> StaticData {
+    pub fn load(path: &str) -> Self {
         let config = fs::read_to_string(path).expect("Could not read configuration file!");
-        let config: StaticData =
+        let config: Self =
             serde_yaml::from_str(&config).expect("Could not parse Configuration");
         config
     }
@@ -139,3 +142,44 @@ type UndefinedTypeTODO = ();
 // Define a float type to easily apply changes here if needed
 #[allow(non_camel_case_types)]
 type float = f32;
+
+mod testing {
+    use std::{collections::HashMap, fs};
+
+    use super::StaticData;
+
+    fn create_dummy_static(path: &str) -> StaticData {
+        //let config = fs::read_to_string(path).expect("Could not read configuration file!");
+        let mut attr = HashMap::new();
+        attr.insert("uuid".to_owned(), "test-uuid".to_owned());
+        attr.insert("modeltype".to_owned(), "CPEE".to_owned());
+        let config: StaticData = StaticData {
+            instance_id: "test_id".to_owned(),
+            host: "test_id".to_owned(),
+            base_url: "test_id".to_owned(),
+            redis_url: None,
+            redis_path: Some("test_id".to_owned()),
+            redis_db: 0,
+            redis_workers: 2,
+            global_executionhandlers: "exhs".to_owned(),
+            executionhandlers: "exh".to_owned(),
+            executionhandler: "rust".to_owned(),
+            eval_language: "ruby".to_owned(),
+            eval_backend_url: "ruby_backend_url".to_owned(),
+            attributes: attr,
+        };
+        let file = fs::File::create_new(path).unwrap();
+        serde_yaml::to_writer(file, &config).unwrap();
+        config
+    }
+
+    #[test]
+    fn test_loading_static() {
+        let path = "./test_files/static.data";
+        let _ = fs::remove_file(path);
+        let dummy = create_dummy_static(path);
+        
+        assert_eq!(dummy, StaticData::load(path));
+
+    }
+}
