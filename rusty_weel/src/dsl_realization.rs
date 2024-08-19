@@ -143,7 +143,7 @@ impl Weel {
                     self.positions.lock().unwrap().clear(); 
                     *self.state.lock().unwrap() = State::Running;
 
-                    // TODO: implement the __weel_control_flow logic
+                    // TODO: implement the __weel_control_flow error handling logic in the handle_error/handle_join error
                     let instance_thread = thread::spawn(model);
                     let join_result = instance_thread.join();
                     // Signal stop thread that execution of model ended:

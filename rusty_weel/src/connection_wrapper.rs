@@ -3,10 +3,12 @@ use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue},
     Method,
 };
+use serde::de::value;
 use serde_json::{json, Value};
+use tempfile::tempfile;
 use std::{
     collections::{HashMap, VecDeque},
-    io::{Read, Seek},
+    io::{Read, Seek, Write},
     str::FromStr,
     sync::{Arc, Mutex, Weak},
     thread::sleep,
@@ -218,7 +220,7 @@ impl ConnectionWrapper {
         this.handler_passthrough = Some(callback_id.clone());
 
         // Generate headers
-        let headers: HeaderMap =
+        let mut headers: HeaderMap =
             this.generate_headers(weel.static_data.get_instance_meta_data(), &callback_id)?;
         // Put arguemnts into SimpleParameters that will be part of the body-> Since we cannot upload files from the CPEE for now // TODO?
 
@@ -226,7 +228,7 @@ impl ConnectionWrapper {
         let mut response_headers: HeaderMap;
         let mut content: Vec<Parameter>;
 
-        let regex = match regex::Regex::new(r"^http(s)?-(get|put|post|delete):/") {
+        let regex = match regex::Regex::new(r"^http(s)?-(get|put|post|delete):") {
             Ok(regex) => regex,
             Err(err) => todo!(),
         };
@@ -284,80 +286,103 @@ impl ConnectionWrapper {
             if status == 561 {
                 match weel.static_data.attributes.get("twin_translate") {
                     Some(twin_translate) => {
-                        let client = http_helper::Client::new(&twin_translate, Method::GET)?;
-                        let result = client.execute()?;
-
-                        let status = result.status_code;
-                        let result_headers = result.headers;
-                        let mut content = result.content;
-
-                        if status >= 200 && status < 300 {
-                            let translation_type = match headers.get("CPEE-TWIN-TASKTYPE") {
-                                Some(transl_type) => match transl_type.to_str()? {
-                                    "i" => "instantiation",
-                                    "ir" => "ipc-receive",
-                                    "is" => "ipc-send",
-                                    _ => "instantiation",
-                                },
-                                None => "instantiation",
-                            };
-                            assert!(
-                                content.len() == 1,
-                                "Content after 561 status not singular data"
-                            );
-                            let body = match content.pop().unwrap() {
-                                Parameter::SimpleParameter { value, .. } => value.clone(),
-                                Parameter::ComplexParameter { mut content_handle, .. } => {
-                                    let mut body = String::new();
-                                    content_handle.rewind()?;
-                                    content_handle.read_to_string(&mut body)?;
-                                    body
-                                }
-                            };
-                            let json = json!(body);
-                            assert!(json.is_object());
-                            json
-                        }
+                        handle_twin_translate(twin_translate, &mut headers, &mut this)?;
                     }
                     None => this.handler_endpoints = this.handler_endpoint_origin.clone(),
                 }
-            }
-            /*
-            // Run request
-            // TODO: Check whether this access content_type
-            let content_type = match response_headers.get(CONTENT_TYPE.as_str()) {
-                Some(header) => header.to_str()?,
-                None => "application/octet-stream",
-            };
-
-            // TODO: decide whether we still need the if status == 561 ...... block -> Yes we need it
-
-            // TODO: rewrite this condition and give it a better name
-            if status_code < 200 || status_code >= 300  {
-                // TODO: What to do with the commented out ruby code?
-                // TODO: Why write to file and not just keep it in memory? Too large?
-                let param = Parameter::ComplexParamter { name: "error".to_owned(), mime_type: "application_json".to_owned(), content_handle: tmp};
-                self.callback(vec![param], response_headers)
+                headers.remove("original_endpoint");
             } else {
-                let callback_header_is_set = match response_headers.get("CPEE_CALLBACK") {
-                    Some(header) => {
-                        header.to_str()? == "true"
+                // equivalent to do-while status == 561 in original code
+                break;
+            }
+
+            if status < 200 || status >= 300 {
+                response_headers.insert("CPEE_SALVAGE", HeaderValue::from_str("true").unwrap());
+
+                // Assumption about "gtresult.first.value.read": first is the array method to get the first element
+                let body = match content.pop().unwrap() {
+                    Parameter::SimpleParameter { value, .. } => value.clone(),
+                    Parameter::ComplexParameter {
+                        mut content_handle, ..
+                    } => {
+                        let mut body = String::new();
+                        content_handle.rewind()?;
+                        content_handle.read_to_string(&mut body)?;
+                        body
+                    }
+                };
+
+                // TODO: Very unsure about the semantics of the original code and the usage (is read for the read method in complex param?)
+                let mut json = json!(body);
+                assert!(json.is_object());
+                let err = match json.get_mut("value") {
+                    Some(value) => match value.get("read") {
+                        Some(read) => read.as_str(),
+                        None => value.as_str(),
                     },
+                    None => {
+                        log::error!("value in curl not available for status code < 200 || > 300");
+                        panic!()
+                    }
+                };
+                if let Some(err) = err {
+                    let tempfile = tempfile()?;
+                    tempfile.write_all(err.as_bytes());
+                    tempfile.rewind()?;
+                    this.callback(
+                        vec![Parameter::ComplexParameter {
+                            name: "error".to_owned(),
+                            mime_type: "application/json".to_owned(),
+                            content_handle: tempfile,
+                        }],
+                        response_headers,
+                    )
+                } else {
+                    log::error!("Error in value or read is not a string.")
+                }
+            } else {
+
+
+                let callback_header_set = match response_headers.get("CPEE_CALLBACK") {
+                    Some(header) => header.to_str()? == "true",
                     None => false,
                 };
 
-                if callback_header_is_set {
-                    if response_body.is_empty() {
-
+                if callback_header_set {
+                    if !content.is_empty() {
+                        response_headers.insert("CPEE_UPDATE", HeaderValue::from_str("true").expect("This cannot fail"));
+                        this.callback(content, headers)
                     } else {
-                        response_headers.insert("CPEE_UPDATE".to_owned(), HeaderValue::from_str("true").expect("This cannot fail"));
+                        let instantiation_header_set = match response_headers.get(HeaderName::from_str("CPEE_INSTANTION").unwrap()) {
+                            Some(instantiation_header) => !instantiation_header.is_empty(),
+                            None => false,
+                        };
+                        let event_header_set = match response_headers.get(HeaderName::from_str("CPEE_EVENT").unwrap()) {
+                            Some(event_header) => !event_header.is_empty(),
+                            None => false,
+                        };
+                        let content = HashMap::new();
+                        content.insert("activity_uuid".to_owned(), this.handler_activity_uuid);
+                        content.insert("label".to_owned(), this.label);
+                        content.insert("activity".to_owned(), this.position.unwrap_or("".to_owned()));
+                        content.insert("endpoint".to_owned(), serde_json::to_string(&this.handler_endpoints)?);
 
-                        self.callback(vec![Parameter::ComplexParamter { name: "response".to_owned(), mime_type: content_type.to_owned(), content_handle: response_file }], response_headers)
+                        if instantiation_header_set {
+                            // TODO What about value_helper
+                            content.insert("received".to_owned(), todo!());
+                            weel.redis_notifications_client.lock().unwrap().notify("task/instantiation", Some(content), weel.static_data.get_instance_meta_data());
+                        }
+                        if event_header_set {
+                            // TODO What about value_helper
+                            let event = response_headers.get(HeaderName::from_str("CPEE_EVENT").unwrap()).unwrap().to_str()?;
+                            let event = event.replace("", ""); 
+                            weel.redis_notifications_client.lock().unwrap().notify("task/instantiation", Some(content), weel.static_data.get_instance_meta_data());
+                        }
                     }
+                } else {
+                    
                 }
-
             }
-             */
         }
 
         todo!()
@@ -419,6 +444,118 @@ impl ConnectionWrapper {
     }
 }
 
+fn handle_twin_translate(
+    twin_translate_url: &String,
+    headers: &mut HeaderMap,
+    this: &mut std::sync::MutexGuard<ConnectionWrapper>,
+) -> Result<()> {
+    let client = http_helper::Client::new(&twin_translate_url, Method::GET)?;
+    let result = client.execute()?;
+    let status = result.status_code;
+    let result_headers = result.headers;
+    let mut content = result.content;
+    Ok(if status >= 200 && status < 300 {
+        let translation_type = match headers.get("CPEE-TWIN-TASKTYPE") {
+            Some(transl_type) => match transl_type.to_str()? {
+                "i" => "instantiation",
+                "ir" => "ipc-receive",
+                "is" => "ipc-send",
+                _ => "instantiation",
+            },
+            None => "instantiation",
+        };
+
+        // Assumption about "gtresult.first.value.read": first is the array method to get the first element
+        let body = match content.pop().unwrap() {
+            Parameter::SimpleParameter { value, .. } => value.clone(),
+            Parameter::ComplexParameter {
+                mut content_handle, ..
+            } => {
+                let mut body = String::new();
+                content_handle.rewind()?;
+                content_handle.read_to_string(&mut body)?;
+                body
+            }
+        };
+
+        // TODO: Very unsure about the semantics of the original code and the usage
+        let mut json = json!(body);
+        assert!(json.is_object());
+        let read = json.get_mut("value").map(|e| e.get("read")).flatten();
+        if let Some(array) = read.map(|e| e.as_array_mut()).flatten() {
+            for element in array {
+                if let Some(type_) = element.get("type").map(|e| e.as_str()).flatten() {
+                    if type_ == translation_type {
+                        if let Some(endpoint) =
+                            element.get("endpoint").map(|e| e.as_str()).flatten()
+                        {
+                            this.handler_endpoints = vec![endpoint.to_owned()];
+                        }
+                        if let Some(arguments) = element
+                            .get_mut("arguments")
+                            .map(|e| e.as_object_mut())
+                            .flatten()
+                        {
+                            for (a_name, a_value) in arguments.iter_mut() {
+                                if a_value.is_string() {
+                                    let header_name = a_value.as_str().unwrap().replace("-", "_");
+                                    if let Some(Ok(header)) =
+                                        result_headers.get(header_name).map(|h| h.to_str())
+                                    {
+                                        *a_value = Value::from_str(header)?;
+                                    }
+                                } else if a_value.is_object() {
+                                    let mut a_value_clone = a_value.clone();
+                                    let a_value_map = a_value_clone.as_object().unwrap();
+                                    let mut a_value = a_value.as_object_mut().unwrap();
+                                    for (key, value) in a_value_map {
+                                        if value.is_string() {
+                                            let header_name =
+                                                value.as_str().unwrap().replace("-", "_");
+                                            if let Some(header) = headers.get(header_name) {
+                                                a_value.insert(key.clone(), serde_json::from_str(header.to_str()?)?);
+                                            }
+                                        }
+                                    }
+                                }
+
+                                for (h_name, h_value) in headers.iter_mut() {
+                                    if h_name.as_str() == a_name {
+                                        if a_value.is_string() {
+                                            *h_value =
+                                                HeaderValue::from_str(a_value.as_str().unwrap())?;
+                                        } else if a_value.is_object() {
+                                            let mut current: HashMap<String, String> =
+                                                match serde_json::from_str(h_value.to_str()?) {
+                                                    Ok(val) => val,
+                                                    Err(_err) => {
+                                                        // Ignore parsing error like in original code for now
+                                                        HashMap::new()
+                                                    }
+                                                };
+                                            let iter = a_value.as_object().unwrap().iter().map(
+                                                |(key, value)| {
+                                                    (key.clone(), value.as_str().map(|e| e.to_owned()).unwrap_or_else(|| {
+                                                        log::error!("Could not convert value to string");
+                                                        "".to_owned()
+                                                    }))
+                                                }
+                                            );
+                                            current.extend(iter);
+                                            let header = serde_json::to_string(&current)?;
+                                            *h_value = HeaderValue::from_str(&header)?;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    })
+}
+
 mod test {
     #[test]
     fn test_pattern() {
@@ -427,6 +564,16 @@ mod test {
         assert_eq!(
             regex.replace_all("http-get://test.com", replacement),
             r"http\\1:test.com"
+        );
+    }
+
+    #[test]
+    fn test_pattern_2() {
+        let regex = regex::Regex::new(r"[^\w_-]").unwrap();
+        let replacement = r"";
+        assert_eq!(
+            regex.replace_all("my_name-is_testcase 1", replacement),
+            r"my_name-is_testcase1"
         );
     }
 }

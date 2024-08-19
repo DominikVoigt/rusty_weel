@@ -11,9 +11,7 @@ use reqwest::{
 };
 
 use std::{
-    fs,
-    io::{Read, Seek, Write},
-    str::FromStr,
+    collections::HashMap, fs, io::{Read, Seek, Write}, str::FromStr
 };
 
 pub use mime::*;
@@ -71,7 +69,7 @@ pub struct RawResponse {
 
 
 pub struct ParsedResponse {
-    pub headers: HeaderMap,
+    pub headers: HashMap<String, String>,
     pub content: Vec<Parameter>,
     pub status_code: u16,
 }
@@ -381,10 +379,24 @@ fn construct_multipart(
     Ok(request_builder.multipart(form))
 }
 
+/**
+ * Will be lossy if a header has multiple values.
+ */
+fn header_map_to_hash_map(mut headers: HeaderMap) -> Result<HashMap<String, String>> {
+    let mut header_map = HashMap::with_capacity(headers.keys_len());
+    for (name, value) in headers.drain() {
+        // We only care for the first value of a header for now
+        if let Some(name) = name {
+            header_map.insert(name.as_str().to_owned(), value.to_str()?.to_owned());
+        }
+    };
+    Ok(header_map)
+}
+
 impl RawResponse {
     fn parse_response(self) -> Result<ParsedResponse> {
         Ok(ParsedResponse {
-            headers: self.headers.clone(),
+            headers: header_map_to_hash_map(self.headers.clone())?,
             content: parse_part(Headers::HeaderMap(self.headers), &self.body)?,
             status_code: self.status_code,
         })
