@@ -1,12 +1,9 @@
 use http_helper::Parameter;
-use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
+use reqwest::{header::{HeaderMap, HeaderName, HeaderValue}, Method};
 use serde_json::{json, Value};
+use urlencoding::encode;
 use std::{
-    collections::HashMap,
-    str::FromStr,
-    sync::{Arc, Mutex, Weak},
-    thread::sleep,
-    time::{Duration, SystemTime},
+    collections::HashMap, io::{Read, Seek}, str::FromStr, sync::{Arc, Mutex, Weak}, thread::sleep, time::{Duration, SystemTime}
 };
 
 use crate::{
@@ -14,19 +11,22 @@ use crate::{
     dsl_realization::{generate_random_key, Error, Result, Weel},
 };
 
+// Expected to be guarded with mutex to sensure that method invocations do not deadlock
 pub struct ConnectionWrapper {
     weel: Weak<Weel>,
     position: Option<String>,
     // Continue object for thread synchronization -> TODO: See whether we need this/how we implement this
     handler_continue: Option<()>,
     // See proto_curl in connection.rb
-    handler_passthrough: Mutex<Option<String>>,
+    handler_passthrough: Option<String>,
     // TODO: Unsure about this type:
     handler_return_value: Option<String>,
     // TODO: Determine this type:
     handler_return_options: Option<()>,
     // We keep them as arrays to be flexible but will only contain one element for now
+    // Contains the actual endpoint URL
     handler_endpoints: Vec<String>,
+    // Original endpoint without the twintranslate
     handler_endpoint_origin: Vec<String>,
     handler_activity_uuid: String,
     label: String,
@@ -46,7 +46,7 @@ impl ConnectionWrapper {
             weel,
             position,
             handler_continue,
-            handler_passthrough: Mutex::new(None),
+            handler_passthrough: None,
             handler_return_value: None,
             handler_return_options: None,
             handler_endpoints: Vec::new(),
@@ -134,32 +134,26 @@ impl ConnectionWrapper {
     }
 
     /**
-     * Normaly provides copy of parameters, we do not need this.
-     * Also adapts the endpoint
+     * Resolves the endpoints to their actual URLs
      */
     pub fn prepare(&mut self, endpoints: &Vec<String>) {
+
         if endpoints.len() > 0 {
             let weel = self.weel();
             self.resolve_endpoints(endpoints, &weel);
 
             match weel.static_data.attributes.get("twin_engine") {
-                Some(flag) => {
-                    if !flag.is_empty() {
+                Some(twin_engine_url) => {
+                    if !twin_engine_url.is_empty() {
                         self.handler_endpoint_origin = self.handler_endpoints.clone();
-                        let twin_engine: &str = &weel
-                            .static_data
-                            .attributes
-                            .get("twin_engine")
-                            .expect("Cannot happen");
-
-                        // TODO: Replace the endpoints part: `Riddl::Protocols::Utils::escape`
-                        let endpoints = self.handler_endpoints.get(0).expect("");
+                        
+                        let endpoint = encode(self.handler_endpoints.get(0).expect(""));
                         self.handler_endpoints =
-                            vec![format!("{}?original_endpoint={}", twin_engine, endpoints)];
+                            vec![format!("{}?original_endpoint={}", twin_engine_url, endpoint)];
                     }
                 }
                 None => {
-                    // Do nothing
+                    // Do nothing with the endpoints
                 }
             }
         }
@@ -205,20 +199,28 @@ impl ConnectionWrapper {
      *      - Only the standard headers that are generated in the `henerate_headers` method are send.
      *      - All arguments within the HTTPParams are send as Key-Value pairs as part of the body (application/x-www-form-urlencoded)
      *          -> TODO: Our implementation does multipart, is this fine?
+     * - Expects prepare to be called before
+     * - We explicitly expect the Arc<Mutex> here since we need to add a reference to the callbacks (by cloning the Arc)
      */
-    pub fn curl(self: &Arc<Self>, parameters: &HTTPParams) -> Result<()> {
-        let weel = self.weel();
+    pub fn curl(selfy: &Arc<Mutex<Self>>, parameters: &HTTPParams) -> Result<()> {
+        let mut this = selfy.lock().unwrap();
+        let weel = this.weel();
         let callback_id = generate_random_key();
-        *self.handler_passthrough.lock().unwrap() = Some(callback_id.clone());
+        this.handler_passthrough = Some(callback_id.clone());
 
         // Generate headers
         let headers: HeaderMap =
-            self.generate_headers(weel.static_data.get_instance_meta_data(), &callback_id)?;
+            this.generate_headers(weel.static_data.get_instance_meta_data(), &callback_id)?;
         // Put arguemnts into SimpleParameters that will be part of the body-> Since we cannot upload files from the CPEE for now // TODO?
 
         let mut status: u16;
         let mut response_headers: HeaderMap;
         let mut content: Vec<Parameter>;
+
+        let regex = match regex::Regex::new(r"^http(s)?-(get|put|post|delete):/") {
+            Ok(regex) => regex,
+            Err(err) => todo!(),
+        };
         loop {
             // Compute parameters
             let mut params = Vec::new();
@@ -240,33 +242,71 @@ impl ConnectionWrapper {
             let mut content_json = HashMap::new();
             content_json.insert(
                 "activity_uuid".to_owned(),
-                self.handler_activity_uuid.clone(),
+                this.handler_activity_uuid.clone(),
             );
-            content_json.insert("label".to_owned(), self.label.clone());
-            let position = self
+            content_json.insert("label".to_owned(), this.label.clone());
+            let position = this
                 .position
                 .as_ref()
                 .map(|x| x.clone())
                 .unwrap_or("".to_owned());
             content_json.insert("activity".to_owned(), position);
-
+            
             // TODO: Handler Passthrough? -> When task is called that was async and instance was stopped in between
-            weel.callback(Arc::clone(self), &callback_id, content_json)?;
-
+            weel.callback(Arc::clone(selfy), &callback_id, content_json)?;
+            let endpoint = match this.handler_endpoints.get(0) {
+                Some(endpoint) => regex.replace_all(&endpoint, r"http\\1:"),
+                None => return Err(Error::SyntaxError("No endpoint for curl configured.".to_owned())),
+            };
             // TODO: Determine wheter we need to subsitute the url like in connection.rb
             let mut client = http_helper::Client::new(
-                self.handler_endpoints.get(0).expect("No endpoint provided"),
+                &endpoint,
                 parameters.method.clone(),
             )?;
             client.set_request_headers(headers.clone());
             client.add_parameters(params);
 
             let response = client.execute()?;
-            let status_code = response.status_code;
+            let status = response.status_code;
             response_headers = response.headers;
             content = response.content;
 
-            if status == 561 {}
+            if status == 561 {
+                match weel.static_data.attributes.get("twin_translate") {
+                    Some(twin_translate) => {
+                        let client = http_helper::Client::new(&twin_translate, Method::GET)?;
+                        let result = client.execute()?;
+                        
+                        let status = result.status_code;
+                        let result_headers = result.headers;
+                        let content = result.content;
+
+                        if status >= 200 && status < 300 {
+                            let translation_type = match headers.get("CPEE-TWIN-TASKTYPE") {
+                                Some(transl_type) => {
+                                    match transl_type.to_str()? {
+                                       "i" => "instantiation",
+                                       "ir" => "ipc-receive",
+                                       "is" => "ipc-send",
+                                       _ => "instantiation" 
+                                    }},
+                                None => "instantiation",
+                            };
+                            assert!(content.len() == 1, "Content after 561 status not singular data");
+                            let body = match content.get(0).unwrap() {
+                                Parameter::SimpleParameter { _, value, _ } => value.clone(),
+                                Parameter::ComplexParameter { _, _, content_handle } => {
+                                    let mut body = String::new();
+                                    content_handle.rewind();
+                                    content_handle.read_to_string(&body)
+                                },
+                            };
+                            json!()
+                        }
+                    },
+                    None => this.handler_endpoints = this.handler_endpoint_origin.clone(),
+                }
+            }
             /*
             // Run request
             // TODO: Check whether this access content_type
@@ -361,5 +401,14 @@ impl ConnectionWrapper {
                 panic!()
             }
         }
+    }
+}
+
+mod test {
+    #[test]
+    fn test_pattern() {
+        let regex = regex::Regex::new(r"^http(s)?-(get|put|post|delete):/").unwrap();
+        let replacement = r"http\\1:";
+        assert_eq!(regex.replace_all("http-get://test.com", replacement), r"http\\1:test.com");
     }
 }

@@ -25,7 +25,7 @@ pub struct Weel {
     pub positions: Mutex<Vec<String>>,
     // Contains all open callbacks from async connections, ArcMutex as it is shared between the instance (to insert callbacks) and the callback thread (RedisHelper)
     // TODO: Do we really need Arc wrapping connection wrapper if the hashmap just "owns it directly?"
-    pub callback_keys: Arc<Mutex<std::collections::HashMap<String, Arc<ConnectionWrapper>>>>,
+    pub callback_keys: Arc<Mutex<std::collections::HashMap<String, Arc<Mutex<ConnectionWrapper>>>>>,
     pub redis_notifications_client: Mutex<RedisHelper>,
     // Tracks all open votes via their ID. All voting needs to be finished before stopping.
     pub open_votes: Mutex<HashSet<String>>,
@@ -306,7 +306,7 @@ impl Weel {
 
     pub fn callback(
         &self,
-        hw: Arc<ConnectionWrapper>,
+        hw: Arc<Mutex<ConnectionWrapper>>,
         key: &str,
         mut content: HashMap<String, String>,
     ) -> Result<()> {
@@ -348,7 +348,7 @@ fn handle_join_error(err: Box<dyn std::any::Any + Send>) {
         let x = err.downcast::<String>();
         match x {
             Ok(x) => log::error!("Model thread paniced: {}", x),
-            Err(err) => log::error!("Model thread paniced but provided panic result cannot be cast into a String."),
+            Err(_err) => log::error!("Model thread paniced but provided panic result cannot be cast into a String."),
         }
     };
 }
