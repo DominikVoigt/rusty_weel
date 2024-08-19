@@ -1,10 +1,18 @@
 use http_helper::Parameter;
-use reqwest::{header::{HeaderMap, HeaderName, HeaderValue}, Method};
-use serde_json::{json, Value};
-use urlencoding::encode;
-use std::{
-    collections::HashMap, io::{Read, Seek}, str::FromStr, sync::{Arc, Mutex, Weak}, thread::sleep, time::{Duration, SystemTime}
+use reqwest::{
+    header::{HeaderMap, HeaderName, HeaderValue},
+    Method,
 };
+use serde_json::{json, Value};
+use std::{
+    collections::{HashMap, VecDeque},
+    io::{Read, Seek},
+    str::FromStr,
+    sync::{Arc, Mutex, Weak},
+    thread::sleep,
+    time::{Duration, SystemTime},
+};
+use urlencoding::encode;
 
 use crate::{
     data_types::{HTTPParams, InstanceMetaData},
@@ -137,7 +145,6 @@ impl ConnectionWrapper {
      * Resolves the endpoints to their actual URLs
      */
     pub fn prepare(&mut self, endpoints: &Vec<String>) {
-
         if endpoints.len() > 0 {
             let weel = self.weel();
             self.resolve_endpoints(endpoints, &weel);
@@ -146,10 +153,12 @@ impl ConnectionWrapper {
                 Some(twin_engine_url) => {
                     if !twin_engine_url.is_empty() {
                         self.handler_endpoint_origin = self.handler_endpoints.clone();
-                        
+
                         let endpoint = encode(self.handler_endpoints.get(0).expect(""));
-                        self.handler_endpoints =
-                            vec![format!("{}?original_endpoint={}", twin_engine_url, endpoint)];
+                        self.handler_endpoints = vec![format!(
+                            "{}?original_endpoint={}",
+                            twin_engine_url, endpoint
+                        )];
                     }
                 }
                 None => {
@@ -251,18 +260,19 @@ impl ConnectionWrapper {
                 .map(|x| x.clone())
                 .unwrap_or("".to_owned());
             content_json.insert("activity".to_owned(), position);
-            
+
             // TODO: Handler Passthrough? -> When task is called that was async and instance was stopped in between
             weel.callback(Arc::clone(selfy), &callback_id, content_json)?;
             let endpoint = match this.handler_endpoints.get(0) {
                 Some(endpoint) => regex.replace_all(&endpoint, r"http\\1:"),
-                None => return Err(Error::SyntaxError("No endpoint for curl configured.".to_owned())),
+                None => {
+                    return Err(Error::SyntaxError(
+                        "No endpoint for curl configured.".to_owned(),
+                    ))
+                }
             };
             // TODO: Determine wheter we need to subsitute the url like in connection.rb
-            let mut client = http_helper::Client::new(
-                &endpoint,
-                parameters.method.clone(),
-            )?;
+            let mut client = http_helper::Client::new(&endpoint, parameters.method.clone())?;
             client.set_request_headers(headers.clone());
             client.add_parameters(params);
 
@@ -276,34 +286,39 @@ impl ConnectionWrapper {
                     Some(twin_translate) => {
                         let client = http_helper::Client::new(&twin_translate, Method::GET)?;
                         let result = client.execute()?;
-                        
+
                         let status = result.status_code;
                         let result_headers = result.headers;
-                        let content = result.content;
+                        let mut content = result.content;
 
                         if status >= 200 && status < 300 {
                             let translation_type = match headers.get("CPEE-TWIN-TASKTYPE") {
-                                Some(transl_type) => {
-                                    match transl_type.to_str()? {
-                                       "i" => "instantiation",
-                                       "ir" => "ipc-receive",
-                                       "is" => "ipc-send",
-                                       _ => "instantiation" 
-                                    }},
+                                Some(transl_type) => match transl_type.to_str()? {
+                                    "i" => "instantiation",
+                                    "ir" => "ipc-receive",
+                                    "is" => "ipc-send",
+                                    _ => "instantiation",
+                                },
                                 None => "instantiation",
                             };
-                            assert!(content.len() == 1, "Content after 561 status not singular data");
-                            let body = match content.get(0).unwrap() {
-                                Parameter::SimpleParameter { _, value, _ } => value.clone(),
-                                Parameter::ComplexParameter { _, _, content_handle } => {
+                            assert!(
+                                content.len() == 1,
+                                "Content after 561 status not singular data"
+                            );
+                            let body = match content.pop().unwrap() {
+                                Parameter::SimpleParameter { value, .. } => value.clone(),
+                                Parameter::ComplexParameter { mut content_handle, .. } => {
                                     let mut body = String::new();
-                                    content_handle.rewind();
-                                    content_handle.read_to_string(&body)
-                                },
+                                    content_handle.rewind()?;
+                                    content_handle.read_to_string(&mut body)?;
+                                    body
+                                }
                             };
-                            json!()
+                            let json = json!(body);
+                            assert!(json.is_object());
+                            json
                         }
-                    },
+                    }
                     None => this.handler_endpoints = this.handler_endpoint_origin.clone(),
                 }
             }
@@ -409,6 +424,9 @@ mod test {
     fn test_pattern() {
         let regex = regex::Regex::new(r"^http(s)?-(get|put|post|delete):/").unwrap();
         let replacement = r"http\\1:";
-        assert_eq!(regex.replace_all("http-get://test.com", replacement), r"http\\1:test.com");
+        assert_eq!(
+            regex.replace_all("http-get://test.com", replacement),
+            r"http\\1:test.com"
+        );
     }
 }
