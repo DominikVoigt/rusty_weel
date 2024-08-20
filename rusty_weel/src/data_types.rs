@@ -3,7 +3,6 @@ use std::{collections::HashMap, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-//TODO: Think whether we can merge this with the http helper
 #[derive(Debug, Clone)]
 pub struct HTTPParams {
     pub label: &'static str,

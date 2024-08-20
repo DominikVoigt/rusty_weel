@@ -1,8 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
-    sync::{Arc, Mutex},
-    thread::{self, sleep, JoinHandle},
-    time::Duration,
+    collections::{HashMap, HashSet}, panic::{set_hook, take_hook}, sync::{Arc, Mutex}, thread::{self, sleep, JoinHandle}, time::Duration
 };
 
 use crate::{
@@ -33,17 +30,15 @@ impl RedisHelper {
      *  Panics if this fails
      * connection_name: Name of the connection displayed within the redis instance
      */
-    pub fn new(static_data: &StaticData, connection_name: &str) -> Self {
+    pub fn new(static_data: &StaticData, connection_name: &str) -> Result<Self> {
         let workers = static_data.redis_workers;
-        // TODO: Think about returning result instead of panic here.
-        let connection = connect_to_redis(static_data, connection_name)
-            .expect("Could not establish initial redis connection");
+        let connection = connect_to_redis(static_data, connection_name)?;
 
-        Self {
+        Ok(Self {
             connection,
             workers,
             last: workers,
-        }
+        })
     }
 
     fn target_worker(&mut self) -> u32 {
@@ -63,7 +58,7 @@ impl RedisHelper {
         instace_meta_data: InstanceMetaData,
     ) -> Result<()> {
         let mut content: HashMap<String, String> = content.unwrap_or(HashMap::new());
-        // TODO: We do add attributes_translated here, do we need to do this?
+        // TODO: Original code adds attributes_translated here, do we need to do this?
         content.insert(
             "attributes".to_owned(),
             serde_json::to_string(&instace_meta_data.attributes)
@@ -139,8 +134,6 @@ impl RedisHelper {
      * If it subscribed to the necessary topics, it will start a new thread that handles incomming redis messages
      * The thread receives a shared reference to the controller.
      * This method should be called exactly once, if it is called a second time, it will panic to prevent an accidental invokation.
-     * 
-     * // TODO: Seems to be semantically equal now -> **Review later**
      */
     pub fn establish_callback_subscriptions(
         static_data: &StaticData,
@@ -175,6 +168,14 @@ impl RedisHelper {
         }
 
         thread::spawn(move || -> Result<()> {
+            // We will terminate the process if callback thread panics
+            let original_hook = take_hook();
+            set_hook(Box::new(move |panic_info| {
+                log::error!("{}", panic_info);
+                original_hook(panic_info);
+                std::process::exit(1)
+            }));
+
             let mut redis_helper = RedisHelper {
                 connection,
                 workers,
@@ -200,13 +201,11 @@ impl RedisHelper {
                             let params = construct_parameters(&message_json);
                             let headers = convert_headers_to_map(&message_json["content"]["headers"]);
                             callback_keys.get(&topic.type_)
-                                                // TODO: This panic will not result in termination -> Detached thread panics    
                                                .expect("Cannot happen as we check containment previously and hold mutex throughout")
                                                .callback(params, headers);
                         }
                     }
                     "callback-end:*" => {
-                        // TODO: Issue: We will not learn when this fails as the thread is detached and a panic here will not let the program panic
                         callback_keys
                             .lock()
                             .expect("Mutex of callback_keys was poisoned")
@@ -277,7 +276,6 @@ impl RedisHelper {
  * The URL format is redis://[<username>][:<password>@]<hostname>[:port][/<db>]
  * redis+unix:///<path>[?db=<db>[&pass=<password>][&user=<username>]]
  * unix:///<path>[?db=<db>][&pass=<password>][&user=<username>]]
- * // TODO: Check whether connection with socket and TCP works
  */
 fn connect_to_redis(
     configuration: &StaticData,
@@ -493,7 +491,7 @@ mod test {
             }
         });
 
-        let mut redis = RedisHelper::new(&get_unix_socket_configuration(), "pub_sub_test");
+        let mut redis = RedisHelper::new(&get_unix_socket_configuration(), "pub_sub_test").unwrap();
         redis
             .blocking_pub_sub(
                 vec!["event:*".to_owned()],
@@ -519,7 +517,7 @@ mod test {
     fn test_send() -> Result<()>{
         let rec_thread = thread::spawn(|| -> Result<()> {
             let mut redis_receiver =
-                RedisHelper::new(&get_unix_socket_configuration(), "test_connection");
+                RedisHelper::new(&get_unix_socket_configuration(), "test_connection").unwrap();
             redis_receiver.blocking_pub_sub(
                 vec!["event:*".to_owned()],
                 |payload: &str, pattern: &str, topic: Topic| {
@@ -560,7 +558,7 @@ mod test {
             Ok(())
         });
         let mut redis_sender =
-            RedisHelper::new(&get_unix_socket_configuration(), "test_connection");
+            RedisHelper::new(&get_unix_socket_configuration(), "test_connection").unwrap();
 
         redis_sender.send("event", "test_state/changed", get_unix_socket_configuration().get_instance_meta_data(), Some("test_payload"))?;  
         let result = rec_thread.join();

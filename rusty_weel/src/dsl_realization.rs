@@ -3,7 +3,7 @@ use std::any::TypeId;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::sync::mpsc::{Receiver, Sender};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
 use std::time::SystemTime;
 
@@ -24,7 +24,6 @@ pub struct Weel {
     pub state: Mutex<State>,
     pub positions: Mutex<Vec<String>>,
     // Contains all open callbacks from async connections, ArcMutex as it is shared between the instance (to insert callbacks) and the callback thread (RedisHelper)
-    // TODO: Do we really need Arc wrapping connection wrapper if the hashmap just "owns it directly?"
     pub callback_keys: Arc<Mutex<std::collections::HashMap<String, Arc<Mutex<ConnectionWrapper>>>>>,
     pub redis_notifications_client: Mutex<RedisHelper>,
     // Tracks all open votes via their ID. All voting needs to be finished before stopping.
@@ -76,7 +75,10 @@ impl DSL for Weel {
         todo!()
     }
 
-    fn parallel_branch(&self, /*data: &str,*/ lambda: impl Fn() -> Result<()> + Sync) -> Result<()> {
+    fn parallel_branch(
+        &self,
+        /*data: &str,*/ lambda: impl Fn() -> Result<()> + Sync,
+    ) -> Result<()> {
         println!("Executing parallel branch");
         thread::scope(|scope| {
             scope.spawn(|| {
@@ -103,7 +105,11 @@ impl DSL for Weel {
         todo!()
     }
 
-    fn loop_exec(&self, condition: Result<bool>, lambda: impl Fn() -> Result<()> + Sync) -> Result<()> {
+    fn loop_exec(
+        &self,
+        condition: Result<bool>,
+        lambda: impl Fn() -> Result<()> + Sync,
+    ) -> Result<()> {
         println!("Executing loop!");
         lambda();
         todo!()
@@ -134,15 +140,21 @@ impl Weel {
      * Starts execution
      * To pass it to execution thread we need Send + Sync
      */
-    pub fn start(&self, model: impl Fn() -> Result<()> + Send + 'static, stop_signal_sender: Sender<()>) {
+    pub fn start(
+        &self,
+        model: impl Fn() -> Result<()> + Send + 'static,
+        stop_signal_sender: Sender<()>,
+    ) {
         let mut content = HashMap::new();
         content.insert("state".to_owned(), "running".to_owned());
         match self.vote("state/change", content) {
-            Ok(voted_start) => {        
+            Ok(voted_start) => {
                 if voted_start {
-                    self.positions.lock().unwrap().clear(); 
-                    *self.state.lock().unwrap() = State::Running;
-
+                    {
+                        // Use custom scope to ensure dropping occurs asap
+                        self.positions.lock().unwrap().clear();
+                        *self.state.lock().unwrap() = State::Running;
+                    }
                     // TODO: implement the __weel_control_flow error handling logic in the handle_error/handle_join error
                     let instance_thread = thread::spawn(model);
                     let join_result = instance_thread.join();
@@ -158,12 +170,12 @@ impl Weel {
                                 Ok(()) => {
                                     match *self.state.lock().unwrap() {
                                         State::Running | State::Finishing => todo!(),
-                                        State::Stopping => {},
+                                        State::Stopping => {}
                                         _ => {
-                                                //Do nothing
-                                            }
+                                            //Do nothing
+                                        }
                                     }
-                                },
+                                }
                                 Err(err) => handle_error(err),
                             }
                         }
@@ -172,7 +184,7 @@ impl Weel {
                 } else {
                     self.abort_start();
                 };
-            },
+            }
             Err(err) => handle_error(err),
         }
     }
@@ -184,36 +196,42 @@ impl Weel {
         *state = State::Stopped;
     }
 
-    pub fn stop(&self, stop_signal_receiver: Receiver<()>) -> Result<()> {
-        let mut state = self.state.lock().expect("Could not lock state mutex");
-        match *state {
-            State::Ready => *state = State::Stopped,
-            State::Running => {
-                // TODO: Where will this be set to stopped?
-                *state = State::Stopping;
-                let rec_result = stop_signal_receiver.recv();
-                if matches!(rec_result, Err(_)) {
-                    log::error!("Error receiving termination signal for model thread. Sender must have been dropped.")
+    pub fn stop(&self, stop_signal_receiver: &mut Receiver<()>) -> Result<()> {
+        {
+            let mut state = self.state.lock().expect("Could not lock state mutex");
+            match *state {
+                State::Ready => *state = State::Stopped,
+                State::Running => {
+                    // TODO: Where will this be set to stopped?
+                    *state = State::Stopping;
+                    let rec_result = stop_signal_receiver.recv();
+                    if matches!(rec_result, Err(_)) {
+                        log::error!("Error receiving termination signal for model thread. Sender must have been dropped.")
+                    }
                 }
-            },
-            _ => log::info!("Instance stop was called but instance is in state: {:?}", *state),
+                _ => log::info!(
+                    "Instance stop was called but instance is in state: {:?}",
+                    *state
+                ),
+            }
         }
-       
+
+        let mut redis = self
+            .redis_notifications_client
+            .lock()
+            .expect("Could not acquire mutex");
         for vote_id in self
             .open_votes
             .lock()
             .expect("Could not capture mutex")
             .iter()
         {
-            self.redis_notifications_client
-                .lock()
-                .expect("Could not acquire mutex")
-                .send(
-                    "vote-response",
-                    vote_id,
-                    self.static_data.get_instance_meta_data(),
-                    Some("true"),
-                )?;
+            redis.send(
+                "vote-response",
+                vote_id,
+                self.static_data.get_instance_meta_data(),
+                Some("true"),
+            )?;
         }
         Ok(())
     }
@@ -231,7 +249,7 @@ impl Weel {
                 "Instance {} Vote | voting on: {}",
                 static_data.instance_id, vote_topic
             ),
-        );
+        )?;
         for client in redis_helper
             .extract_handler(&static_data.instance_id, &handler)
             .iter()
@@ -258,10 +276,12 @@ impl Weel {
         }
 
         if votes.len() > 0 {
-            self.open_votes
-                .lock()
-                .expect("could not lock votes")
-                .extend(votes.clone());
+            {
+                self.open_votes
+                    .lock()
+                    .expect("could not lock votes")
+                    .extend(votes.clone());
+            }
             // TODO: Check whether topics have correct structure, check blocking_pub_sub function documentation.
             let topics = votes
                 .iter()
@@ -288,7 +308,6 @@ impl Weel {
                         .lock()
                         .expect("Could not lock votes ")
                         .remove(&get_str_from_value!(message["name"]));
-                    // TODO: should we really `cancel_callback m['name']` ?
                     self.cancel_callback(
                         message["name"]
                             .as_str()
@@ -348,7 +367,9 @@ fn handle_join_error(err: Box<dyn std::any::Any + Send>) {
         let x = err.downcast::<String>();
         match x {
             Ok(x) => log::error!("Model thread paniced: {}", x),
-            Err(_err) => log::error!("Model thread paniced but provided panic result cannot be cast into a String."),
+            Err(_err) => log::error!(
+                "Model thread paniced but provided panic result cannot be cast into a String."
+            ),
         }
     };
 }
@@ -371,6 +392,7 @@ pub enum Error {
     StrUTF8Error(std::str::Utf8Error),
     StringUTF8Error(std::string::FromUtf8Error),
     HttpHelperError(http_helper::Error),
+    PoisonError()
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -390,7 +412,14 @@ impl Error {
             Error::ReqwestError(_) => todo!(),
             Error::ToStrError(_) => todo!(),
             Error::HttpHelperError(_) => todo!(),
+            Error::PoisonError() => todo!(),
         }
+    }
+}
+
+impl<T> From<PoisonError<T>> for Error {
+    fn from(value: PoisonError<T>) -> Self {
+        Error::PoisonError()
     }
 }
 

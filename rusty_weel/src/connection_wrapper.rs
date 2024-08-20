@@ -1,19 +1,22 @@
+use base64::Engine;
+use encoding_rs::UTF_8;
 use http_helper::Parameter;
 use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue},
     Method,
 };
-use serde::de::value;
+use rust_icu_ucsdet::CharsetDetector;
+use serde::Serialize;
 use serde_json::{json, Value};
-use tempfile::tempfile;
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::HashMap,
     io::{Read, Seek, Write},
-    str::FromStr,
+    str::{Chars, FromStr},
     sync::{Arc, Mutex, Weak},
     thread::sleep,
     time::{Duration, SystemTime},
 };
+use tempfile::tempfile;
 use urlencoding::encode;
 
 use crate::{
@@ -40,6 +43,7 @@ pub struct ConnectionWrapper {
     handler_endpoint_origin: Vec<String>,
     handler_activity_uuid: String,
     label: String,
+    annotations: Option<String>,
 }
 
 // Determines whether recurring calls are too close together (in seconds)
@@ -63,13 +67,13 @@ impl ConnectionWrapper {
             handler_activity_uuid: generate_random_key(),
             label: "".to_owned(),
             handler_endpoint_origin: Vec::new(),
+            annotations: None,
         }
     }
 
     pub fn loop_guard(&self, id: String) {
         let attributes = &self.weel().static_data.attributes;
         let loop_guard_attribute = attributes.get("nednoamol");
-        // TODO: Return if loop guard true?
         if loop_guard_attribute.is_some_and(|attrib| attrib == "true") {
             return;
         }
@@ -222,7 +226,7 @@ impl ConnectionWrapper {
         // Generate headers
         let mut headers: HeaderMap =
             this.generate_headers(weel.static_data.get_instance_meta_data(), &callback_id)?;
-        // Put arguemnts into SimpleParameters that will be part of the body-> Since we cannot upload files from the CPEE for now // TODO?
+        // Put arguments into SimpleParameters that will be part of the body-> Since we cannot upload files from the CPEE for now // TODO?
 
         let mut status: u16;
         let mut response_headers: HashMap<String, String>;
@@ -268,7 +272,6 @@ impl ConnectionWrapper {
                 .unwrap_or("".to_owned());
             content_json.insert("activity".to_owned(), position);
 
-            // TODO: Handler Passthrough? -> When task is called that was async and instance was stopped in between
             weel.callback(Arc::clone(selfy), &callback_id, content_json)?;
             let endpoint = match this.handler_endpoints.get(0) {
                 Some(endpoint) => protocol_regex.replace_all(&endpoint, r"http\\1:"),
@@ -278,7 +281,6 @@ impl ConnectionWrapper {
                     ))
                 }
             };
-            // TODO: Determine wheter we need to subsitute the url like in connection.rb
             let mut client = http_helper::Client::new(&endpoint, parameters.method.clone())?;
             client.set_request_headers(headers.clone());
             client.add_parameters(params);
@@ -341,13 +343,11 @@ impl ConnectionWrapper {
                             content_handle: tempfile,
                         }],
                         response_headers,
-                    )
+                    )?
                 } else {
                     log::error!("Error in value or read is not a string.")
                 }
             } else {
-
-
                 let callback_header_set = match response_headers.get("CPEE_CALLBACK") {
                     Some(header) => header == "true",
                     None => false,
@@ -356,9 +356,10 @@ impl ConnectionWrapper {
                 if callback_header_set {
                     if !content.is_empty() {
                         response_headers.insert("CPEE_UPDATE".to_owned(), "true".to_owned());
-                        this.callback(content, response_headers)
+                        this.callback(content, response_headers)?
                     } else {
-                        let instantiation_header_set = match response_headers.get("CPEE_INSTANTION") {
+                        let instantiation_header_set = match response_headers.get("CPEE_INSTANTION")
+                        {
                             Some(instantiation_header) => !instantiation_header.is_empty(),
                             None => false,
                         };
@@ -367,26 +368,43 @@ impl ConnectionWrapper {
                             None => false,
                         };
                         let mut content = HashMap::new();
-                        content.insert("activity_uuid".to_owned(), this.handler_activity_uuid.clone());
+                        content.insert(
+                            "activity_uuid".to_owned(),
+                            this.handler_activity_uuid.clone(),
+                        );
                         content.insert("label".to_owned(), this.label.clone());
-                        content.insert("activity".to_owned(), this.position.clone().unwrap_or("".to_owned()));
-                        content.insert("endpoint".to_owned(), serde_json::to_string(&this.handler_endpoints)?);
-                        
+                        content.insert(
+                            "activity".to_owned(),
+                            this.position.clone().unwrap_or("".to_owned()),
+                        );
+                        content.insert(
+                            "endpoint".to_owned(),
+                            serde_json::to_string(&this.handler_endpoints)?,
+                        );
+
                         if instantiation_header_set {
                             // TODO What about value_helper
                             content.insert("received".to_owned(), "dummy value".to_owned());
-                            weel.redis_notifications_client.lock().unwrap().notify("task/instantiation", Some(content.clone()), weel.static_data.get_instance_meta_data())?;
+                            weel.redis_notifications_client.lock().unwrap().notify(
+                                "task/instantiation",
+                                Some(content.clone()),
+                                weel.static_data.get_instance_meta_data(),
+                            )?;
                         }
                         if event_header_set {
                             // TODO What about value_helper
                             let event = response_headers.get("CPEE_EVENT").unwrap();
                             let event = event_regex.replace_all(event, "");
                             let what = format!("task/{event}");
-                            weel.redis_notifications_client.lock().unwrap().notify(&what, Some(content), weel.static_data.get_instance_meta_data())?;
+                            weel.redis_notifications_client.lock().unwrap().notify(
+                                &what,
+                                Some(content),
+                                weel.static_data.get_instance_meta_data(),
+                            )?;
                         }
                     }
                 } else {
-                    this.callback(content, response_headers)
+                    this.callback(content, response_headers)?
                 }
             }
         }
@@ -394,8 +412,95 @@ impl ConnectionWrapper {
         todo!()
     }
 
-    pub fn callback(&self, parameters: Vec<Parameter>, headers: HashMap<String, String>) {
-        
+    pub fn callback(
+        &self,
+        parameters: Vec<Parameter>,
+        headers: HashMap<String, String>,
+        options: Option<HashMap<String, String>>,
+    ) -> Result<()> {
+        let weel = self.weel();
+        let recv = structurize_result(parameters)?;
+        let mut redis = weel.redis_notifications_client.lock()?;
+        let mut content = HashMap::new();
+        content.insert(
+            "activity-uuid".to_owned(),
+            self.handler_activity_uuid.clone(),
+        );
+        content.insert("label".to_owned(), self.label.clone());
+        content.insert(
+            "activity".to_owned(),
+            self.position
+                .clone()
+                .map(|e| e.clone())
+                .unwrap_or("".to_owned()),
+        );
+        content.insert(
+            "endpoint".to_owned(),
+            serde_json::to_string(&self.handler_endpoints)?,
+        );
+        {
+            let mut content = content.clone();
+            content.insert("received".to_owned(), serde_json::to_string(&recv)?);
+            content.insert(
+                "annotations".to_owned(),
+                self.annotations.clone().unwrap_or("".to_owned()),
+            );
+
+            redis.notify(
+                "activity/receiving",
+                Some(content),
+                weel.static_data.get_instance_meta_data(),
+            )?;
+        }
+        match options {
+            Some(options) => {
+                if options
+                    .get("CPEE_INSTANTIATION")
+                    .map(|e| !e.is_empty())
+                    .unwrap_or(false)
+                {
+                    let mut content = content.clone();
+                    // CPEE::ValueHelper.parse(options['CPEE_INSTANTIATION'])
+                    content.insert("received".to_owned(), todo!());
+
+                    redis.notify(
+                        "activity/receiving",
+                        Some(content),
+                        weel.static_data.get_instance_meta_data(),
+                    )?;
+                }
+                if options
+                    .get("CPEE_EVENT")
+                    .map(|e| !e.is_empty())
+                    .unwrap_or(false)
+                {
+                    let event_regex = match regex::Regex::new(r"[^\w_-]") {
+                        Ok(regex) => regex,
+                        Err(err) => todo!(),
+                    };
+                    let event = options
+                        .get("CPEE_EVENT")
+                        .map(|e| e.clone())
+                        .unwrap_or("".to_owned());
+                    let event = event_regex.replace_all(&event, "");
+
+                    let mut content = content.clone();
+                    content.insert("received".to_owned(), serde_json::to_string(&recv)?);
+
+                    redis.notify(
+                        &format!("task/{event}"),
+                        Some(content),
+                        weel.static_data.get_instance_meta_data(),
+                    )?;
+                } else {
+                    self.handler_return_value = simplify_result(parameters);
+                    self.handler_return_options = options.clone();
+                }
+            }
+            None => todo!(),
+        }
+
+        Ok(())
     }
 
     fn generate_headers(&self, data: InstanceMetaData, callback_id: &str) -> Result<HeaderMap> {
@@ -448,6 +553,144 @@ impl ConnectionWrapper {
                 // Todo: What should we do here?
                 panic!()
             }
+        }
+    }
+}
+
+fn simplify_result(parameters: Vec<Parameter>) -> String {
+    let mut result: Vec<String> = parameters.into_iter().map(|e| {
+        match e {
+            Parameter::SimpleParameter {
+                value,
+                ..
+            } => value,
+            Parameter::ComplexParameter {
+                mut content_handle,
+                ..
+            } => {
+                let mut buf = String::new();
+                content_handle.read_to_string(&mut buf);
+                buf
+            }
+        }
+    }).collect();
+    if result.is_empty() {
+        "".to_owned()
+    } else if result.len() == 1 {
+        result.pop().unwrap()
+    } else {
+        let result = result.join(", ");
+        format!("[{result}]")
+    }
+}
+
+#[derive(Serialize)]
+struct StructuredResultElement {
+    name: String,
+    data: String,
+    mime_type: Option<String>,
+}
+
+fn structurize_result(parameters: Vec<Parameter>) -> Result<Vec<StructuredResultElement>> {
+    let mut result = Vec::new();
+    for parameter in parameters.into_iter() {
+        match parameter {
+            Parameter::SimpleParameter { name, value, .. } => {
+                result.push(StructuredResultElement {
+                    name,
+                    data: value,
+                    mime_type: None,
+                })
+            }
+            Parameter::ComplexParameter {
+                name,
+                mime_type,
+                mut content_handle,
+            } => {
+                let mut data: Vec<u8> = Vec::new();
+                content_handle.read_to_end(&mut data)?;
+                let data = validate_encoding(mime_type.clone(), data);
+                result.push(StructuredResultElement {
+                    name,
+                    mime_type: Some(mime_type),
+                    data,
+                })
+            }
+        }
+    }
+    Ok(result)
+}
+
+// TODO: not quite sure
+fn validate_encoding(mime_type: String, data: Vec<u8>) -> String {
+    match String::from_utf8(data.clone()) {
+        Ok(string) => string,
+        Err(err) => {
+            log::error!(
+                "data seems not to be UTF-8 encoded: {:?}, try detecting encoding...",
+                err
+            );
+            let encoding = detect_encoding(&data);
+            let decode_result = match encoding_rs::Encoding::for_label(encoding.as_bytes()) {
+                Some(x) => x.decode(&data).0.into_owned(),
+                // If the detected encoding is not identifiable by the decode library, emit error and decode as UTF-8 anyway
+                None => {
+                    log::error!(
+                        "Encoding could not be found by the provided label: {}",
+                        encoding
+                    );
+                    convert_to_base64(data)
+                }
+            };
+            decode_result
+            // TODO: What to do with this Hash part????
+        }
+    }
+}
+
+// TODO: Pretty sure this should work
+fn convert_to_base64(data: Vec<u8>) -> String {
+    match infer::get(&data) {
+        Some(mime_type) => {
+            format!(
+                "data:{};base64,{}",
+                mime_type.mime_type(),
+                base64::prelude::BASE64_STANDARD.encode(data)
+            )
+        }
+        None => {
+            format!(
+                "data:application/octet-stream;base64,{}",
+                base64::prelude::BASE64_STANDARD.encode(data)
+            )
+        }
+    }
+}
+
+// TODO: Very unsure about this
+fn detect_encoding(data: &[u8]) -> String {
+    let mut detector = match CharsetDetector::new() {
+        Ok(x) => x,
+        Err(err) => {
+            log::error!("Could not initialize charset detector: {:?}", err);
+            return "OTHER".to_owned();
+        }
+    };
+    match detector.set_text(data) {
+        Ok(_) => {}
+        Err(err) => {
+            log::error!("Error setting text: {err}");
+            panic!()
+        }
+    }
+    match detector.detect() {
+        Ok(encoding) => match encoding.name() {
+            Ok(name) => name.to_owned(),
+            Err(_) => "OTHER".to_owned(),
+        },
+        Err(err) => {
+            log::error!("Could not detect encoding: {:?}", err);
+            "OTHER".to_owned()
         }
     }
 }
@@ -507,9 +750,7 @@ fn handle_twin_translate(
                             for (a_name, a_value) in arguments.iter_mut() {
                                 if a_value.is_string() {
                                     let header_name = a_value.as_str().unwrap().replace("-", "_");
-                                    if let Some(header) =
-                                        result_headers.get(&header_name)
-                                    {
+                                    if let Some(header) = result_headers.get(&header_name) {
                                         *a_value = Value::from_str(header)?;
                                     }
                                 } else if a_value.is_object() {
@@ -521,7 +762,10 @@ fn handle_twin_translate(
                                             let header_name =
                                                 value.as_str().unwrap().replace("-", "_");
                                             if let Some(header) = headers.get(header_name) {
-                                                a_value.insert(key.clone(), serde_json::from_str(header.to_str()?)?);
+                                                a_value.insert(
+                                                    key.clone(),
+                                                    serde_json::from_str(header.to_str()?)?,
+                                                );
                                             }
                                         }
                                     }
@@ -565,6 +809,10 @@ fn handle_twin_translate(
 }
 
 mod test {
+    use std::fs;
+
+    use crate::connection_wrapper::{detect_encoding, validate_encoding};
+
     #[test]
     fn test_pattern() {
         let regex = regex::Regex::new(r"^http(s)?-(get|put|post|delete):/").unwrap();
@@ -582,6 +830,42 @@ mod test {
         assert_eq!(
             regex.replace_all("my_name-is_testcase  1", replacement),
             r"my_name-is_testcase1"
+        );
+    }
+
+    #[test]
+    fn test_detect() {
+        // Detect the most relevant web: https://w3techs.com/technologies/overview/character_encoding
+        let data = fs::read("./test_files/utf8.txt").unwrap();
+        let encoding = detect_encoding(&data);
+        assert_eq!("UTF-8", encoding);
+        println!("Detected encoding: {}", encoding);
+
+        let result = validate_encoding("text/plain".to_owned(), data);
+        println!("{}", result);
+        assert_eq!(
+            indoc::indoc! {r#"première is first
+                    première is slightly different
+                    Кириллица is Cyrillic
+                    𐐀 am Deseret
+                    "#},
+            result
+        );
+
+        let data = fs::read("./test_files/latin1.txt").unwrap();
+        let encoding = detect_encoding(&data);
+        println!("Detected encoding: {}", encoding);
+        assert_eq!("ISO-8859-1", encoding);
+
+        let result = validate_encoding("text/plain".to_owned(), data);
+        println!("{}", result);
+        assert_eq!(
+            indoc::indoc! {r#"première is first
+                    premie?re is slightly different
+                    ????????? is Cyrillic
+                    ?? am Deseret
+                    "#},
+            result
         );
     }
 }

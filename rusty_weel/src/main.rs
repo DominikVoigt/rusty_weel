@@ -148,12 +148,12 @@ fn main() {
     local_weel.start(model, stopped_signal_sender);
 }
 
-fn setup_signal_handler(weel: &Arc<Weel>, stop_signal_receiver: Receiver<()>) {
+fn setup_signal_handler(weel: &Arc<Weel>, mut stop_signal_receiver: Receiver<()>) {
     let weel = Arc::clone(weel);
     
     if let Err(err) = ctrlc::set_handler(move || {
        log::info!("Received SIGINT/SIGTERM/SIGHUP. Set state to stopping...");
-       weel.stop(stop_signal_receiver);
+       weel.stop(&mut stop_signal_receiver);
        log::info!("Set state to stopping");
     }) {
         panic!("Could not setup SIGINT/SIGTERM/SIGHUP handler: {err}")

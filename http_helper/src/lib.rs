@@ -260,7 +260,6 @@ impl Client {
      * Executes the request and consumes the client as the headers and parameters are consumed by the request
      */
     pub fn execute(self) -> Result<ParsedResponse> {
-        // TODO: What to do in case of a different status_code
         let raw = self.execute_raw()?;
 
         raw.parse_response()
@@ -339,7 +338,6 @@ fn construct_singular_body(
                 // Need to provide content_type but not content-length
                 .header(
                     CONTENT_TYPE,
-                    // TODO: Is this the correct mimetype?
                     mime::APPLICATION_WWW_FORM_URLENCODED.to_string(),
                 )
         }
@@ -382,9 +380,9 @@ fn construct_multipart(
 /**
  * Will be lossy if a header has multiple values.
  */
-fn header_map_to_hash_map(mut headers: HeaderMap) -> Result<HashMap<String, String>> {
+fn header_map_to_hash_map(headers: HeaderMap) -> Result<HashMap<String, String>> {
     let mut header_map = HashMap::with_capacity(headers.keys_len());
-    for (name, value) in headers.drain() {
+    for (name, value) in headers.into_iter() {
         // We only care for the first value of a header for now
         if let Some(name) = name {
             header_map.insert(name.as_str().to_owned(), value.to_str()?.to_owned());
