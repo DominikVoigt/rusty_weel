@@ -225,13 +225,18 @@ impl ConnectionWrapper {
         // Put arguemnts into SimpleParameters that will be part of the body-> Since we cannot upload files from the CPEE for now // TODO?
 
         let mut status: u16;
-        let mut response_headers: HeaderMap;
+        let mut response_headers: HashMap<String, String>;
         let mut content: Vec<Parameter>;
 
-        let regex = match regex::Regex::new(r"^http(s)?-(get|put|post|delete):") {
+        let protocol_regex = match regex::Regex::new(r"^http(s)?-(get|put|post|delete):") {
             Ok(regex) => regex,
             Err(err) => todo!(),
         };
+        let event_regex = match regex::Regex::new(r"[^\w_-]") {
+            Ok(regex) => regex,
+            Err(err) => todo!(),
+        };
+
         loop {
             // Compute parameters
             let mut params = Vec::new();
@@ -266,7 +271,7 @@ impl ConnectionWrapper {
             // TODO: Handler Passthrough? -> When task is called that was async and instance was stopped in between
             weel.callback(Arc::clone(selfy), &callback_id, content_json)?;
             let endpoint = match this.handler_endpoints.get(0) {
-                Some(endpoint) => regex.replace_all(&endpoint, r"http\\1:"),
+                Some(endpoint) => protocol_regex.replace_all(&endpoint, r"http\\1:"),
                 None => {
                     return Err(Error::SyntaxError(
                         "No endpoint for curl configured.".to_owned(),
@@ -297,7 +302,7 @@ impl ConnectionWrapper {
             }
 
             if status < 200 || status >= 300 {
-                response_headers.insert("CPEE_SALVAGE", HeaderValue::from_str("true").unwrap());
+                response_headers.insert("CPEE_SALVAGE".to_owned(), "true".to_owned());
 
                 // Assumption about "gtresult.first.value.read": first is the array method to get the first element
                 let body = match content.pop().unwrap() {
@@ -326,7 +331,7 @@ impl ConnectionWrapper {
                     }
                 };
                 if let Some(err) = err {
-                    let tempfile = tempfile()?;
+                    let mut tempfile = tempfile()?;
                     tempfile.write_all(err.as_bytes());
                     tempfile.rewind()?;
                     this.callback(
@@ -344,43 +349,44 @@ impl ConnectionWrapper {
 
 
                 let callback_header_set = match response_headers.get("CPEE_CALLBACK") {
-                    Some(header) => header.to_str()? == "true",
+                    Some(header) => header == "true",
                     None => false,
                 };
 
                 if callback_header_set {
                     if !content.is_empty() {
-                        response_headers.insert("CPEE_UPDATE", HeaderValue::from_str("true").expect("This cannot fail"));
-                        this.callback(content, headers)
+                        response_headers.insert("CPEE_UPDATE".to_owned(), "true".to_owned());
+                        this.callback(content, response_headers)
                     } else {
-                        let instantiation_header_set = match response_headers.get(HeaderName::from_str("CPEE_INSTANTION").unwrap()) {
+                        let instantiation_header_set = match response_headers.get("CPEE_INSTANTION") {
                             Some(instantiation_header) => !instantiation_header.is_empty(),
                             None => false,
                         };
-                        let event_header_set = match response_headers.get(HeaderName::from_str("CPEE_EVENT").unwrap()) {
+                        let event_header_set = match response_headers.get("CPEE_EVENT") {
                             Some(event_header) => !event_header.is_empty(),
                             None => false,
                         };
-                        let content = HashMap::new();
-                        content.insert("activity_uuid".to_owned(), this.handler_activity_uuid);
-                        content.insert("label".to_owned(), this.label);
-                        content.insert("activity".to_owned(), this.position.unwrap_or("".to_owned()));
+                        let mut content = HashMap::new();
+                        content.insert("activity_uuid".to_owned(), this.handler_activity_uuid.clone());
+                        content.insert("label".to_owned(), this.label.clone());
+                        content.insert("activity".to_owned(), this.position.clone().unwrap_or("".to_owned()));
                         content.insert("endpoint".to_owned(), serde_json::to_string(&this.handler_endpoints)?);
-
+                        
                         if instantiation_header_set {
                             // TODO What about value_helper
-                            content.insert("received".to_owned(), todo!());
-                            weel.redis_notifications_client.lock().unwrap().notify("task/instantiation", Some(content), weel.static_data.get_instance_meta_data());
+                            content.insert("received".to_owned(), "dummy value".to_owned());
+                            weel.redis_notifications_client.lock().unwrap().notify("task/instantiation", Some(content.clone()), weel.static_data.get_instance_meta_data())?;
                         }
                         if event_header_set {
                             // TODO What about value_helper
-                            let event = response_headers.get(HeaderName::from_str("CPEE_EVENT").unwrap()).unwrap().to_str()?;
-                            let event = event.replace("", ""); 
-                            weel.redis_notifications_client.lock().unwrap().notify("task/instantiation", Some(content), weel.static_data.get_instance_meta_data());
+                            let event = response_headers.get("CPEE_EVENT").unwrap();
+                            let event = event_regex.replace_all(event, "");
+                            let what = format!("task/{event}");
+                            weel.redis_notifications_client.lock().unwrap().notify(&what, Some(content), weel.static_data.get_instance_meta_data())?;
                         }
                     }
                 } else {
-                    
+                    this.callback(content, response_headers)
                 }
             }
         }
@@ -388,7 +394,9 @@ impl ConnectionWrapper {
         todo!()
     }
 
-    pub fn callback(&self, parameters: Vec<Parameter>, headers: HashMap<String, String>) {}
+    pub fn callback(&self, parameters: Vec<Parameter>, headers: HashMap<String, String>) {
+        
+    }
 
     fn generate_headers(&self, data: InstanceMetaData, callback_id: &str) -> Result<HeaderMap> {
         let position = self.position.as_ref().map(|x| x.as_str()).unwrap_or("");
@@ -481,7 +489,7 @@ fn handle_twin_translate(
         // TODO: Very unsure about the semantics of the original code and the usage
         let mut json = json!(body);
         assert!(json.is_object());
-        let read = json.get_mut("value").map(|e| e.get("read")).flatten();
+        let read = json.get_mut("value").map(|e| e.get_mut("read")).flatten();
         if let Some(array) = read.map(|e| e.as_array_mut()).flatten() {
             for element in array {
                 if let Some(type_) = element.get("type").map(|e| e.as_str()).flatten() {
@@ -499,15 +507,15 @@ fn handle_twin_translate(
                             for (a_name, a_value) in arguments.iter_mut() {
                                 if a_value.is_string() {
                                     let header_name = a_value.as_str().unwrap().replace("-", "_");
-                                    if let Some(Ok(header)) =
-                                        result_headers.get(header_name).map(|h| h.to_str())
+                                    if let Some(header) =
+                                        result_headers.get(&header_name)
                                     {
                                         *a_value = Value::from_str(header)?;
                                     }
                                 } else if a_value.is_object() {
-                                    let mut a_value_clone = a_value.clone();
+                                    let a_value_clone = a_value.clone();
                                     let a_value_map = a_value_clone.as_object().unwrap();
-                                    let mut a_value = a_value.as_object_mut().unwrap();
+                                    let a_value = a_value.as_object_mut().unwrap();
                                     for (key, value) in a_value_map {
                                         if value.is_string() {
                                             let header_name =
@@ -568,11 +576,11 @@ mod test {
     }
 
     #[test]
-    fn test_pattern_2() {
+    fn test_negation_pattern() {
         let regex = regex::Regex::new(r"[^\w_-]").unwrap();
         let replacement = r"";
         assert_eq!(
-            regex.replace_all("my_name-is_testcase 1", replacement),
+            regex.replace_all("my_name-is_testcase  1", replacement),
             r"my_name-is_testcase1"
         );
     }
