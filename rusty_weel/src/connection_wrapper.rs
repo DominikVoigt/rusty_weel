@@ -11,7 +11,7 @@ use std::{
     collections::HashMap,
     io::{Read, Seek, Write},
     str::FromStr,
-    sync::{Arc, Mutex, Weak},
+    sync::{Arc, Mutex, MutexGuard, Weak},
     thread::sleep,
     time::{Duration, SystemTime},
 };
@@ -24,6 +24,7 @@ use crate::{
 };
 
 // Expected to be guarded with mutex to sensure that method invocations do not deadlock
+// Deadlocks can still occur since weel is not mutex locked
 pub struct ConnectionWrapper {
     weel: Weak<Weel>,
     position: Option<String>,
@@ -207,6 +208,60 @@ impl ConnectionWrapper {
         )
     }
 
+    
+    pub fn activity_result_options(&self) -> Option<HashMap<String, String>> {
+        self.handler_return_options.clone()
+    }
+
+    pub fn activity_result_value(&self) -> Option<String> {
+        self.handler_return_value.clone()
+    }
+    
+    pub fn activity_passthrough_value(&self) -> Option<String> {
+        self.handler_passthrough.clone()
+    }
+    
+    pub fn activity_manipulate_handle(&mut self, label: &str) {
+        self.label = label.to_owned();
+    }
+
+    pub fn activity_stop(&self) {
+        if let Some(passthrough) = &self.handler_passthrough {
+            self.weel().cancel_callback(passthrough);
+        }
+    }
+
+    pub fn activity_handle(selfy: &Arc<Mutex<Self>>, passthrough: &str, parameters: &HTTPParams) -> Result<()> {
+        let mut this = selfy.lock()?;
+        let weel = this.weel();
+        
+        if this.handler_endpoints.is_empty() {
+            return Err(Error::SyntaxError("Wrong endpoint".to_owned()))
+        }
+        this.label = parameters.label.to_owned();
+        // We do not model annotations anyway -> Can skip this from the original code
+        {
+            let mut redis = weel.redis_notifications_client.lock()?;
+            // TODO: Resource utilization seems to be non-straight forward, especially Memory usage
+            // redis.notify("status/resource_utilization", content, instace_meta_data)
+            let mut content = this.construct_basic_content()?;
+            content.insert("label".to_owned(), this.label.clone());
+            content.insert("passthrough".to_owned(), passthrough.to_owned());
+            // parameters do not look exactly like in the original (string representation looks different):
+            content.insert("parameters".to_owned(), parameters.clone().try_into()?);
+            redis.notify("activity/calling", Some(content), weel.static_data.get_instance_meta_data())?
+        }
+        if passthrough.is_empty() {
+            Self::curl(this, selfy, parameters, weel)?;
+        } else {
+            let mut content = this.construct_basic_content()?;
+            content.insert("label".to_owned(), this.label.clone());
+            content.remove("endpoint");
+            weel.callback(selfy.clone(), passthrough, content)?;
+        }
+        Ok(())
+    }
+
     /**
      * Variation of original proto curl implementation:
      *      - We no longer support the special prefixed arguments that are transformed into parameters, we convert all parameters into simple url encoded body parameters
@@ -216,9 +271,7 @@ impl ConnectionWrapper {
      * - Expects prepare to be called before
      * - We explicitly expect the Arc<Mutex> here since we need to add a reference to the callbacks (by cloning the Arc)
      */
-    pub fn curl(selfy: &Arc<Mutex<Self>>, parameters: &HTTPParams) -> Result<()> {
-        let mut this = selfy.lock().unwrap();
-        let weel = this.weel();
+    pub fn curl(mut this: MutexGuard<ConnectionWrapper>, selfy: &Arc<Mutex<Self>>, parameters: &HTTPParams, weel: Arc<Weel>) -> Result<()> {
         let callback_id = generate_random_key();
         this.handler_passthrough = Some(callback_id.clone());
 
@@ -490,6 +543,12 @@ impl ConnectionWrapper {
         Ok(())
     }
 
+    /**
+     * Contains:
+     *  - activity-uuid
+     *  - activity
+     *  - endpoint
+     */
     fn construct_basic_content(&mut self) -> Result<HashMap<String, String>> {
         let mut content = HashMap::new();
         content.insert(

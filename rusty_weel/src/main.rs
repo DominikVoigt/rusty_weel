@@ -30,6 +30,7 @@ fn main() {
         state: Mutex::new(State::Starting),
         open_votes: Mutex::new(HashSet::new()),
         loop_guard: Mutex::new(HashMap::new()),
+        positions: Mutex::new(Vec::new()),
     };
     // create thread for callback subscriptions with redis
     RedisHelper::establish_callback_subscriptions(

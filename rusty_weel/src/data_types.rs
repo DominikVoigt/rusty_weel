@@ -10,6 +10,33 @@ pub struct HTTPParams {
     pub arguments: Option<Vec<KeyValuePair>>,
 }
 
+impl TryInto<String> for HTTPParams {
+    type Error = serde_json::Error;
+
+    fn try_into(self) -> Result<String, Self::Error> {
+        let mut hash_rep = HashMap::new();
+        hash_rep.insert("label", self.label.to_owned());
+        hash_rep.insert("method", self.method.to_string());
+        let args = match self.arguments {
+            Some(args) => {
+                let args_map: HashMap<_, _>;
+                args_map = args.iter().map(|e| {
+                    let value = match e.value.clone() {
+                        Some(value) => value,
+                        None => {"->{ nil }"}.to_owned(),
+                    };
+                    (e.key, value)
+                }).collect();
+                serde_json::to_string(&args_map)?
+            },
+            None => "nil".to_owned(),
+        };
+        hash_rep.insert("arguments", args);
+        
+        serde_json::to_string(&hash_rep)
+    }
+}
+
 /*
 * Represents KVs with optional values
 */

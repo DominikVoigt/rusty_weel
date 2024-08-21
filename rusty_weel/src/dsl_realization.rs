@@ -325,7 +325,7 @@ impl Weel {
 
     pub fn callback(
         &self,
-        hw: Arc<Mutex<ConnectionWrapper>>,
+        connection_wrapper: Arc<Mutex<ConnectionWrapper>>,
         key: &str,
         mut content: HashMap<String, String>,
     ) -> Result<()> {
@@ -344,7 +344,7 @@ impl Weel {
         self.callback_keys
             .lock()
             .expect("could not acquire Mutex")
-            .insert(key.to_owned(), hw.clone());
+            .insert(key.to_owned(), connection_wrapper.clone());
         Ok(())
     }
 
