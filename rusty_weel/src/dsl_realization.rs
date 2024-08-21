@@ -348,7 +348,7 @@ impl Weel {
         Ok(())
     }
 
-    fn cancel_callback(&self, key: &str) -> Result<()> {
+    pub fn cancel_callback(&self, key: &str) -> Result<()> {
         self.redis_notifications_client
             .lock()
             .expect("Could not acquire Mutex for notifications RedisHelper")
@@ -393,6 +393,12 @@ pub enum Error {
     StringUTF8Error(std::string::FromUtf8Error),
     HttpHelperError(http_helper::Error),
     PoisonError()
+}
+
+pub enum Signal {
+    Again,
+    Salvage,
+    Stop
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

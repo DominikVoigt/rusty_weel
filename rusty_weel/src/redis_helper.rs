@@ -137,7 +137,7 @@ impl RedisHelper {
      */
     pub fn establish_callback_subscriptions(
         static_data: &StaticData,
-        callback_keys: Arc<Mutex<HashMap<String, Arc<ConnectionWrapper>>>>,
+        callback_keys: Arc<Mutex<HashMap<String, Arc<Mutex<ConnectionWrapper>>>>>,
     ) -> JoinHandle<Result<()>> {
         // Should only be called once in main!
         assert_has_not_been_called!();
@@ -200,9 +200,7 @@ impl RedisHelper {
                             }
                             let params = construct_parameters(&message_json);
                             let headers = convert_headers_to_map(&message_json["content"]["headers"]);
-                            callback_keys.get(&topic.type_)
-                                               .expect("Cannot happen as we check containment previously and hold mutex throughout")
-                                               .callback(params, headers);
+                            callback_keys.get(&topic.type_).expect("Cannot happen as we check containment previously and hold mutex throughout").lock()?.callback(params, headers, None)?;
                         }
                     }
                     "callback-end:*" => {
