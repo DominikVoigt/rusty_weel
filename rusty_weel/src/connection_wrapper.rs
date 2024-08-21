@@ -307,116 +307,100 @@ impl ConnectionWrapper {
                 // equivalent to do-while status == 561 in original code
                 break;
             }
-
-            if status < 200 || status >= 300 {
-                response_headers.insert("CPEE_SALVAGE".to_owned(), "true".to_owned());
-
-                // Assumption about "gtresult.first.value.read": first is the array method to get the first element
-                let body = match content.pop().unwrap() {
-                    Parameter::SimpleParameter { value, .. } => value.clone(),
-                    Parameter::ComplexParameter {
-                        mut content_handle, ..
-                    } => {
-                        let mut body = String::new();
-                        content_handle.rewind()?;
-                        content_handle.read_to_string(&mut body)?;
-                        content_handle.rewind()?;
-                        body
-                    }
-                };
-
-                // TODO: Very unsure about the semantics of the original code and the usage (is read for the read method in complex param?)
-                let mut json = json!(body);
-                assert!(json.is_object());
-                let err = match json.get_mut("value") {
-                    Some(value) => match value.get("read") {
-                        Some(read) => read.as_str(),
-                        None => value.as_str(),
-                    },
-                    None => {
-                        log::error!("value in curl not available for status code < 200 || > 300");
-                        panic!()
-                    }
-                };
-                if let Some(err) = err {
-                    let mut tempfile = tempfile()?;
-                    tempfile.write_all(err.as_bytes())?;
-                    tempfile.rewind()?;
-                    this.callback(
-                        vec![Parameter::ComplexParameter {
-                            name: "error".to_owned(),
-                            mime_type: "application/json".to_owned(),
-                            content_handle: tempfile,
-                        }],
-                        response_headers,
-                        None,
-                    )?
-                } else {
-                    log::error!("Error in value or read is not a string.")
-                }
-            } else {
-                let callback_header_set = match response_headers.get("CPEE_CALLBACK") {
-                    Some(header) => header == "true",
-                    None => false,
-                };
-
-                if callback_header_set {
-                    if !content.is_empty() {
-                        response_headers.insert("CPEE_UPDATE".to_owned(), "true".to_owned());
-                        this.callback(content, response_headers, None)?
-                    } else {
-                        let instantiation_header_set = match response_headers.get("CPEE_INSTANTION")
-                        {
-                            Some(instantiation_header) => !instantiation_header.is_empty(),
-                            None => false,
-                        };
-                        let event_header_set = match response_headers.get("CPEE_EVENT") {
-                            Some(event_header) => !event_header.is_empty(),
-                            None => false,
-                        };
-                        let mut content = HashMap::new();
-                        content.insert(
-                            "activity_uuid".to_owned(),
-                            this.handler_activity_uuid.clone(),
-                        );
-                        content.insert("label".to_owned(), this.label.clone());
-                        content.insert(
-                            "activity".to_owned(),
-                            this.position.clone().unwrap_or("".to_owned()),
-                        );
-                        content.insert(
-                            "endpoint".to_owned(),
-                            serde_json::to_string(&this.handler_endpoints)?,
-                        );
-
-                        if instantiation_header_set {
-                            // TODO What about value_helper
-                            content.insert("received".to_owned(), "dummy value".to_owned());
-                            weel.redis_notifications_client.lock().unwrap().notify(
-                                "task/instantiation",
-                                Some(content.clone()),
-                                weel.static_data.get_instance_meta_data(),
-                            )?;
-                        }
-                        if event_header_set {
-                            // TODO What about value_helper
-                            let event = response_headers.get("CPEE_EVENT").unwrap();
-                            let event = event_regex.replace_all(event, "");
-                            let what = format!("task/{event}");
-                            weel.redis_notifications_client.lock().unwrap().notify(
-                                &what,
-                                Some(content),
-                                weel.static_data.get_instance_meta_data(),
-                            )?;
-                        }
-                    }
-                } else {
-                    this.callback(content, response_headers, None)?
-                }
-            }
         }
 
-        todo!()
+        // If status not okay:
+        if status < 200 || status >= 300 {
+            response_headers.insert("CPEE_SALVAGE".to_owned(), "true".to_owned());
+
+            // Assumption about "gtresult.first.value.read": first is the array method to get the first element, value is the value parameter, read is the read method for complex parameter
+            let err: String = match content.pop().unwrap() {
+                Parameter::SimpleParameter { value, .. } => value.clone(),
+                Parameter::ComplexParameter {
+                    mut content_handle, ..
+                } => {
+                    let mut body = String::new();
+                    content_handle.rewind()?;
+                    content_handle.read_to_string(&mut body)?;
+                    content_handle.rewind()?;
+                    body
+                }
+            };
+
+            let mut tempfile = tempfile()?;
+            tempfile.write_all(err.as_bytes())?;
+            tempfile.rewind()?;
+            this.callback(
+                vec![Parameter::ComplexParameter {
+                    name: "error".to_owned(),
+                    mime_type: "application/json".to_owned(),
+                    content_handle: tempfile,
+                }],
+                response_headers,
+                None,
+            )?
+        } else {
+            let callback_header_set = match response_headers.get("CPEE_CALLBACK") {
+                Some(header) => header == "true",
+                None => false,
+            };
+
+            if callback_header_set {
+                if !content.is_empty() {
+                    response_headers.insert("CPEE_UPDATE".to_owned(), "true".to_owned());
+                    this.callback(content, response_headers, None)?
+                } else {
+                    let mut content = HashMap::new();
+                    content.insert(
+                        "activity_uuid".to_owned(),
+                        this.handler_activity_uuid.clone(),
+                    );
+                    content.insert("label".to_owned(), this.label.clone());
+                    content.insert(
+                        "activity".to_owned(),
+                        this.position.clone().unwrap_or("".to_owned()),
+                    );
+                    content.insert(
+                        "endpoint".to_owned(),
+                        serde_json::to_string(&this.handler_endpoints)?,
+                    );
+
+                    let instantiation_header_set = match response_headers.get("CPEE_INSTANTION") {
+                        Some(instantiation_header) => !instantiation_header.is_empty(),
+                        None => false,
+                    };
+
+                    if instantiation_header_set {
+                        // TODO What about value_helper
+                        content.insert("received".to_owned(), "dummy value".to_owned());
+                        weel.redis_notifications_client.lock().unwrap().notify(
+                            "task/instantiation",
+                            Some(content.clone()),
+                            weel.static_data.get_instance_meta_data(),
+                        )?;
+                    }
+
+                    let event_header_set = match response_headers.get("CPEE_EVENT") {
+                        Some(event_header) => !event_header.is_empty(),
+                        None => false,
+                    };
+                    if event_header_set {
+                        // TODO What about value_helper
+                        let event = response_headers.get("CPEE_EVENT").unwrap();
+                        let event = event_regex.replace_all(event, "");
+                        let what = format!("task/{event}");
+                        weel.redis_notifications_client.lock().unwrap().notify(
+                            &what,
+                            Some(content),
+                            weel.static_data.get_instance_meta_data(),
+                        )?;
+                    }
+                }
+            } else {
+                this.callback(content, response_headers, None)?
+            }
+        }
+        Ok(())
     }
 
     pub fn callback(
@@ -456,7 +440,7 @@ impl ConnectionWrapper {
                 weel.static_data.get_instance_meta_data(),
             )?;
         }
-        
+
         if contains_non_empty(&options, "CPEE_EVENT") {
             let event_regex = match regex::Regex::new(r"[^\w_-]") {
                 Ok(regex) => regex,
@@ -496,8 +480,7 @@ impl ConnectionWrapper {
             }
             if contains_non_empty(&options, "CPEE_SALVAGE") {
                 // TODO: self.handler_continue.continue(Signal::Salvage)
-            }
-            else if contains_non_empty(&options, "CPEE_STOP") {
+            } else if contains_non_empty(&options, "CPEE_STOP") {
                 // TODO: self.handler_continue.continue(Signal::Stop)
             } else {
                 // self.handler_continue.continue()
@@ -790,10 +773,9 @@ fn handle_twin_translate(
         };
 
         // TODO: Very unsure about the semantics of the original code and the usage
-        let mut json = json!(body);
-        assert!(json.is_object());
-        let read = json.get_mut("value").map(|e| e.get_mut("read")).flatten();
-        if let Some(array) = read.map(|e| e.as_array_mut()).flatten() {
+        let mut array = json!(body);
+        assert!(array.is_array());
+        if let Some(array) = array.as_array() {
             for element in array {
                 if let Some(type_) = element.get("type").map(|e| e.as_str()).flatten() {
                     if type_ == translation_type {
