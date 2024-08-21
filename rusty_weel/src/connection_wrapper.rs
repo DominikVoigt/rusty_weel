@@ -1,5 +1,4 @@
 use base64::Engine;
-use encoding_rs::UTF_8;
 use http_helper::Parameter;
 use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue},
@@ -11,7 +10,7 @@ use serde_json::{json, Value};
 use std::{
     collections::HashMap,
     io::{Read, Seek, Write},
-    str::{Chars, FromStr},
+    str::FromStr,
     sync::{Arc, Mutex, Weak},
     thread::sleep,
     time::{Duration, SystemTime},
@@ -21,7 +20,7 @@ use urlencoding::encode;
 
 use crate::{
     data_types::{HTTPParams, InstanceMetaData},
-    dsl_realization::{generate_random_key, Error, Result, Weel},
+    dsl_realization::{generate_random_key, Error, Result, Signal, Weel},
 };
 
 // Expected to be guarded with mutex to sensure that method invocations do not deadlock
@@ -35,7 +34,7 @@ pub struct ConnectionWrapper {
     // TODO: Unsure about this type:
     handler_return_value: Option<String>,
     // TODO: Determine this type:
-    handler_return_options: Option<()>,
+    handler_return_options: Option<HashMap<String, String>>,
     // We keep them as arrays to be flexible but will only contain one element for now
     // Contains the actual endpoint URL
     handler_endpoints: Vec<String>,
@@ -234,11 +233,17 @@ impl ConnectionWrapper {
 
         let protocol_regex = match regex::Regex::new(r"^http(s)?-(get|put|post|delete):") {
             Ok(regex) => regex,
-            Err(err) => todo!(),
+            Err(err) => {
+                log::error!("Could not compile static regex: {err} -> SHOULD NOT HAPPEN");
+                panic!()
+            }
         };
         let event_regex = match regex::Regex::new(r"[^\w_-]") {
             Ok(regex) => regex,
-            Err(err) => todo!(),
+            Err(err) => {
+                log::error!("Could not compile static regex: {err} -> SHOULD NOT HAPPEN");
+                panic!()
+            }
         };
 
         loop {
@@ -286,7 +291,7 @@ impl ConnectionWrapper {
             client.add_parameters(params);
 
             let response = client.execute()?;
-            let status = response.status_code;
+            status = response.status_code;
             response_headers = response.headers;
             content = response.content;
 
@@ -315,6 +320,7 @@ impl ConnectionWrapper {
                         let mut body = String::new();
                         content_handle.rewind()?;
                         content_handle.read_to_string(&mut body)?;
+                        content_handle.rewind()?;
                         body
                     }
                 };
@@ -334,7 +340,7 @@ impl ConnectionWrapper {
                 };
                 if let Some(err) = err {
                     let mut tempfile = tempfile()?;
-                    tempfile.write_all(err.as_bytes());
+                    tempfile.write_all(err.as_bytes())?;
                     tempfile.rewind()?;
                     this.callback(
                         vec![Parameter::ComplexParameter {
@@ -343,6 +349,7 @@ impl ConnectionWrapper {
                             content_handle: tempfile,
                         }],
                         response_headers,
+                        None,
                     )?
                 } else {
                     log::error!("Error in value or read is not a string.")
@@ -356,7 +363,7 @@ impl ConnectionWrapper {
                 if callback_header_set {
                     if !content.is_empty() {
                         response_headers.insert("CPEE_UPDATE".to_owned(), "true".to_owned());
-                        this.callback(content, response_headers)?
+                        this.callback(content, response_headers, None)?
                     } else {
                         let instantiation_header_set = match response_headers.get("CPEE_INSTANTION")
                         {
@@ -404,7 +411,7 @@ impl ConnectionWrapper {
                         }
                     }
                 } else {
-                    this.callback(content, response_headers)?
+                    this.callback(content, response_headers, None)?
                 }
             }
         }
@@ -413,14 +420,94 @@ impl ConnectionWrapper {
     }
 
     pub fn callback(
-        &self,
-        parameters: Vec<Parameter>,
+        &mut self,
+        mut parameters: Vec<Parameter>,
         headers: HashMap<String, String>,
         options: Option<HashMap<String, String>>,
     ) -> Result<()> {
+        let options = options.unwrap_or(HashMap::new());
         let weel = self.weel();
-        let recv = structurize_result(parameters)?;
+        let recv = structurize_result(&mut parameters)?;
         let mut redis = weel.redis_notifications_client.lock()?;
+        let content = self.construct_basic_content()?;
+        {
+            let mut content = content.clone();
+            content.insert("received".to_owned(), serde_json::to_string(&recv)?);
+            content.insert(
+                "annotations".to_owned(),
+                self.annotations.clone().unwrap_or("".to_owned()),
+            );
+
+            redis.notify(
+                "activity/receiving",
+                Some(content),
+                weel.static_data.get_instance_meta_data(),
+            )?;
+        }
+
+        if contains_non_empty(&options, "CPEE_INSTANTIATION") {
+            let mut content = content.clone();
+            // CPEE::ValueHelper.parse(options['CPEE_INSTANTIATION'])
+            content.insert("received".to_owned(), todo!());
+
+            redis.notify(
+                "activity/receiving",
+                Some(content),
+                weel.static_data.get_instance_meta_data(),
+            )?;
+        }
+        
+        if contains_non_empty(&options, "CPEE_EVENT") {
+            let event_regex = match regex::Regex::new(r"[^\w_-]") {
+                Ok(regex) => regex,
+                Err(err) => {
+                    log::error!("Could not compile static regex: {err} -> SHOULD NOT HAPPEN");
+                    panic!()
+                }
+            };
+            // contains_non_empty ensures it it contained
+            let event = options["CPEE_EVENT"].clone();
+            let event = event_regex.replace_all(&event, "");
+
+            let mut content = content.clone();
+            content.insert("received".to_owned(), serde_json::to_string(&recv)?);
+
+            redis.notify(
+                &format!("task/{event}"),
+                Some(content),
+                weel.static_data.get_instance_meta_data(),
+            )?;
+        } else {
+            self.handler_return_value = Some(simplify_result(&mut parameters)?);
+            self.handler_return_options = Some(options.clone());
+        }
+
+        if contains_non_empty(&options, "CPEE_STATUS") {
+            let mut content = content.clone();
+            // CPEE::ValueHelper.parse(options['CPEE_INSTANTIATION'])
+            content.insert("status".to_owned(), options["CPEE_STATUS"].clone());
+        }
+        if contains_non_empty(&options, "CPEE_UPDATE") {
+            // TODO: self.handler_continue.continue(Signal::Again)
+        } else {
+            if let Some(passthrough) = &self.handler_passthrough {
+                weel.cancel_callback(passthrough)?;
+                self.handler_passthrough = None;
+            }
+            if contains_non_empty(&options, "CPEE_SALVAGE") {
+                // TODO: self.handler_continue.continue(Signal::Salvage)
+            }
+            else if contains_non_empty(&options, "CPEE_STOP") {
+                // TODO: self.handler_continue.continue(Signal::Stop)
+            } else {
+                // self.handler_continue.continue()
+            }
+        }
+
+        Ok(())
+    }
+
+    fn construct_basic_content(&mut self) -> Result<HashMap<String, String>> {
         let mut content = HashMap::new();
         content.insert(
             "activity-uuid".to_owned(),
@@ -438,69 +525,7 @@ impl ConnectionWrapper {
             "endpoint".to_owned(),
             serde_json::to_string(&self.handler_endpoints)?,
         );
-        {
-            let mut content = content.clone();
-            content.insert("received".to_owned(), serde_json::to_string(&recv)?);
-            content.insert(
-                "annotations".to_owned(),
-                self.annotations.clone().unwrap_or("".to_owned()),
-            );
-
-            redis.notify(
-                "activity/receiving",
-                Some(content),
-                weel.static_data.get_instance_meta_data(),
-            )?;
-        }
-        match options {
-            Some(options) => {
-                if options
-                    .get("CPEE_INSTANTIATION")
-                    .map(|e| !e.is_empty())
-                    .unwrap_or(false)
-                {
-                    let mut content = content.clone();
-                    // CPEE::ValueHelper.parse(options['CPEE_INSTANTIATION'])
-                    content.insert("received".to_owned(), todo!());
-
-                    redis.notify(
-                        "activity/receiving",
-                        Some(content),
-                        weel.static_data.get_instance_meta_data(),
-                    )?;
-                }
-                if options
-                    .get("CPEE_EVENT")
-                    .map(|e| !e.is_empty())
-                    .unwrap_or(false)
-                {
-                    let event_regex = match regex::Regex::new(r"[^\w_-]") {
-                        Ok(regex) => regex,
-                        Err(err) => todo!(),
-                    };
-                    let event = options
-                        .get("CPEE_EVENT")
-                        .map(|e| e.clone())
-                        .unwrap_or("".to_owned());
-                    let event = event_regex.replace_all(&event, "");
-
-                    let mut content = content.clone();
-                    content.insert("received".to_owned(), serde_json::to_string(&recv)?);
-
-                    redis.notify(
-                        &format!("task/{event}"),
-                        Some(content),
-                        weel.static_data.get_instance_meta_data(),
-                    )?;
-                } else {
-                    self.handler_return_value = simplify_result(parameters);
-                    self.handler_return_options = options.clone();
-                }
-            }
-            None => todo!(),
-        }
-
-        Ok(())
+        Ok(content)
     }
 
     fn generate_headers(&self, data: InstanceMetaData, callback_id: &str) -> Result<HeaderMap> {
@@ -557,30 +582,34 @@ impl ConnectionWrapper {
     }
 }
 
-fn simplify_result(parameters: Vec<Parameter>) -> String {
-    let mut result: Vec<String> = parameters.into_iter().map(|e| {
-        match e {
-            Parameter::SimpleParameter {
-                value,
-                ..
-            } => value,
-            Parameter::ComplexParameter {
-                mut content_handle,
-                ..
-            } => {
+fn contains_non_empty(options: &HashMap<String, String>, key: &str) -> bool {
+    options.get(key).map(|e| !e.is_empty()).unwrap_or(false)
+}
+
+/**
+ * Reformats the resulting parameters into a string representation
+ */
+fn simplify_result(parameters: &mut Vec<Parameter>) -> Result<String> {
+    let mut result = Vec::with_capacity(parameters.len());
+    for parameter in parameters {
+        let element = match parameter {
+            Parameter::SimpleParameter { value, .. } => value.clone(),
+            Parameter::ComplexParameter { content_handle, .. } => {
                 let mut buf = String::new();
-                content_handle.read_to_string(&mut buf);
+                content_handle.read_to_string(&mut buf)?;
+                content_handle.rewind()?;
                 buf
             }
-        }
-    }).collect();
+        };
+        result.push(element);
+    }
     if result.is_empty() {
-        "".to_owned()
+        Ok("".to_owned())
     } else if result.len() == 1 {
-        result.pop().unwrap()
+        Ok(result.pop().unwrap())
     } else {
         let result = result.join(", ");
-        format!("[{result}]")
+        Ok(format!("[{result}]"))
     }
 }
 
@@ -591,28 +620,33 @@ struct StructuredResultElement {
     mime_type: Option<String>,
 }
 
-fn structurize_result(parameters: Vec<Parameter>) -> Result<Vec<StructuredResultElement>> {
+/**
+ * Reformats the result into a simple DTO form.
+ * All file handles are read and content saved into the DTO
+ */
+fn structurize_result(parameters: &mut Vec<Parameter>) -> Result<Vec<StructuredResultElement>> {
     let mut result = Vec::new();
-    for parameter in parameters.into_iter() {
+    for parameter in parameters.iter_mut() {
         match parameter {
             Parameter::SimpleParameter { name, value, .. } => {
                 result.push(StructuredResultElement {
-                    name,
-                    data: value,
+                    name: name.clone(),
+                    data: value.clone(),
                     mime_type: None,
                 })
             }
             Parameter::ComplexParameter {
                 name,
                 mime_type,
-                mut content_handle,
+                content_handle,
             } => {
                 let mut data: Vec<u8> = Vec::new();
                 content_handle.read_to_end(&mut data)?;
+                content_handle.rewind()?;
                 let data = validate_encoding(mime_type.clone(), data);
                 result.push(StructuredResultElement {
-                    name,
-                    mime_type: Some(mime_type),
+                    name: name.clone(),
+                    mime_type: Some(mime_type.clone()),
                     data,
                 })
             }
@@ -621,7 +655,10 @@ fn structurize_result(parameters: Vec<Parameter>) -> Result<Vec<StructuredResult
     Ok(result)
 }
 
-// TODO: not quite sure
+/**
+ * Will try to detect the encoding and convert the data into UTF-8
+ * If the confidence is below the threshold of 30 (see test for detecting binary) then the data will be base64 encoded (treated as binary)
+ */
 fn validate_encoding(mime_type: String, data: Vec<u8>) -> String {
     match String::from_utf8(data.clone()) {
         Ok(string) => string,
@@ -631,13 +668,20 @@ fn validate_encoding(mime_type: String, data: Vec<u8>) -> String {
                 err
             );
             let encoding = detect_encoding(&data);
-            let decode_result = match encoding_rs::Encoding::for_label(encoding.as_bytes()) {
-                Some(x) => x.decode(&data).0.into_owned(),
+            let confidence = encoding.1;
+            let decode_result = match encoding_rs::Encoding::for_label(encoding.0.as_bytes()) {
+                Some(x) => {
+                    if confidence > 30 {
+                        x.decode(&data).0.into_owned()
+                    } else {
+                        convert_to_base64(data)
+                    }
+                }
                 // If the detected encoding is not identifiable by the decode library, emit error and decode as UTF-8 anyway
                 None => {
                     log::error!(
                         "Encoding could not be found by the provided label: {}",
-                        encoding
+                        encoding.0
                     );
                     convert_to_base64(data)
                 }
@@ -668,12 +712,15 @@ fn convert_to_base64(data: Vec<u8>) -> String {
 }
 
 // TODO: Very unsure about this
-fn detect_encoding(data: &[u8]) -> String {
+/**
+ * Returns the charset and a confidence
+ */
+fn detect_encoding(data: &[u8]) -> (String, i32) {
     let mut detector = match CharsetDetector::new() {
         Ok(x) => x,
         Err(err) => {
             log::error!("Could not initialize charset detector: {:?}", err);
-            return "OTHER".to_owned();
+            return ("OTHER".to_owned(), 0);
         }
     };
     match detector.set_text(data) {
@@ -684,13 +731,25 @@ fn detect_encoding(data: &[u8]) -> String {
         }
     }
     match detector.detect() {
-        Ok(encoding) => match encoding.name() {
-            Ok(name) => name.to_owned(),
-            Err(_) => "OTHER".to_owned(),
-        },
+        Ok(encoding) => (
+            match encoding.name() {
+                Ok(name) => name.to_owned(),
+                Err(err) => {
+                    log::error!("Error detecting encoding: {err}");
+                    "OTHER".to_owned()
+                }
+            },
+            match encoding.confidence() {
+                Ok(conf) => conf,
+                Err(err) => {
+                    log::error!("Error getting confidence: {err}");
+                    0
+                }
+            },
+        ),
         Err(err) => {
             log::error!("Could not detect encoding: {:?}", err);
-            "OTHER".to_owned()
+            ("OTHER".to_owned(), 0)
         }
     }
 }
@@ -725,6 +784,7 @@ fn handle_twin_translate(
                 let mut body = String::new();
                 content_handle.rewind()?;
                 content_handle.read_to_string(&mut body)?;
+                content_handle.rewind()?;
                 body
             }
         };
@@ -838,8 +898,11 @@ mod test {
         // Detect the most relevant web: https://w3techs.com/technologies/overview/character_encoding
         let data = fs::read("./test_files/utf8.txt").unwrap();
         let encoding = detect_encoding(&data);
-        assert_eq!("UTF-8", encoding);
-        println!("Detected encoding: {}", encoding);
+        assert_eq!("UTF-8", encoding.0);
+        println!(
+            "Detected encoding: {} Confidence: {}",
+            encoding.0, encoding.1
+        );
 
         let result = validate_encoding("text/plain".to_owned(), data);
         println!("{}", result);
@@ -854,8 +917,11 @@ mod test {
 
         let data = fs::read("./test_files/latin1.txt").unwrap();
         let encoding = detect_encoding(&data);
-        println!("Detected encoding: {}", encoding);
-        assert_eq!("ISO-8859-1", encoding);
+        println!(
+            "Detected encoding: {} Confidence: {}",
+            encoding.0, encoding.1
+        );
+        assert_eq!("ISO-8859-1", encoding.0);
 
         let result = validate_encoding("text/plain".to_owned(), data);
         println!("{}", result);
@@ -866,6 +932,19 @@ mod test {
                     ?? am Deseret
                     "#},
             result
+        );
+    }
+
+    #[test]
+    fn test_detection_binary() {
+        // ELF file (binary)
+        let data = fs::read("./test_files/ab").unwrap();
+        let encoding = detect_encoding(&data);
+
+        // This does not work -> windows-1252 but low confidence: < 30
+        println!(
+            "Detected encoding: {} Confidence: {}",
+            encoding.0, encoding.1
         );
     }
 }
