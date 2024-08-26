@@ -28,7 +28,7 @@ pub enum ParameterType {
 // Simple kv parameters, can be in body or url
 // If a request is a get request -> All parameters into the query
 // The name and value do not have to be escaped yet -> Part of generate_url
-
+// Will always be UTF-8 encoded
 #[derive(Debug)]
 pub enum Parameter {
     SimpleParameter {
@@ -42,7 +42,8 @@ pub enum Parameter {
     // For sending/receiving files
     ComplexParameter {
         name: String,
-        mime_type: String,
+        //  If no charset is specified, the default is ASCII (US-ASCII) unless overridden by the user agent's settings (https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/MIME_types)
+        mime_type: Mime,
         content_handle: fs::File,
     },
 }
@@ -346,7 +347,7 @@ fn construct_singular_body(
             content_handle,
             ..
         } => request_builder
-            .header(CONTENT_TYPE, mime_type)
+            .header(CONTENT_TYPE, mime_type.to_string())
             .body(content_handle),
     }
 }
@@ -367,9 +368,9 @@ fn construct_multipart(
             Parameter::ComplexParameter {
                 name,
                 mime_type,
-                content_handle,
+                content_handle
             } => {
-                let part = Part::reader(content_handle).mime_str(&mime_type)?;
+                let part = Part::reader(content_handle).mime_str(&mime_type.to_string())?;
                 form = form.part(name, part);
             }
         }
@@ -420,7 +421,7 @@ fn parse_part(headers: Headers, body: &[u8]) -> Result<Vec<Parameter>> {
     } else if content_type.essence_str() == mime::APPLICATION_WWW_FORM_URLENCODED {
         parse_form_urlencoded(body)
     } else {
-        parse_flat_data(&content_type.to_string(), body, &name)
+        parse_flat_data(&content_type, body, &name)
     }
 }
 
@@ -456,13 +457,13 @@ fn get_name_and_content_type(headers: &Headers) -> Result<(String, Mime)> {
 /**
  * Parses content into a single complex parameter
  */
-fn parse_flat_data(content_type: &str, body: &[u8], name: &str) -> Result<Vec<Parameter>> {
+fn parse_flat_data(content_type: &Mime, body: &[u8], name: &str) -> Result<Vec<Parameter>> {
     let mut content = tempfile::tempfile()?;
     content.write(&body)?;
     content.rewind()?;
     Ok(vec![Parameter::ComplexParameter {
         name: name.to_owned(),
-        mime_type: content_type.to_owned(),
+        mime_type: content_type.clone(),
         content_handle: content,
     }])
 }
@@ -473,6 +474,7 @@ fn parse_flat_data(content_type: &str, body: &[u8], name: &str) -> Result<Vec<Pa
 fn parse_form_urlencoded(body: &[u8]) -> Result<Vec<Parameter>> {
     let mut parameters = Vec::new();
     form_urlencoded::parse(&body).for_each(|pair| {
+        // UTF 8 per standard: https://url.spec.whatwg.org/#urlencoded-parsing
         parameters.push(Parameter::SimpleParameter {
             name: (*pair.0).to_owned(),
             value: (*pair.1).to_owned(),
@@ -503,6 +505,15 @@ fn parse_multipart(body: &[u8], boundary: &str) -> Result<Vec<Parameter>> {
 mod test {
     use std::io::{Read, Seek};
     use super::*;
+
+    #[test]
+    fn test_mime_parsing() {
+        let test_type = "text/plain;charset=UTF-8";
+        let parsed_mime = test_type.parse::<Mime>().unwrap();
+        assert_eq!(parsed_mime.essence_str(), "text/plain");
+        assert_eq!(parsed_mime.get_param("charset").unwrap(), "UTF-8");
+        assert_eq!(parsed_mime, test_type)
+    }
 
     mod test_creation {
         use super::*;
@@ -566,6 +577,7 @@ mod test {
             let mut request_builder = client.reqwest_client.request(Method::POST, test_url);
             request_builder = client.generate_body(request_builder)?;
             let request = request_builder.build()?;
+            assert_eq!(request.headers().get(CONTENT_TYPE).unwrap().to_str().unwrap(), APPLICATION_WWW_FORM_URLENCODED.to_string());
             let response = client.reqwest_client.execute(request)?;
             assert_eq!(response.status().as_u16(), 200);
             println!("{:?}", response.text().unwrap());
@@ -585,12 +597,13 @@ mod test {
 
             client.add_parameter(Parameter::ComplexParameter {
                 name: "test_file".to_owned(),
-                mime_type: mime::TEXT_XML.to_string(),
+                mime_type: mime::TEXT_XML,
                 content_handle: file,
             });
             let mut request_builder = client.reqwest_client.request(Method::POST, test_url);
             request_builder = client.generate_body(request_builder)?;
             let request = request_builder.build()?;
+            assert_eq!(request.headers().get(CONTENT_TYPE).unwrap().to_str().unwrap(), "text/xml");
             let response = client.reqwest_client.execute(request)?;
             assert_eq!(response.status().as_u16(), 200);
 
@@ -610,7 +623,7 @@ mod test {
 
             client.add_parameter(Parameter::ComplexParameter {
                 name: "test_file".to_owned(),
-                mime_type: mime::APPLICATION_OCTET_STREAM.to_string(),
+                mime_type: mime::IMAGE_JPEG,
                 content_handle: file,
             });
             let mut request_builder = client.reqwest_client.request(Method::POST, test_url);
@@ -671,7 +684,7 @@ mod test {
             let file = fs::File::open(test_file)?;
             client.add_parameter(Parameter::ComplexParameter {
                 name: "test_jpg".to_owned(),
-                mime_type: mime::IMAGE_JPEG.to_string(),
+                mime_type: mime::IMAGE_JPEG,
                 content_handle: file,
             });
 
@@ -679,7 +692,7 @@ mod test {
             let file = fs::File::open(test_file)?;
             client.add_parameter(Parameter::ComplexParameter {
                 name: "test_xml".to_owned(),
-                mime_type: mime::TEXT_XML.to_string(),
+                mime_type: mime::TEXT_XML,
                 content_handle: file,
             });
 
@@ -740,12 +753,14 @@ mod test {
             match result.pop().unwrap() {
                 Parameter::SimpleParameter { .. } => panic!("Should not happen"),
                 Parameter::ComplexParameter {
-                    mut content_handle, ..
+                    mut content_handle,
+                    mime_type, ..
                 } => {
                     println!("{:?}", content_handle);
                     let mut buffer = Vec::new();
                     content_handle.read_to_end(&mut buffer)?;
-                    assert_eq!(body, buffer)
+                    assert_eq!(body, buffer);
+                    assert_eq!(mime_type.get_param("charset").unwrap(), "utf-8");
                 }
             };
             Ok(())
@@ -766,7 +781,7 @@ mod test {
                 } => {
                     // Test custom name via content-id header:
                     assert_eq!(name, "moon.jpg");
-                    assert_eq!(mime_type, APPLICATION_OCTET_STREAM.to_string());
+                    assert_eq!(mime_type, APPLICATION_OCTET_STREAM);
                     let mut buffer = Vec::new();
                     content_handle.read_to_end(&mut buffer)?;
                     assert_eq!(body, buffer);
@@ -793,7 +808,7 @@ mod test {
                         mime_type,
                         mut content_handle,
                     } => {
-                        assert_eq!(mime_type, TEXT_PLAIN_UTF_8.to_string());
+                        assert_eq!(mime_type, TEXT_PLAIN_UTF_8);
                         assert_eq!(name, format!("simple_param_{}test", index));
 
                         let mut content = String::new();
@@ -835,10 +850,10 @@ mod test {
                     Parameter::ComplexParameter {
                         name,
                         mime_type,
-                        content_handle,
+                        content_handle
                     } => {
                         assert_eq!(name, expected_names[index]);
-                        assert_eq!(mime_type, expected_mime_types[index]);
+                        assert_eq!(mime_type.to_string(), expected_mime_types[index]);
                         
                         let mut content = Vec::new();
                         content_handle.read_to_end(&mut content).expect("Error reading parameter content");
