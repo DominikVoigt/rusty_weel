@@ -1,5 +1,9 @@
 use std::{
-    collections::{HashMap, HashSet}, panic::{set_hook, take_hook}, sync::{Arc, Mutex}, thread::{self, sleep, JoinHandle}, time::Duration
+    collections::{HashMap, HashSet},
+    panic::{set_hook, take_hook},
+    sync::{Arc, Mutex},
+    thread::{self, sleep, JoinHandle},
+    time::Duration,
 };
 
 use crate::{
@@ -50,7 +54,6 @@ impl RedisHelper {
         self.last
     }
 
-
     pub fn notify(
         &mut self,
         what: &str,
@@ -76,7 +79,7 @@ impl RedisHelper {
      * The content of the message consists of instance metadata and the provided content
      * Meta data is provided via the InstanceMetaData
      * Providing content to the message is optional, the message otherwise contains {} for content
-     * 
+     *
      * Will return an error if the publishing to redis fails
      */
     pub fn send(
@@ -200,7 +203,10 @@ impl RedisHelper {
                             }
                             let params = construct_parameters(&message_json);
                             let headers = convert_headers_to_map(&message_json["content"]["headers"]);
-                            callback_keys.get(&topic.type_).expect("Cannot happen as we check containment previously and hold mutex throughout").lock()?.callback(params, headers, None)?;
+                            callback_keys.get(&topic.type_)
+                                         .expect("Cannot happen as we check containment previously and hold mutex throughout")
+                                         .lock()?
+                                         .callback(params, headers, None)?;
                         }
                     }
                     "callback-end:*" => {
@@ -229,7 +235,7 @@ impl RedisHelper {
      * - pattern:   The pattern structure that matched (e.g. "callback-response:*")
      * - topic:     The topic (e.g. "callback-response:01:<identifier>")
      *              Topic has to have the structure <message_type>:<target>:<event>
-     * 
+     *
      * Will return an error if the un-subscribing fails
      */
     pub fn blocking_pub_sub(
@@ -262,7 +268,7 @@ impl RedisHelper {
 
         if let Err(err) = subscription.unsubscribe(topic_patterns) {
             log::error!("Could not unsubscribe from topics at the end: {}", err);
-            return Err(Error::from(err))
+            return Err(Error::from(err));
         }
         Ok(())
     }
@@ -512,7 +518,7 @@ mod test {
     }
 
     #[test]
-    fn test_send() -> Result<()>{
+    fn test_send() -> Result<()> {
         let rec_thread = thread::spawn(|| -> Result<()> {
             let mut redis_receiver =
                 RedisHelper::new(&get_unix_socket_configuration(), "test_connection").unwrap();
@@ -529,7 +535,8 @@ mod test {
                         "content": "test_payload",
                         "instance-uuid": "test_uuid",
                         "instance-name": "test_info"
-                    }).to_string();
+                    })
+                    .to_string();
                     println!("Payload:\n{payload}");
 
                     // Remove timestamp as it will not be consistent
@@ -541,10 +548,10 @@ mod test {
                             continue;
                         }
                         modified_payload.push(item.to_owned());
-                    };
+                    }
                     let payload = modified_payload.join(",");
                     println!("Modified payload: {payload}");
-                    
+
                     assert_eq!(expected_payload, payload);
                     assert_eq!("event:*", pattern);
                     assert_eq!("event", topic.type_);
@@ -558,7 +565,12 @@ mod test {
         let mut redis_sender =
             RedisHelper::new(&get_unix_socket_configuration(), "test_connection").unwrap();
 
-        redis_sender.send("event", "test_state/changed", get_unix_socket_configuration().get_instance_meta_data(), Some("test_payload"))?;  
+        redis_sender.send(
+            "event",
+            "test_state/changed",
+            get_unix_socket_configuration().get_instance_meta_data(),
+            Some("test_payload"),
+        )?;
         let result = rec_thread.join();
         match result {
             Ok(inner) => match inner {
