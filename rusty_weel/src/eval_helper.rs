@@ -4,10 +4,8 @@ use std::{
     io::{Read, Seek, Write},
 };
 
-use http_helper::{Client, Mime, Parameter, APPLICATION_JSON};
+use http_helper::{Client, Parameter};
 use log;
-use reqwest::header::IF_MATCH;
-use serde_json::json;
 use tempfile::tempfile;
 
 use crate::{
@@ -71,17 +69,17 @@ pub fn evaluate_expressions(
 
     client.add_parameter(Parameter::ComplexParameter {
         name: "static_context".to_owned(),
-        mime_type: "application/json".to_owned(),
+        mime_type: mime::APPLICATION_JSON,
         content_handle: static_context_file,
     });
     client.add_parameter(Parameter::ComplexParameter {
         name: "dynamic_context".to_owned(),
-        mime_type: "application/json".to_owned(),
+        mime_type: mime::APPLICATION_JSON,
         content_handle: dynamic_context_file,
     });
     client.add_parameter(Parameter::ComplexParameter {
         name: "expressions".to_owned(),
-        mime_type: "application/json".to_owned(),
+        mime_type: mime::APPLICATION_JSON,
         content_handle: expressions_file,
     });
 

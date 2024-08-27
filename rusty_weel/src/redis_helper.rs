@@ -206,7 +206,7 @@ impl RedisHelper {
                             callback_keys.get(&topic.type_)
                                          .expect("Cannot happen as we check containment previously and hold mutex throughout")
                                          .lock()?
-                                         .callback(params, headers, None)?;
+                                         .callback(params?, headers, None)?;
                         }
                     }
                     "callback-end:*" => {
@@ -364,7 +364,7 @@ fn convert_headers_to_map(headers_json: &serde_json::Value) -> HashMap<String, S
 /**
  * Constructs parameters from query *panics* if parameters cannot be constructed due to incorrect internal structure
  */
-fn construct_parameters(message: &serde_json::Value) -> Vec<Parameter> {
+fn construct_parameters(message: &serde_json::Value) -> Result<Vec<Parameter>> {
     // Values should be an array of values
     let values = match message["content"]["values"].as_array() {
         Some(x) => x,
@@ -372,42 +372,51 @@ fn construct_parameters(message: &serde_json::Value) -> Vec<Parameter> {
             log_error_and_panic("content.values of callback response is not an array");
         }
     };
-    values
-        .iter()
-        .filter_map(|parameter| {
-            if parameter[0].is_null() || parameter[1][0].is_null() || parameter[1][1].is_null() {
-                log_error_and_panic(
-                    "one of the values within the callback response content.values is null",
-                );
-            }
-            let param_type = get_str_from_value!(parameter[1][0]);
-            if param_type == "simple" {
-                let header_name = get_str_from_value!(parameter[0]);
-                let header_value = get_str_from_value!(parameter[1][1]);
-                Some(Parameter::SimpleParameter {
-                    name: header_name,
-                    value: header_value,
-                    param_type: http_helper::ParameterType::Body,
-                })
-            } else if param_type == "complex" {
-                let name = get_str_from_value!(parameter[0]);
-                let mime_type = get_str_from_value!(parameter[1][1]);
-                let content_path = get_str_from_value!(parameter[1][2]);
-                Some(Parameter::ComplexParameter {
-                    name,
-                    mime_type,
-                    content_handle: std::fs::File::open(content_path)
-                        .expect("Could not open file for complex param in callback thread"),
-                })
-            } else {
-                log::warn!(
-                    "Could not construct paramter out of callback response as the type was: {:?}",
-                    parameter[1][0]
-                );
-                None
-            }
-        })
-        .collect()
+    let mut parameters = Vec::with_capacity(values.len());
+
+    for parameter in values {
+        if parameter[0].is_null() || parameter[1][0].is_null() || parameter[1][1].is_null() {
+            log::error!(
+                "one of the values within the callback response content.values is null",
+            );
+            // TODO: Determine whether we want to return here or skip parameter
+            continue;
+        }
+        let param_type = get_str_from_value!(parameter[1][0]);
+        if param_type == "simple" {
+            let header_name = get_str_from_value!(parameter[0]);
+            let header_value = get_str_from_value!(parameter[1][1]);
+            parameters.push(Parameter::SimpleParameter {
+                name: header_name,
+                value: header_value,
+                param_type: http_helper::ParameterType::Body,
+            });
+        } else if param_type == "complex" {
+            let name = get_str_from_value!(parameter[0]);
+            let mime_type = match get_str_from_value!(parameter[1][1]).parse::<mime::Mime>() {
+                Ok(x) => x,
+                Err(err) => {
+                    // TODO: Determine whether we want to return here or skip parameter
+                    return Err(err.into());
+                },
+            };
+            let content_path = get_str_from_value!(parameter[1][2]);
+            parameters.push(Parameter::ComplexParameter {
+                name,
+                mime_type,
+                content_handle: std::fs::File::open(content_path)
+                    .expect("Could not open file for complex param in callback thread"),
+            });
+        } else {
+            log::error!(
+                "Could not construct parameter out of callback response as the type was: {:?}",
+                parameter[1][0]
+            );
+            // TODO: Determine whether we want to return here or skip parameter
+            continue;
+        }
+    }
+    Ok(parameters)
 }
 
 mod test {
@@ -453,8 +462,6 @@ mod test {
         );
     }
 
-    use log::error;
-
     /**
      * Tests whether the publish and subscribe cycle with redis works.
      * Creates a separate thread that publishes test messages.
@@ -481,7 +488,7 @@ mod test {
                     format!("{} {}", instance_id, "test_payload"),
                 ) {
                     Ok(_) => {}
-                    Err(err) => error!("Error publishing: {err}"),
+                    Err(err) => log::error!("Error publishing: {err}"),
                 }
                 sleep(Duration::from_secs(1));
                 iter = iter + 1;
@@ -574,7 +581,7 @@ mod test {
         let result = rec_thread.join();
         match result {
             Ok(inner) => match inner {
-                Ok(ok) => println!("All fine"),
+                Ok(()) => println!("All fine"),
                 Err(_) => panic!("Error within blocking_pub_sub"),
             },
             Err(_) => panic!("Thread paniced"),

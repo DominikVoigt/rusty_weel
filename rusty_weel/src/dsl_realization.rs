@@ -1,10 +1,12 @@
+use blockingqueue::BlockingQueue;
 use derive_more::From;
 use std::any::TypeId;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, LinkedList};
 use std::fmt::Debug;
+use std::sync::atomic::{AtomicU32, AtomicUsize};
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex, PoisonError};
-use std::thread;
+use std::thread::{self, Thread, ThreadId};
 use std::time::SystemTime;
 
 use rand::distributions::Alphanumeric;
@@ -23,6 +25,7 @@ pub struct Weel {
     pub dynamic_data: DynamicData,
     pub state: Mutex<State>,
     pub positions: Mutex<Vec<String>>,
+    pub search_positions: Mutex<HashMap<String, Position>>,
     // Contains all open callbacks from async connections, ArcMutex as it is shared between the instance (to insert callbacks) and the callback thread (RedisHelper)
     pub callback_keys: Arc<Mutex<std::collections::HashMap<String, Arc<Mutex<ConnectionWrapper>>>>>,
     pub redis_notifications_client: Mutex<RedisHelper>,
@@ -30,6 +33,10 @@ pub struct Weel {
     pub open_votes: Mutex<HashSet<String>>,
     // Stores a count and the last access for each call
     pub loop_guard: Mutex<HashMap<String, (u32, SystemTime)>>,
+    // To allow threads to access parent data => thread_local storage is, as the name suggest, thread local
+    // stores information such as the parents thread id, search mode ...
+    // Invariant: When a thread is spawned within any weel method, thread information for this thread has to be created
+    thread_information: Mutex<HashMap<ThreadId, ThreadInfo>>
 }
 
 impl DSL for Weel {
@@ -44,23 +51,11 @@ impl DSL for Weel {
         finalize_code: Option<&str>,
         rescue_code: Option<&str>,
     ) -> Result<()> {
-        println!(
-            "Calling activity {} with parameters: {:?}",
-            label, parameters
-        );
-        if let Some(x) = prepare_code {
-            println!("Prepare code: {:?}", prepare_code);
-        }
-        if let Some(x) = update_code {
-            println!("Prepare code: {:?}", update_code)
-        }
-        if let Some(x) = finalize_code {
-            println!("Finalize code: {:?}", finalize_code)
-        }
-        if let Some(x) = rescue_code {
-            println!("Rescue code: {:?}", rescue_code)
-        }
-        todo!()
+        self.weel_activity(label, Type::Call, Some(endpoint_name), Some(parameters), finalize_code, update_code, prepare_code, rescue_code)
+    }
+    
+    fn manipulate(&self, label: &str, name: Option<&str>, code: &str) -> Result<()> {
+        self.weel_activity(label, Type::Manipulate, None, None, Some(code), None, None, None)
     }
 
     fn parallel_do(
@@ -97,11 +92,6 @@ impl DSL for Weel {
     fn alternative(&self, condition: &str, lambda: impl Fn() -> Result<()> + Sync) -> Result<()> {
         println!("Executing alternative, ignoring condition: {}", condition);
         lambda();
-        todo!()
-    }
-
-    fn manipulate(&self, label: &str, name: Option<&str>, code: &str) -> Result<()> {
-        println!("Calling manipulate");
         todo!()
     }
 
@@ -360,7 +350,71 @@ impl Weel {
             )?;
         Ok(())
     }
+    
+    fn weel_activity(&self, label: &str, call: Type, endpoint_name: Option<&str>, parameters: Option<HTTPParams>, finalize_code: Option<&str>, update_code: Option<&str>, prepare_code: Option<&str>, rescue_code: Option<&str>) -> Result<()> {
+        let position = self.position_test(label)?;
+        let search_mode = self.in_search_mode(Some(label));
+        if search_mode {
+            return Ok(());
+        }
+        let state = self.state.lock().unwrap(); 
+        let invalid_state = match *state {
+            State::Running => false,
+            _ => true,
+        };
+        let no_longer_necessary = self.thread_information.lock().unwrap().get(&thread::current().id()).map(|info| info.no_longer_necessary).unwrap_or(true);
+        
+        if  invalid_state || no_longer_necessary {
+              return Ok(());
+        }
+
+        let current_thread = thread::current().id();
+        let thread_info_map = self.thread_information.lock().unwrap();
+        let thread_info = thread_info_map.get(&current_thread).unwrap();
+        thread_info.continue = Continue::new();
+
+        todo!()
+    }   
+    
+    fn position_test<'a>(&self, label: &'a str) -> Result<&'a str> {
+        let is_alpha_numeric = label.chars().all(char::is_alphanumeric);
+        if is_alpha_numeric {
+            Ok(label)
+        } else {
+            {*self.state.lock().unwrap() = State::Stopping};
+            Err(Error::SyntaxError(format!("position: {label} not valid")))
+        }
+    }
+    
+    fn in_search_mode(&self, label: Option<&str>) -> bool {
+        let thread = thread::current();
+        let mut thread_info_map = self.thread_information.lock().unwrap();
+        // We unwrap here but we need to ensure that when the weel creates a thread, it registers the thread info!
+        let mut thread_info = thread_info_map.get_mut(&thread.id()).unwrap();
+        
+        if let Some(label) = label {
+            let found_position = thread_info.branch_search && self.search_positions.lock().unwrap().contains_key(&label.to_owned());
+            if found_position {
+                thread_info.branch_search = false;
+                thread_info.branch_search_now = true;
+                while let Some(parent) = thread_info.parent {
+                    // Each parent thread has to have some thread information. In general all threads should, when they spawn via weel register and add their thread information
+                    thread_info = thread_info_map.get_mut(&parent).unwrap();
+                    thread_info.branch_search = false;
+                    thread_info.branch_search_now = true;
+                }
+                // checked earlier for membership, thus we can simply unwrap:
+                self.search_positions.lock().unwrap().get(label).unwrap().detail == Mark::After
+            } else {
+                true
+            }
+        } else {
+            true
+        }
+    }
+
 }
+
 
 fn handle_join_error(err: Box<dyn std::any::Any + Send>) {
     if TypeId::of::<String>() == err.type_id() {
@@ -392,13 +446,37 @@ pub enum Error {
     StrUTF8Error(std::str::Utf8Error),
     StringUTF8Error(std::string::FromUtf8Error),
     HttpHelperError(http_helper::Error),
-    PoisonError()
+    PoisonError(),
+    FromStrError(mime::FromStrError),
 }
 
 pub enum Signal {
     Again,
     Salvage,
     Stop
+}
+
+pub enum Type {
+    Call,
+    Manipulate
+}
+
+pub struct Position {
+    detail: Mark
+}
+
+#[derive(PartialEq, Eq)]
+pub enum Mark {
+    At,
+    After,
+    Unmark
+}
+
+pub struct ThreadInfo {
+    parent: Option<ThreadId>,
+    branch_search: bool,
+    branch_search_now: bool,
+    no_longer_necessary: bool,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -419,6 +497,7 @@ impl Error {
             Error::ToStrError(_) => todo!(),
             Error::HttpHelperError(_) => todo!(),
             Error::PoisonError() => todo!(),
+            Error::FromStrError(_) => todo!(),
         }
     }
 }

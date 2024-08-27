@@ -119,7 +119,7 @@ impl ConnectionWrapper {
         self.inform("state/change", Some(content))
     }
 
-    pub fn inform_syntax_error(&self, err: Error, code: &str) -> Result<()> {
+    pub fn inform_syntax_error(&self, err: Error, code: Option<&str>) -> Result<()> {
         let mut content = HashMap::new();
         // TODO: mess = err.backtrace ? err.backtrace[0].gsub(/([\w -_]+):(\d+):in.*/,'\\1, Line \2: ') : ''
         content.insert("message".to_owned(), err.as_str().to_owned());
@@ -151,7 +151,7 @@ impl ConnectionWrapper {
     /**
      * Resolves the endpoints to their actual URLs
      */
-    pub fn prepare(&mut self, endpoints: &Vec<String>) {
+    pub fn prepare(&mut self, endpoints: &Vec<String>, parameters: &HTTPParams) -> HTTPParams {
         if endpoints.len() > 0 {
             let weel = self.weel();
             self.resolve_endpoints(endpoints, &weel);
@@ -173,6 +173,8 @@ impl ConnectionWrapper {
                 }
             }
         }
+        // TODO: parameters L73? (do we need to do this instance exec)
+        parameters.clone()
     }
 
     /**
@@ -268,7 +270,7 @@ impl ConnectionWrapper {
      *      - We no longer support the special prefixed arguments that are transformed into parameters, we convert all parameters into simple url encoded body parameters
      *      - Only the standard headers that are generated in the `henerate_headers` method are send.
      *      - All arguments within the HTTPParams are send as Key-Value pairs as part of the body (application/x-www-form-urlencoded)
-     *          -> TODO: Our implementation does multipart, is this fine?
+     *          -> TODO: Our implementation sends this as multipart, is this fine?
      * - Expects prepare to be called before
      * - We explicitly expect the Arc<Mutex> here since we need to add a reference to the callbacks (by cloning the Arc)
      */
@@ -667,6 +669,7 @@ struct StructuredResultElement {
 /**
  * Reformats the result into a simple DTO form.
  * All file handles are read and content saved into the DTO
+ * TODO: Determine whether this has to be the exact same as the ruby impl
  */
 fn structurize_result(parameters: &mut Vec<Parameter>) -> Result<Vec<StructuredResultElement>> {
     let mut result = Vec::new();
@@ -980,7 +983,7 @@ mod test {
             encoding.0, encoding.1
         );
 
-        let result = convert_to_utf8("text/plain".to_owned(), data);
+        let result = convert_to_utf8(mime::TEXT_PLAIN, data);
         println!("{}", result);
         assert_eq!(
             indoc::indoc! {r#"première is first
@@ -999,7 +1002,7 @@ mod test {
         );
         assert_eq!("ISO-8859-1", encoding.0);
 
-        let result = convert_to_utf8("text/plain".to_owned(), data);
+        let result = convert_to_utf8(mime::TEXT_PLAIN, data);
         println!("{}", result);
         assert_eq!(
             indoc::indoc! {r#"première is first
