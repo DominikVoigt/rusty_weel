@@ -20,10 +20,14 @@ fn main() {
 
     let static_data = StaticData::load("opts.yaml");
     let dynamic_data = DynamicData::load("context.yaml");
-    let callback_keys: Arc<Mutex<HashMap<String, Arc<ConnectionWrapper>>>> =
+    let callback_keys: Arc<Mutex<HashMap<String, Arc<Mutex<ConnectionWrapper>>>>> =
         Arc::new(Mutex::new(HashMap::new()));
+    let redis_helper = match RedisHelper::new(&static_data, "notifications") {
+        Ok(redis) => redis,
+        Err(err) => {log::error!("Error during startup when connecting to redis: {:?}", err); panic!("Error during startup")},
+    };
     let weel = Weel {
-        redis_notifications_client: Mutex::new(RedisHelper::new(&static_data, "notifications")),
+        redis_notifications_client: Mutex::new(redis_helper),
         static_data,
         dynamic_data,
         callback_keys,

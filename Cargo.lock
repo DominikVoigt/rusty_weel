@@ -1693,6 +1693,7 @@ dependencies = [
  "infer",
  "json",
  "log 0.4.21",
+ "mime 0.3.17",
  "once",
  "rand 0.8.5",
  "redis",

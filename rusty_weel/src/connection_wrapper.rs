@@ -1,7 +1,8 @@
 use base64::Engine;
-use http_helper::Parameter;
+use http_helper::{Mime, Parameter};
+use mime::APPLICATION_JSON;
 use reqwest::{
-    header::{HeaderMap, HeaderName, HeaderValue},
+    header::{HeaderMap, HeaderName, HeaderValue, CONTENT_TYPE},
     Method,
 };
 use rust_icu_ucsdet::CharsetDetector;
@@ -332,6 +333,7 @@ impl ConnectionWrapper {
 
             weel.callback(Arc::clone(selfy), &callback_id, content_json)?;
             let endpoint = match this.handler_endpoints.get(0) {
+                // TODO: Set method by matched method in url
                 Some(endpoint) => protocol_regex.replace_all(&endpoint, r"http\\1:"),
                 None => {
                     return Err(Error::SyntaxError(
@@ -386,7 +388,7 @@ impl ConnectionWrapper {
             this.callback(
                 vec![Parameter::ComplexParameter {
                     name: "error".to_owned(),
-                    mime_type: "application/json".to_owned(),
+                    mime_type:  APPLICATION_JSON,
                     content_handle: tempfile,
                 }],
                 response_headers,
@@ -685,10 +687,11 @@ fn structurize_result(parameters: &mut Vec<Parameter>) -> Result<Vec<StructuredR
                 let mut data: Vec<u8> = Vec::new();
                 content_handle.read_to_end(&mut data)?;
                 content_handle.rewind()?;
-                let data = validate_encoding(mime_type.clone(), data);
+                // Use the provided mime type
+                let data = convert_to_utf8(mime_type.clone(), data);
                 result.push(StructuredResultElement {
                     name: name.clone(),
-                    mime_type: Some(mime_type.clone()),
+                    mime_type: Some(mime_type.to_string().clone()),
                     data,
                 })
             }
@@ -698,44 +701,76 @@ fn structurize_result(parameters: &mut Vec<Parameter>) -> Result<Vec<StructuredR
 }
 
 /**
- * Will try to detect the encoding and convert the data into UTF-8
- * If the confidence is below the threshold of 30 (see test for detecting binary) then the data will be base64 encoded (treated as binary)
+ * Will convert the given data into a UTF-8 string.
+ * If the data is binary (based on mime type) the data is base64 encoded -> In a string with meta data
+ * If the data is text data and a charset is provided, conversion happens based on that.
+ * If the data is text data and the charset is not provided, it is attempted to be detected.
+ *  If detection confidence is sufficient, conversion is done. Otherwise the data is treated as binary
  */
-fn validate_encoding(mime_type: String, data: Vec<u8>) -> String {
-    match String::from_utf8(data.clone()) {
-        Ok(string) => string,
-        Err(err) => {
-            log::error!(
-                "data seems not to be UTF-8 encoded: {:?}, try detecting encoding...",
-                err
-            );
-            let encoding = detect_encoding(&data);
-            let confidence = encoding.1;
-            let decode_result = match encoding_rs::Encoding::for_label(encoding.0.as_bytes()) {
-                Some(x) => {
-                    if confidence > 30 {
-                        x.decode(&data).0.into_owned()
-                    } else {
-                        convert_to_base64(data)
-                    }
-                }
-                // If the detected encoding is not identifiable by the decode library, emit error and decode as UTF-8 anyway
-                None => {
+fn convert_to_utf8(mime_type: Mime, data: Vec<u8>) -> String {
+    if is_text(&mime_type) {
+        if let Some(charset) = mime_type.get_param("charset").map(|e| e.to_string()) {
+            match encoding_rs::Encoding::for_label(charset.as_bytes()) {
+                Some(encoding) => encoding.decode(&data).0.into_owned(),
+                None => todo!(),
+            }
+        } else {
+            // If no charset encoding was provided via the mimetype, try utf 8 and otherwise try some detection...
+            match String::from_utf8(data.clone()) {
+                Ok(string) => string,
+                Err(err) => {
                     log::error!(
-                        "Encoding could not be found by the provided label: {}",
-                        encoding.0
+                        "data seems not to be UTF-8 encoded: {:?}, try detecting encoding...",
+                        err
                     );
-                    convert_to_base64(data)
+                    let encoding = detect_encoding(&data);
+                    let confidence = encoding.1;
+                    let decode_result = match encoding_rs::Encoding::for_label(encoding.0.as_bytes()) {
+                        Some(x) => {
+                            if confidence > 30 {
+                                x.decode(&data).0.into_owned()
+                            } else {
+                                convert_to_base64(mime::APPLICATION_OCTET_STREAM, data)
+                            }
+                        }
+                        // If the detected encoding is not identifiable by the decode library, emit error and decode as UTF-8 anyway
+                        None => {
+                            log::error!(
+                                "Encoding could not be found by the provided label: {}",
+                                encoding.0
+                            );
+                            convert_to_base64(mime::APPLICATION_OCTET_STREAM, data)
+                        }
+                    };
+                    decode_result
+                    // TODO: What to do with this Hash part????
                 }
-            };
-            decode_result
-            // TODO: What to do with this Hash part????
+            }
         }
+    } else {
+        // If mimetype is "identified" as a binary format, the data is encoded in base64
+        convert_to_base64(mime_type, data)
+    }
+}
+
+/**
+ * Prototype function to "identify" binary/text content
+ * https://stackoverflow.com/questions/3879297/determining-whether-a-mime-type-is-binary-or-text-based
+ */
+fn is_text(mime_type: &Mime) -> bool {
+    if mime_type.type_().as_str().contains("text") {
+        true
+    } else if !mime_type.type_().as_str().contains("application") {
+        false
+    } else {
+        // Very certain a non-exhaustive list of text base formats
+        ["json", "ld+json", "x-httpd-php", "x-sh", "x-csh", "xhtml+xml", "xml"].contains(&mime_type.subtype().as_str())
     }
 }
 
 // TODO: Pretty sure this should work
-fn convert_to_base64(data: Vec<u8>) -> String {
+fn convert_to_base64(mime_type: Mime, data: Vec<u8>) -> String {
+    
     match infer::get(&data) {
         Some(mime_type) => {
             format!(
@@ -834,8 +869,8 @@ fn handle_twin_translate(
         // TODO: Very unsure about the semantics of the original code and the usage
         let mut array = json!(body);
         assert!(array.is_array());
-        if let Some(array) = array.as_array() {
-            for element in array {
+        if let Some(array) = array.as_array_mut() {
+            for element in array.iter_mut() {
                 if let Some(type_) = element.get("type").map(|e| e.as_str()).flatten() {
                     if type_ == translation_type {
                         if let Some(endpoint) =
@@ -912,7 +947,7 @@ fn handle_twin_translate(
 mod test {
     use std::fs;
 
-    use crate::connection_wrapper::{detect_encoding, validate_encoding};
+    use crate::connection_wrapper::{detect_encoding, convert_to_utf8};
 
     #[test]
     fn test_pattern() {
@@ -945,7 +980,7 @@ mod test {
             encoding.0, encoding.1
         );
 
-        let result = validate_encoding("text/plain".to_owned(), data);
+        let result = convert_to_utf8("text/plain".to_owned(), data);
         println!("{}", result);
         assert_eq!(
             indoc::indoc! {r#"première is first
@@ -964,7 +999,7 @@ mod test {
         );
         assert_eq!("ISO-8859-1", encoding.0);
 
-        let result = validate_encoding("text/plain".to_owned(), data);
+        let result = convert_to_utf8("text/plain".to_owned(), data);
         println!("{}", result);
         assert_eq!(
             indoc::indoc! {r#"première is first
