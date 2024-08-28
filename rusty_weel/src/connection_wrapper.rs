@@ -20,7 +20,7 @@ use tempfile::tempfile;
 use urlencoding::encode;
 
 use crate::{
-    data_types::{HTTPParams, InstanceMetaData},
+    data_types::{BlockingQueue, HTTPParams, InstanceMetaData},
     dsl_realization::{generate_random_key, Error, Result, Signal, Weel},
 };
 
@@ -28,9 +28,9 @@ use crate::{
 // Deadlocks can still occur since weel is not mutex locked
 pub struct ConnectionWrapper {
     weel: Weak<Weel>,
-    position: Option<String>,
+    handler_position: Option<String>,
     // Continue object for thread synchronization -> TODO: See whether we need this/how we implement this
-    handler_continue: Option<()>,
+    handler_continue: Option<Arc<crate::data_types::BlockingQueue<Signal>>>,
     // See proto_curl in connection.rb
     handler_passthrough: Option<String>,
     // TODO: Unsure about this type:
@@ -55,11 +55,11 @@ const UNGUARDED_CALLS: u32 = 100;
 const SLEEP_DURATION: u64 = 2;
 
 impl ConnectionWrapper {
-    pub fn new(weel: Arc<Weel>, position: Option<String>, handler_continue: Option<()>) -> Self {
+    pub fn new(weel: Arc<Weel>, handler_position: Option<String>, handler_continue: Option<Arc<BlockingQueue<Signal>>>) -> Self {
         let weel = Arc::downgrade(&weel);
         ConnectionWrapper {
             weel,
-            position,
+            handler_position,
             handler_continue,
             handler_passthrough: None,
             handler_return_value: None,
@@ -205,7 +205,7 @@ impl ConnectionWrapper {
                 },
                 "task": {
                     "label": self.label,
-                    "id": self.position
+                    "id": self.handler_position
                 }
             }
         )
@@ -280,7 +280,7 @@ impl ConnectionWrapper {
 
         // Generate headers
         let mut headers: HeaderMap =
-            this.generate_headers(weel.static_data.get_instance_meta_data(), &callback_id)?;
+            this.construct_headers(weel.static_data.get_instance_meta_data(), &callback_id)?;
         // Put arguments into SimpleParameters that will be part of the body-> Since we cannot upload files from the CPEE for now // TODO?
 
         let mut status: u16;
@@ -327,7 +327,7 @@ impl ConnectionWrapper {
             );
             content_json.insert("label".to_owned(), this.label.clone());
             let position = this
-                .position
+                .handler_position
                 .as_ref()
                 .map(|x| x.clone())
                 .unwrap_or("".to_owned());
@@ -415,7 +415,7 @@ impl ConnectionWrapper {
                     content.insert("label".to_owned(), this.label.clone());
                     content.insert(
                         "activity".to_owned(),
-                        this.position.clone().unwrap_or("".to_owned()),
+                        this.handler_position.clone().unwrap_or("".to_owned()),
                     );
                     content.insert(
                         "endpoint".to_owned(),
@@ -553,7 +553,7 @@ impl ConnectionWrapper {
      *  - activity
      *  - endpoint
      */
-    fn construct_basic_content(&mut self) -> Result<HashMap<String, String>> {
+    pub fn construct_basic_content(&self) -> Result<HashMap<String, String>> {
         let mut content = HashMap::new();
         content.insert(
             "activity-uuid".to_owned(),
@@ -562,7 +562,7 @@ impl ConnectionWrapper {
         content.insert("label".to_owned(), self.label.clone());
         content.insert(
             "activity".to_owned(),
-            self.position
+            self.handler_position
                 .clone()
                 .map(|e| e.clone())
                 .unwrap_or("".to_owned()),
@@ -574,8 +574,8 @@ impl ConnectionWrapper {
         Ok(content)
     }
 
-    fn generate_headers(&self, data: InstanceMetaData, callback_id: &str) -> Result<HeaderMap> {
-        let position = self.position.as_ref().map(|x| x.as_str()).unwrap_or("");
+    fn construct_headers(&self, data: InstanceMetaData, callback_id: &str) -> Result<HeaderMap> {
+        let position = self.handler_position.as_ref().map(|x| x.as_str()).unwrap_or("");
         let mut headers = HeaderMap::new();
         headers.append("CPEE-BASE", HeaderValue::from_str(&data.cpee_base_url)?);
         headers.append("CPEE-Instance", HeaderValue::from_str(&data.instance_id)?);

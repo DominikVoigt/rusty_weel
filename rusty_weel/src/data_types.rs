@@ -1,7 +1,12 @@
+use std::collections::VecDeque;
 use std::fs;
+use std::sync::{Arc, Condvar, Mutex};
+use std::thread::ThreadId;
 use std::{collections::HashMap, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
+
+use crate::dsl_realization::Signal;
 
 #[derive(Debug, Clone)]
 pub struct HTTPParams {
@@ -161,6 +166,55 @@ impl DynamicData {
         let context: DynamicData =
             serde_yaml::from_str(&context).expect("Could not parse Configuration");
         context
+    }
+}
+
+pub struct ThreadInfo {
+    pub parent: Option<ThreadId>,
+    pub branch_search: bool,
+    pub branch_search_now: bool,
+    pub no_longer_necessary: bool,
+    pub blocking_queue: Arc<BlockingQueue<Signal>>,
+    pub branch_traces_id: Option<String>,
+    pub branch_traces: HashMap<String, Vec<String>>
+}
+
+/**
+ * Simple multi-threading synchronization structure
+ * Queue blocks on dequeue if it is empty.
+ * Unblocks threads if elements are enqueued
+ */
+pub struct BlockingQueue<T> {
+    queue: Mutex<VecDeque<T>>,
+    signal: Condvar,
+}
+
+impl<T> BlockingQueue<T> {
+    pub fn new() -> Self {
+        BlockingQueue { queue: Mutex::new(VecDeque::new()), signal: Condvar::new() }
+    }
+    
+    pub fn enqueue(&self, element: T) {
+        self.queue.lock().unwrap().push_back(element);
+        self.signal.notify_one();
+    }
+
+    pub fn dequeue(&self) -> T {
+        let mut queue = self.queue.lock().unwrap();
+        // Even though can wake up spuriously, not a problem if we check the condition repeatedly on whether the queue is non-empty
+        while queue.is_empty() {
+            queue = self.signal.wait(queue).unwrap();
+        }
+        // Only leave queue if it contains an item -> can pop it off
+        queue.pop_front().unwrap()
+    }
+
+    pub fn clear(&self) {
+        self.queue.lock().unwrap().clear();
+    }
+
+    pub fn need_to_wait(&self) -> bool {
+        self.queue.lock().unwrap().is_empty()
     }
 }
 

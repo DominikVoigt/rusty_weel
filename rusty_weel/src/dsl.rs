@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::{data_types::HTTPParams, dsl_realization::Result};
 
 pub trait DSL {
@@ -5,7 +7,7 @@ pub trait DSL {
      * Implements the invokation of external functionalities
      */
     fn call(
-        &self, 
+        this: Arc<Self>,
         label: &str,
         endpoint_url: &str,
         parameters: HTTPParams,
@@ -19,9 +21,13 @@ pub trait DSL {
     /**
      * Implements script tasks that do not need to invoke functionalities
      */
-    fn manipulate(&self, label: &str, name: Option<&str>, code: &str) -> Result<()>;
+    fn manipulate(this: Arc<Self>, label: &str, name: Option<&str>, code: &str) -> Result<()>;
 
-    fn loop_exec(&self, condition: Result<bool>, lambda: impl Fn() -> Result<()> + Sync) -> Result<()>;
+    fn loop_exec(
+        &self,
+        condition: Result<bool>,
+        lambda: impl Fn() -> Result<()> + Sync,
+    ) -> Result<()>;
 
     fn pre_test(&self, condition: &str) -> Result<bool>;
 
@@ -33,12 +39,20 @@ pub trait DSL {
      *        - Value: Will wait for the specified number of branches to return
      * `cancel` - Determines on which task the termination of a branch is decided on: either the first or last task in a branch
      */
-    fn parallel_do(&self, wait: Option<u32>, cancel: &str, lambda: impl Fn() -> Result<()> + Sync) -> Result<()>;
+    fn parallel_do(
+        &self,
+        wait: Option<u32>,
+        cancel: &str,
+        lambda: impl Fn() -> Result<()> + Sync,
+    ) -> Result<()>;
 
     /**
      * One of the parallel branches within a parallel do, has to create the threads and then wait for sync with the parallel_do for execution
      */
-    fn parallel_branch(&self, /*data: &str,*/ lambda: impl Fn() -> Result<()> + Sync) -> Result<()>;
+    fn parallel_branch(
+        &self,
+        /*data: &str,*/ lambda: impl Fn() -> Result<()> + Sync,
+    ) -> Result<()>;
 
     /**
      * Guards critical block
@@ -53,5 +67,5 @@ pub trait DSL {
 
     fn alternative(&self, condition: &str, lambda: impl Fn() -> Result<()> + Sync) -> Result<()>;
 
-    fn stop(&self, label: &str)  -> Result<()>;
+    fn stop(&self, label: &str) -> Result<()>;
 }

@@ -1,11 +1,11 @@
 use blockingqueue::BlockingQueue;
 use derive_more::From;
 use std::any::TypeId;
-use std::collections::{HashMap, HashSet, LinkedList};
+use std::collections::{HashMap, HashSet, LinkedList, VecDeque};
 use std::fmt::Debug;
 use std::sync::atomic::{AtomicU32, AtomicUsize};
 use std::sync::mpsc::{Receiver, Sender};
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Condvar, Mutex, PoisonError};
 use std::thread::{self, Thread, ThreadId};
 use std::time::SystemTime;
 
@@ -14,8 +14,8 @@ use rand::Rng;
 use reqwest::header::ToStrError;
 use rusty_weel_macro::get_str_from_value;
 
-use crate::connection_wrapper::ConnectionWrapper;
-use crate::data_types::{DynamicData, HTTPParams, State, StaticData};
+use crate::connection_wrapper::{self, ConnectionWrapper};
+use crate::data_types::{DynamicData, HTTPParams, State, StaticData, ThreadInfo};
 use crate::dsl::DSL;
 use crate::eval_helper::EvalError;
 use crate::redis_helper::{RedisHelper, Topic};
@@ -36,12 +36,12 @@ pub struct Weel {
     // To allow threads to access parent data => thread_local storage is, as the name suggest, thread local
     // stores information such as the parents thread id, search mode ...
     // Invariant: When a thread is spawned within any weel method, thread information for this thread has to be created
-    thread_information: Mutex<HashMap<ThreadId, ThreadInfo>>
+    pub thread_information: Mutex<HashMap<ThreadId, ThreadInfo>>,
 }
 
 impl DSL for Weel {
     fn call(
-        &self,
+        this: Arc<Self>,
         label: &str,
         endpoint_name: &str,
         parameters: HTTPParams,
@@ -51,11 +51,31 @@ impl DSL for Weel {
         finalize_code: Option<&str>,
         rescue_code: Option<&str>,
     ) -> Result<()> {
-        self.weel_activity(label, Type::Call, Some(endpoint_name), Some(parameters), finalize_code, update_code, prepare_code, rescue_code)
+        Self::weel_activity(
+            this,
+            label,
+            Type::Call,
+            Some(endpoint_name),
+            Some(parameters),
+            finalize_code,
+            update_code,
+            prepare_code,
+            rescue_code,
+        )
     }
-    
-    fn manipulate(&self, label: &str, name: Option<&str>, code: &str) -> Result<()> {
-        self.weel_activity(label, Type::Manipulate, None, None, Some(code), None, None, None)
+
+    fn manipulate(this: Arc<Self>, label: &str, name: Option<&str>, code: &str) -> Result<()> {
+        Self::weel_activity(
+            this,
+            label,
+            Type::Manipulate,
+            None,
+            None,
+            Some(code),
+            None,
+            None,
+            None,
+        )
     }
 
     fn parallel_do(
@@ -226,7 +246,10 @@ impl Weel {
         Ok(())
     }
 
-    fn vote(&self, vote_topic: &str, mut content: HashMap<String, String>) -> Result<bool> {
+    /*
+     * Vote of controller
+     */
+    pub fn vote(&self, vote_topic: &str, mut content: HashMap<String, String>) -> Result<bool> {
         let static_data = &self.static_data;
         let (topic, name) = vote_topic
             .split_once("/")
@@ -313,6 +336,27 @@ impl Weel {
         }
     }
 
+    /*
+     * vote_sync_after of controller
+     */
+    fn vote_sync_after(&self, connection_wrapper: &ConnectionWrapper) -> Result<bool> {
+        let content = connection_wrapper.construct_basic_content()?;
+        self.vote("activity/syncing_after", content)
+    }
+
+    /*
+     * vote_sync_before of controller
+     */
+    fn vote_sync_before(&self, connection_wrapper: &ConnectionWrapper, parameters: Option<HashMap<String, String>>) -> Result<bool> {
+        let mut content = connection_wrapper.construct_basic_content()?;
+        content.insert("parameters".to_owned(), serde_json::to_string(&parameters)?);
+        self.vote("activity/syncing_before", content)
+    }
+
+    fn generate_content() {
+
+    }
+
     pub fn callback(
         &self,
         connection_wrapper: Arc<Mutex<ConnectionWrapper>>,
@@ -350,50 +394,118 @@ impl Weel {
             )?;
         Ok(())
     }
-    
-    fn weel_activity(&self, label: &str, call: Type, endpoint_name: Option<&str>, parameters: Option<HTTPParams>, finalize_code: Option<&str>, update_code: Option<&str>, prepare_code: Option<&str>, rescue_code: Option<&str>) -> Result<()> {
-        let position = self.position_test(label)?;
-        let search_mode = self.in_search_mode(Some(label));
+
+    fn weel_activity(
+        this: Arc<Self>,
+        label: &str,
+        call: Type,
+        endpoint_name: Option<&str>,
+        parameters: Option<HTTPParams>,
+        finalize_code: Option<&str>,
+        update_code: Option<&str>,
+        prepare_code: Option<&str>,
+        rescue_code: Option<&str>,
+    ) -> Result<()> {
+        let position = this.position_test(label)?;
+        let search_mode = this.in_search_mode(Some(label));
         if search_mode {
             return Ok(());
         }
-        let state = self.state.lock().unwrap(); 
-        let invalid_state = match *state {
-            State::Running => false,
-            _ => true,
-        };
-        let no_longer_necessary = self.thread_information.lock().unwrap().get(&thread::current().id()).map(|info| info.no_longer_necessary).unwrap_or(true);
-        
-        if  invalid_state || no_longer_necessary {
-              return Ok(());
-        }
 
-        let current_thread = thread::current().id();
-        let thread_info_map = self.thread_information.lock().unwrap();
-        let thread_info = thread_info_map.get(&current_thread).unwrap();
-        thread_info.continue = Continue::new();
+        let result = {
+            let state = this.state.lock().unwrap();
+            let invalid_state = match *state {
+                State::Running => false,
+                _ => true,
+            };
+
+            {
+                let no_longer_necessary = this
+                    .thread_information
+                    .lock()
+                    .unwrap()
+                    .get(&thread::current().id())
+                    .map(|info| info.no_longer_necessary)
+                    .unwrap_or(true);
+
+                if invalid_state || no_longer_necessary {
+                    return Ok(());
+                }
+            }
+
+            let current_thread = thread::current().id();
+            let thread_info_map = this.thread_information.lock().unwrap();
+            let thread_info = thread_info_map.get(&current_thread).unwrap();
+
+            thread_info.blocking_queue = Arc::new(BlockingQueue::new());
+            let connection_wrapper = ConnectionWrapper::new(
+                this,
+                Some(position.to_owned()),
+                Some(thread_info.blocking_queue.clone()),
+            );
+
+            if thread_info.parent.is_some() && thread_info.branch_traces_id.is_some() {
+                let branch_trace_id = &thread_info.branch_traces_id.unwrap();
+                let parent_thread_info = thread_info_map
+                    .get_mut(&thread_info.parent.unwrap())
+                    .unwrap();
+                let traces = parent_thread_info.branch_traces.get_mut(branch_trace_id);
+                match traces {
+                    Some(traces) => traces.push(position.to_owned()),
+                    None => {
+                        parent_thread_info
+                            .branch_traces
+                            .insert(branch_trace_id.to_owned(), Vec::new());
+                    }
+                }
+            }
+
+            // TODO: wp = __weel_progress position, connectionwrapper.activity_uuid
+            if search_mode /* == "after"*/ {
+                Err(Error::Signal(Signal::Proceed));
+            } else {
+                match call {
+                    Type::Manipulate => {
+                        let state_stopping_or_finished = matches!(this.state.lock().unwrap(), State::Stopping || State::Finishing)
+                        if !this.vote_sync_after(&connection_wrapper)? {
+                            Err(Error::Signal(Signal::Stop))
+                        } else if this.sta {
+                            
+                        }
+                    },
+                    Type::Call => todo!(),
+                }
+            }
+        };
 
         todo!()
-    }   
-    
+    }
+
     fn position_test<'a>(&self, label: &'a str) -> Result<&'a str> {
         let is_alpha_numeric = label.chars().all(char::is_alphanumeric);
         if is_alpha_numeric {
             Ok(label)
         } else {
-            {*self.state.lock().unwrap() = State::Stopping};
+            {
+                *self.state.lock().unwrap() = State::Stopping
+            };
             Err(Error::SyntaxError(format!("position: {label} not valid")))
         }
     }
-    
+
     fn in_search_mode(&self, label: Option<&str>) -> bool {
         let thread = thread::current();
         let mut thread_info_map = self.thread_information.lock().unwrap();
         // We unwrap here but we need to ensure that when the weel creates a thread, it registers the thread info!
         let mut thread_info = thread_info_map.get_mut(&thread.id()).unwrap();
-        
+
         if let Some(label) = label {
-            let found_position = thread_info.branch_search && self.search_positions.lock().unwrap().contains_key(&label.to_owned());
+            let found_position = thread_info.branch_search
+                && self
+                    .search_positions
+                    .lock()
+                    .unwrap()
+                    .contains_key(&label.to_owned());
             if found_position {
                 thread_info.branch_search = false;
                 thread_info.branch_search_now = true;
@@ -404,7 +516,13 @@ impl Weel {
                     thread_info.branch_search_now = true;
                 }
                 // checked earlier for membership, thus we can simply unwrap:
-                self.search_positions.lock().unwrap().get(label).unwrap().detail == Mark::After
+                self.search_positions
+                    .lock()
+                    .unwrap()
+                    .get(label)
+                    .unwrap()
+                    .detail
+                    == Mark::After
             } else {
                 true
             }
@@ -412,9 +530,7 @@ impl Weel {
             true
         }
     }
-
 }
-
 
 fn handle_join_error(err: Box<dyn std::any::Any + Send>) {
     if TypeId::of::<String>() == err.type_id() {
@@ -448,35 +564,31 @@ pub enum Error {
     HttpHelperError(http_helper::Error),
     PoisonError(),
     FromStrError(mime::FromStrError),
+    Signal(Signal)
 }
 
+#[derive(Debug)]
 pub enum Signal {
     Again,
     Salvage,
-    Stop
+    Stop,
+    Proceed,
 }
 
 pub enum Type {
     Call,
-    Manipulate
+    Manipulate,
 }
 
 pub struct Position {
-    detail: Mark
+    detail: Mark,
 }
 
 #[derive(PartialEq, Eq)]
 pub enum Mark {
     At,
     After,
-    Unmark
-}
-
-pub struct ThreadInfo {
-    parent: Option<ThreadId>,
-    branch_search: bool,
-    branch_search_now: bool,
-    no_longer_necessary: bool,
+    Unmark,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

@@ -35,6 +35,8 @@ fn main() {
         open_votes: Mutex::new(HashSet::new()),
         loop_guard: Mutex::new(HashMap::new()),
         positions: Mutex::new(Vec::new()),
+        search_positions: todo!(),
+        thread_information: todo!(),
     };
     // create thread for callback subscriptions with redis
     RedisHelper::establish_callback_subscriptions(
