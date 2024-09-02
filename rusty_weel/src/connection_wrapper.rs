@@ -139,6 +139,12 @@ impl ConnectionWrapper {
         self.inform("position/change", ipc)
     }
 
+    pub fn inform_activity_manipulate(&self) -> Result<()> {
+        let mut content = self.construct_basic_content()?;
+        content.insert("label".to_owned(), self.label.clone());
+        self.inform("activity/manipulating", Some(content))
+    }
+
     fn inform(&self, what: &str, content: Option<HashMap<String, String>>) -> Result<()> {
         let weel = self.weel();
         weel.redis_notifications_client
@@ -239,7 +245,7 @@ impl ConnectionWrapper {
         let weel = this.weel();
         
         if this.handler_endpoints.is_empty() {
-            return Err(Error::SyntaxError("Wrong endpoint".to_owned()))
+            return Err(Error::GeneralError("Wrong endpoint".to_owned()))
         }
         this.label = parameters.label.to_owned();
         // We do not model annotations anyway -> Can skip this from the original code
@@ -338,7 +344,7 @@ impl ConnectionWrapper {
                 // TODO: Set method by matched method in url
                 Some(endpoint) => protocol_regex.replace_all(&endpoint, r"http\\1:"),
                 None => {
-                    return Err(Error::SyntaxError(
+                    return Err(Error::GeneralError(
                         "No endpoint for curl configured.".to_owned(),
                     ))
                 }

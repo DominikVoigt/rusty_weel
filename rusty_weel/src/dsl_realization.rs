@@ -41,7 +41,7 @@ pub struct Weel {
 
 impl DSL for Weel {
     fn call(
-        this: Arc<Self>,
+        self: Arc<Self>,
         label: &str,
         endpoint_name: &str,
         parameters: HTTPParams,
@@ -51,10 +51,9 @@ impl DSL for Weel {
         finalize_code: Option<&str>,
         rescue_code: Option<&str>,
     ) -> Result<()> {
-        Self::weel_activity(
-            this,
+        self.weel_activity(
             label,
-            Type::Call,
+            ActivityType::Call,
             Some(endpoint_name),
             Some(parameters),
             finalize_code,
@@ -64,11 +63,10 @@ impl DSL for Weel {
         )
     }
 
-    fn manipulate(this: Arc<Self>, label: &str, name: Option<&str>, code: &str) -> Result<()> {
-        Self::weel_activity(
-            this,
+    fn manipulate(self: Arc<Self>, label: &str, name: Option<&str>, code: &str) -> Result<()> {
+        self.weel_activity(
             label,
-            Type::Manipulate,
+            ActivityType::Manipulate,
             None,
             None,
             Some(code),
@@ -396,9 +394,9 @@ impl Weel {
     }
 
     fn weel_activity(
-        this: Arc<Self>,
+        self: Arc<Self>,
         label: &str,
-        call: Type,
+        activity_type: ActivityType,
         endpoint_name: Option<&str>,
         parameters: Option<HTTPParams>,
         finalize_code: Option<&str>,
@@ -406,21 +404,21 @@ impl Weel {
         prepare_code: Option<&str>,
         rescue_code: Option<&str>,
     ) -> Result<()> {
-        let position = this.position_test(label)?;
-        let search_mode = this.in_search_mode(Some(label));
+        let position = self.position_test(label)?;
+        let search_mode = self.in_search_mode(Some(label));
         if search_mode {
             return Ok(());
         }
 
-        let result = {
-            let state = this.state.lock().unwrap();
+        let result: Result<()> = {
+            let state = self.state.lock().unwrap();
             let invalid_state = match *state {
                 State::Running => false,
                 _ => true,
             };
 
             {
-                let no_longer_necessary = this
+                let no_longer_necessary = self
                     .thread_information
                     .lock()
                     .unwrap()
@@ -434,12 +432,12 @@ impl Weel {
             }
 
             let current_thread = thread::current().id();
-            let thread_info_map = this.thread_information.lock().unwrap();
+            let thread_info_map = self.thread_information.lock().unwrap();
             let thread_info = thread_info_map.get(&current_thread).unwrap();
 
             thread_info.blocking_queue = Arc::new(BlockingQueue::new());
             let connection_wrapper = ConnectionWrapper::new(
-                this,
+                self,
                 Some(position.to_owned()),
                 Some(thread_info.blocking_queue.clone()),
             );
@@ -462,18 +460,28 @@ impl Weel {
 
             // TODO: wp = __weel_progress position, connectionwrapper.activity_uuid
             if search_mode /* == "after"*/ {
-                Err(Error::Signal(Signal::Proceed));
+                Err(Error::Signal(Signal::Proceed))
             } else {
-                match call {
-                    Type::Manipulate => {
-                        let state_stopping_or_finished = matches!(this.state.lock().unwrap(), State::Stopping || State::Finishing)
-                        if !this.vote_sync_after(&connection_wrapper)? {
+                match activity_type {
+                    ActivityType::Manipulate => {
+                        let state_stopping_or_finished = matches!(*self.state.lock().unwrap(), State::Stopping | State::Finishing);
+                        if !self.vote_sync_before(&connection_wrapper, None)? {
                             Err(Error::Signal(Signal::Stop))
-                        } else if this.sta {
-                            
+                        } else if state_stopping_or_finished {
+                            Err(Error::Signal(Signal::Skip))
+                        } else {
+                            match finalize_code {
+                                Some(finalize_code) => {
+                                    connection_wrapper.activity_manipulate_handle(label);
+                                    connection_wrapper.inform_activity_manipulate();
+                                    
+                                    Ok(())
+                                },
+                                None => Ok(()),
+                            }
                         }
                     },
-                    Type::Call => todo!(),
+                    ActivityType::Call => todo!(),
                 }
             }
         };
@@ -489,7 +497,7 @@ impl Weel {
             {
                 *self.state.lock().unwrap() = State::Stopping
             };
-            Err(Error::SyntaxError(format!("position: {label} not valid")))
+            Err(Error::GeneralError(format!("position: {label} not valid")))
         }
     }
 
@@ -550,7 +558,7 @@ fn handle_error(err: Error) {
 
 #[derive(Debug, From)]
 pub enum Error {
-    SyntaxError(String),
+    GeneralError(String),
     InvalidHeaderValue(reqwest::header::InvalidHeaderValue),
     InvalidHeaderName(reqwest::header::InvalidHeaderName),
     JsonError(serde_json::Error),
@@ -573,9 +581,10 @@ pub enum Signal {
     Salvage,
     Stop,
     Proceed,
+    Skip
 }
 
-pub enum Type {
+pub enum ActivityType {
     Call,
     Manipulate,
 }
@@ -596,7 +605,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 impl Error {
     pub fn as_str(&self) -> &str {
         match self {
-            Error::SyntaxError(message) => message.as_str(),
+            Error::GeneralError(message) => message.as_str(),
             Error::JsonError(_) => todo!(),
             Error::IOError(_) => todo!(),
             Error::RedisError(_) => todo!(),

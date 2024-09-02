@@ -320,7 +320,7 @@ fn split_topic(topic: &str) -> Result<Topic> {
     // Topic string should have structure: <prefix>:<worker-id>:<identifier>
     let mut topic: Vec<String> = topic.split(":").map(String::from).collect();
     if topic.len() != 3 {
-        Err(Error::SyntaxError(format!("Topic did not have the expected structure of <prefix>:<worker-id>:<identifier> but was: {}", topic.join(":"))))
+        Err(Error::GeneralError(format!("Topic did not have the expected structure of <prefix>:<worker-id>:<identifier> but was: {}", topic.join(":"))))
     } else {
         Ok(Topic {
             event: topic.pop().unwrap(),

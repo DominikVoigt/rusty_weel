@@ -7,7 +7,7 @@ pub trait DSL {
      * Implements the invokation of external functionalities
      */
     fn call(
-        this: Arc<Self>,
+        self: Arc<Self>,
         label: &str,
         endpoint_url: &str,
         parameters: HTTPParams,
@@ -21,7 +21,7 @@ pub trait DSL {
     /**
      * Implements script tasks that do not need to invoke functionalities
      */
-    fn manipulate(this: Arc<Self>, label: &str, name: Option<&str>, code: &str) -> Result<()>;
+    fn manipulate(self: Arc<Self>, label: &str, name: Option<&str>, code: &str) -> Result<()>;
 
     fn loop_exec(
         &self,
