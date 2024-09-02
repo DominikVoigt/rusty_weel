@@ -90,6 +90,13 @@ pub struct DynamicData {
     pub data: String,
 }
 
+pub struct ManipulateStructure {
+    pub endpoints: HashMap<String, String>,
+    pub data: String,
+    pub state: State,
+    pub local: String
+}
+
 /**
  * DTO that contains all the general information about the instance
  * Helper, can be directly derived from configuration

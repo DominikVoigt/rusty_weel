@@ -1,12 +1,10 @@
-use blockingqueue::BlockingQueue;
 use derive_more::From;
 use std::any::TypeId;
-use std::collections::{HashMap, HashSet, LinkedList, VecDeque};
+use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
-use std::sync::atomic::{AtomicU32, AtomicUsize};
 use std::sync::mpsc::{Receiver, Sender};
-use std::sync::{Arc, Condvar, Mutex, PoisonError};
-use std::thread::{self, Thread, ThreadId};
+use std::sync::{Arc, Mutex, PoisonError};
+use std::thread::{self, ThreadId};
 use std::time::SystemTime;
 
 use rand::distributions::Alphanumeric;
@@ -14,10 +12,10 @@ use rand::Rng;
 use reqwest::header::ToStrError;
 use rusty_weel_macro::get_str_from_value;
 
-use crate::connection_wrapper::{self, ConnectionWrapper};
-use crate::data_types::{DynamicData, HTTPParams, State, StaticData, ThreadInfo};
+use crate::connection_wrapper::ConnectionWrapper;
+use crate::data_types::{BlockingQueue, DynamicData, HTTPParams, State, StaticData, ThreadInfo};
 use crate::dsl::DSL;
-use crate::eval_helper::EvalError;
+use crate::eval_helper::{self, EvalError};
 use crate::redis_helper::{RedisHelper, Topic};
 
 pub struct Weel {
@@ -432,20 +430,24 @@ impl Weel {
             }
 
             let current_thread = thread::current().id();
-            let thread_info_map = self.thread_information.lock().unwrap();
-            let thread_info = thread_info_map.get(&current_thread).unwrap();
+            let mut thread_info_map = self.thread_information.lock().unwrap();
+            let thread_info = thread_info_map.get_mut(&current_thread).unwrap();
 
             thread_info.blocking_queue = Arc::new(BlockingQueue::new());
-            let connection_wrapper = ConnectionWrapper::new(
-                self,
+            let mut connection_wrapper = ConnectionWrapper::new(
+                self.clone(),
                 Some(position.to_owned()),
                 Some(thread_info.blocking_queue.clone()),
             );
+            // This allows thread_info to be dropped and thus we can get the mutable access to the parent thread
+            let parent = thread_info.parent.clone();
+            let branch_traces_id = thread_info.branch_traces_id.clone();
+            
 
-            if thread_info.parent.is_some() && thread_info.branch_traces_id.is_some() {
-                let branch_trace_id = &thread_info.branch_traces_id.unwrap();
+            if parent.is_some() && branch_traces_id.is_some() {
+                let branch_trace_id = branch_traces_id.as_ref().unwrap();
                 let parent_thread_info = thread_info_map
-                    .get_mut(&thread_info.parent.unwrap())
+                    .get_mut(&parent.unwrap())
                     .unwrap();
                 let traces = parent_thread_info.branch_traces.get_mut(branch_trace_id);
                 match traces {
@@ -474,7 +476,7 @@ impl Weel {
                                 Some(finalize_code) => {
                                     connection_wrapper.activity_manipulate_handle(label);
                                     connection_wrapper.inform_activity_manipulate();
-                                    
+                                    eval_helper::evaluate_expression(dynamic_context, static_context, expression)
                                     Ok(())
                                 },
                                 None => Ok(()),

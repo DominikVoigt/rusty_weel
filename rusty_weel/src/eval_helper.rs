@@ -9,7 +9,7 @@ use log;
 use tempfile::tempfile;
 
 use crate::{
-    data_types::{DynamicData, StaticData},
+    data_types::{DynamicData, State, StaticData},
     dsl_realization::{Error, Result},
 };
 
@@ -20,49 +20,31 @@ use crate::{
  *  - Post request fails / Evaluation fails
  */
 pub fn evaluate_expressions(
-    eval_backend: &str,
     dynamic_context: &DynamicData,
     static_context: &StaticData,
     expressions: HashMap<String, String>,
+    weel_state: &State,
+    local: Option<&HashMap<String, String>>
 ) -> Result<HashMap<String, String>> {
-    let mut client = Client::new(eval_backend, http_helper::Method::POST)?;
+    let mut client = Client::new(&static_context.eval_backend_url, http_helper::Method::POST)?;
 
     // Handle serialization outside of json! macro as it will panic otherwise
-    let static_context = match serde_json::to_string(&static_context) {
-        Ok(x) => x,
-        Err(err) => {
-            return Err(Error::EvalError(EvalError::GeneralEvalError(format!(
-                "Could not serialize static context: {}",
-                err
-            ))))
-        }
-    };
+    let static_context = serde_json::to_string(&static_context)?;
     let mut static_context_file = tempfile()?;
     static_context_file.write_all(static_context.as_bytes())?;
     static_context_file.rewind()?;
 
-    let dynamic_context = match serde_json::to_string(&dynamic_context) {
-        Ok(x) => x,
-        Err(err) => {
-            return Err(Error::EvalError(EvalError::GeneralEvalError(format!(
-                "Could not serialize static context: {}",
-                err
-            ))))
-        }
-    };
+    let dynamic_context = serde_json::to_string(&dynamic_context)?;
     let mut dynamic_context_file = tempfile()?;
     dynamic_context_file.write_all(dynamic_context.as_bytes())?;
     dynamic_context_file.rewind()?;
 
-    let expressions = match serde_json::to_string(&expressions) {
-        Ok(x) => x,
-        Err(err) => {
-            return Err(Error::EvalError(EvalError::GeneralEvalError(format!(
-                "Could not serialize expressions: {}",
-                err
-            ))))
-        }
-    };
+    let mut status_file = tempfile()?;
+    status_file.write_all(format!("{:?}", weel_state).as_bytes())?;
+    status_file.rewind()?;
+
+    let expressions = serde_json::to_string(&expressions)?;
+
     let mut expressions_file = tempfile()?;
     expressions_file.write_all(expressions.as_bytes())?;
     expressions_file.rewind()?;
@@ -79,9 +61,18 @@ pub fn evaluate_expressions(
     });
     client.add_parameter(Parameter::ComplexParameter {
         name: "expressions".to_owned(),
-        mime_type: mime::APPLICATION_JSON,
+        mime_type: mime::TEXT_PLAIN_UTF_8,
         content_handle: expressions_file,
     });
+
+    if let Some(local) = local {
+        let mut local_file = tempfile()?;
+        let local = serde_json::to_string(local)?;
+        local_file.write_all(local.as_bytes())?;
+        local_file.rewind()?;
+        client.add_parameter(Parameter::ComplexParameter { name: "local".to_owned(), mime_type: mime::APPLICATION_JSON, content_handle: local_file })
+    }
+
 
     let mut result = client.execute()?;
     // Get the expressions parameter from the parsed response
@@ -124,14 +115,15 @@ pub fn evaluate_expressions(
 }
 
 pub fn evaluate_expression(
-    eval_backend: &str,
     dynamic_context: &DynamicData,
     static_context: &StaticData,
     expression: &str,
+    weel_state: &State,
+    local: Option<&HashMap<String, String>>
 ) -> Result<String> {
     let mut expressions = HashMap::new();
     expressions.insert("k".to_owned(), expression.to_owned());
-    let result = evaluate_expressions(eval_backend, dynamic_context, static_context, expressions)?;
+    let result = evaluate_expressions(dynamic_context, static_context, expressions, weel_state, local)?;
     match result.get("k") {
         // TODO: Some kind of error handling: depends on service implementation
         Some(x) => Ok(x.clone()),
