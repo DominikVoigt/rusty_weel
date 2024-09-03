@@ -21,7 +21,7 @@ use urlencoding::encode;
 
 use crate::{
     data_types::{BlockingQueue, HTTPParams, InstanceMetaData},
-    dsl_realization::{generate_random_key, Error, Result, Signal, Weel},
+    dsl_realization::{generate_random_key, Error, Result, Signal, Weel}, eval_helper,
 };
 
 // Expected to be guarded with mutex to sensure that method invocations do not deadlock
@@ -55,7 +55,11 @@ const UNGUARDED_CALLS: u32 = 100;
 const SLEEP_DURATION: u64 = 2;
 
 impl ConnectionWrapper {
-    pub fn new(weel: Arc<Weel>, handler_position: Option<String>, handler_continue: Option<Arc<BlockingQueue<Signal>>>) -> Self {
+    pub fn new(
+        weel: Arc<Weel>,
+        handler_position: Option<String>,
+        handler_continue: Option<Arc<BlockingQueue<Signal>>>,
+    ) -> Self {
         let weel = Arc::downgrade(&weel);
         ConnectionWrapper {
             weel,
@@ -179,7 +183,6 @@ impl ConnectionWrapper {
                 }
             }
         }
-        // TODO: parameters L73? (do we need to do this instance exec)
         parameters.clone()
     }
 
@@ -217,7 +220,6 @@ impl ConnectionWrapper {
         )
     }
 
-    
     pub fn activity_result_options(&self) -> Option<HashMap<String, String>> {
         self.handler_return_options.clone()
     }
@@ -225,11 +227,11 @@ impl ConnectionWrapper {
     pub fn activity_result_value(&self) -> Option<String> {
         self.handler_return_value.clone()
     }
-    
+
     pub fn activity_passthrough_value(&self) -> Option<String> {
         self.handler_passthrough.clone()
     }
-    
+
     pub fn activity_manipulate_handle(&mut self, label: &str) {
         self.label = label.to_owned();
     }
@@ -240,12 +242,16 @@ impl ConnectionWrapper {
         }
     }
 
-    pub fn activity_handle(selfy: &Arc<Mutex<Self>>, passthrough: &str, parameters: &HTTPParams) -> Result<()> {
+    pub fn activity_handle(
+        selfy: &Arc<Mutex<Self>>,
+        passthrough: &str,
+        parameters: &HTTPParams,
+    ) -> Result<()> {
         let mut this = selfy.lock()?;
         let weel = this.weel();
-        
+
         if this.handler_endpoints.is_empty() {
-            return Err(Error::GeneralError("Wrong endpoint".to_owned()))
+            return Err(Error::GeneralError("Wrong endpoint".to_owned()));
         }
         this.label = parameters.label.to_owned();
         // We do not model annotations anyway -> Can skip this from the original code
@@ -258,7 +264,11 @@ impl ConnectionWrapper {
             content.insert("passthrough".to_owned(), passthrough.to_owned());
             // parameters do not look exactly like in the original (string representation looks different):
             content.insert("parameters".to_owned(), parameters.clone().try_into()?);
-            redis.notify("activity/calling", Some(content), weel.static_data.get_instance_meta_data())?
+            redis.notify(
+                "activity/calling",
+                Some(content),
+                weel.static_data.get_instance_meta_data(),
+            )?
         }
         if passthrough.is_empty() {
             Self::curl(this, selfy, parameters, weel)?;
@@ -280,14 +290,18 @@ impl ConnectionWrapper {
      * - Expects prepare to be called before
      * - We explicitly expect the Arc<Mutex> here since we need to add a reference to the callbacks (by cloning the Arc)
      */
-    pub fn curl(mut this: MutexGuard<ConnectionWrapper>, selfy: &Arc<Mutex<Self>>, parameters: &HTTPParams, weel: Arc<Weel>) -> Result<()> {
+    pub fn curl(
+        mut this: MutexGuard<ConnectionWrapper>,
+        selfy: &Arc<Mutex<Self>>,
+        parameters: &HTTPParams,
+        weel: Arc<Weel>,
+    ) -> Result<()> {
         let callback_id = generate_random_key();
         this.handler_passthrough = Some(callback_id.clone());
 
         // Generate headers
         let mut headers: HeaderMap =
             this.construct_headers(weel.static_data.get_instance_meta_data(), &callback_id)?;
-        // Put arguments into SimpleParameters that will be part of the body-> Since we cannot upload files from the CPEE for now // TODO?
 
         let mut status: u16;
         let mut response_headers: HashMap<String, String>;
@@ -357,6 +371,7 @@ impl ConnectionWrapper {
             status = response.status_code;
             response_headers = response.headers;
             content = response.content;
+            content = response.content;
 
             if status == 561 {
                 match weel.static_data.attributes.get("twin_translate") {
@@ -394,13 +409,12 @@ impl ConnectionWrapper {
             tempfile.write_all(err.as_bytes())?;
             tempfile.rewind()?;
             this.callback(
-                vec![Parameter::ComplexParameter {
+                serde_json::to_string(Parameter::ComplexParameter {
                     name: "error".to_owned(),
-                    mime_type:  APPLICATION_JSON,
+                    mime_type: APPLICATION_JSON,
                     content_handle: tempfile,
-                }],
-                response_headers,
-                None,
+                })?.as_bytes(),
+                response_headers
             )?
         } else {
             let callback_header_set = match response_headers.get("CPEE_CALLBACK") {
@@ -411,7 +425,7 @@ impl ConnectionWrapper {
             if callback_header_set {
                 if !content.is_empty() {
                     response_headers.insert("CPEE_UPDATE".to_owned(), "true".to_owned());
-                    this.callback(content, response_headers, None)?
+                    this.callback(content, response_headers)?
                 } else {
                     let mut content = HashMap::new();
                     content.insert(
@@ -460,7 +474,7 @@ impl ConnectionWrapper {
                     }
                 }
             } else {
-                this.callback(content, response_headers, None)?
+                this.callback(, response_headers)?
             }
         }
         Ok(())
@@ -468,13 +482,13 @@ impl ConnectionWrapper {
 
     pub fn callback(
         &mut self,
-        mut parameters: Vec<Parameter>,
-        headers: HashMap<String, String>,
-        options: Option<HashMap<String, String>>,
+        mut body: &[u8],
+        options: HashMap<String, String>, // Headers
     ) -> Result<()> {
-        let options = options.unwrap_or(HashMap::new());
         let weel = self.weel();
-        let recv = structurize_result(&mut parameters)?;
+        let recv = eval_helper::structurize_result(options, body);
+        let recv = structurize_result(&mut parameters)?; // TODO: -> 1. eval_helper structurize endpoint -> Forward request (PUT) (take headers and body)
+                                                                                       // Receives a json with field struc -> String structurized result 
         let mut redis = weel.redis_notifications_client.lock()?;
         let content = self.construct_basic_content()?;
         {
@@ -525,7 +539,7 @@ impl ConnectionWrapper {
                 weel.static_data.get_instance_meta_data(),
             )?;
         } else {
-            self.handler_return_value = Some(simplify_result(&mut parameters)?);
+            self.handler_return_value = Some(simplify_result(&mut parameters)?); // TODO: -> 2. do nothing, just structurized from 1.
             self.handler_return_options = Some(options.clone());
         }
 
@@ -581,7 +595,11 @@ impl ConnectionWrapper {
     }
 
     fn construct_headers(&self, data: InstanceMetaData, callback_id: &str) -> Result<HeaderMap> {
-        let position = self.handler_position.as_ref().map(|x| x.as_str()).unwrap_or("");
+        let position = self
+            .handler_position
+            .as_ref()
+            .map(|x| x.as_str())
+            .unwrap_or("");
         let mut headers = HeaderMap::new();
         headers.append("CPEE-BASE", HeaderValue::from_str(&data.cpee_base_url)?);
         headers.append("CPEE-Instance", HeaderValue::from_str(&data.instance_id)?);
@@ -717,69 +735,41 @@ fn structurize_result(parameters: &mut Vec<Parameter>) -> Result<Vec<StructuredR
  *  If detection confidence is sufficient, conversion is done. Otherwise the data is treated as binary
  */
 fn convert_to_utf8(mime_type: Mime, data: Vec<u8>) -> String {
-    if is_text(&mime_type) {
-        if let Some(charset) = mime_type.get_param("charset").map(|e| e.to_string()) {
-            match encoding_rs::Encoding::for_label(charset.as_bytes()) {
-                Some(encoding) => encoding.decode(&data).0.into_owned(),
-                None => todo!(),
-            }
-        } else {
-            // If no charset encoding was provided via the mimetype, try utf 8 and otherwise try some detection...
-            match String::from_utf8(data.clone()) {
-                Ok(string) => string,
-                Err(err) => {
-                    log::error!(
-                        "data seems not to be UTF-8 encoded: {:?}, try detecting encoding...",
-                        err
-                    );
-                    let encoding = detect_encoding(&data);
-                    let confidence = encoding.1;
-                    let decode_result = match encoding_rs::Encoding::for_label(encoding.0.as_bytes()) {
-                        Some(x) => {
-                            if confidence > 30 {
-                                x.decode(&data).0.into_owned()
-                            } else {
-                                convert_to_base64(mime::APPLICATION_OCTET_STREAM, data)
-                            }
-                        }
-                        // If the detected encoding is not identifiable by the decode library, emit error and decode as UTF-8 anyway
-                        None => {
-                            log::error!(
-                                "Encoding could not be found by the provided label: {}",
-                                encoding.0
-                            );
-                            convert_to_base64(mime::APPLICATION_OCTET_STREAM, data)
-                        }
-                    };
-                    decode_result
-                    // TODO: What to do with this Hash part????
+    // If no charset encoding was provided via the mimetype, try utf 8 and otherwise try some detection...
+    match String::from_utf8(data.clone()) {
+        Ok(string) => string,
+        Err(err) => {
+            log::error!(
+                "data seems not to be UTF-8 encoded: {:?}, try detecting encoding...",
+                err
+            );
+            let encoding = detect_encoding(&data);
+            let confidence = encoding.1;
+            let decode_result = match encoding_rs::Encoding::for_label(encoding.0.as_bytes()) {
+                Some(x) => {
+                    if confidence > 30 {
+                        x.decode(&data).0.into_owned()
+                    } else {
+                        convert_to_base64(mime::APPLICATION_OCTET_STREAM, data)
+                    }
                 }
-            }
+                // If the detected encoding is not identifiable by the decode library, emit error and decode as UTF-8 anyway
+                None => {
+                    log::error!(
+                        "Encoding could not be found by the provided label: {}",
+                        encoding.0
+                    );
+                    convert_to_base64(mime::APPLICATION_OCTET_STREAM, data)
+                }
+            };
+            decode_result
+            // TODO: What to do with this Hash part????
         }
-    } else {
-        // If mimetype is "identified" as a binary format, the data is encoded in base64
-        convert_to_base64(mime_type, data)
-    }
-}
-
-/**
- * Prototype function to "identify" binary/text content
- * https://stackoverflow.com/questions/3879297/determining-whether-a-mime-type-is-binary-or-text-based
- */
-fn is_text(mime_type: &Mime) -> bool {
-    if mime_type.type_().as_str().contains("text") {
-        true
-    } else if !mime_type.type_().as_str().contains("application") {
-        false
-    } else {
-        // Very certain a non-exhaustive list of text base formats
-        ["json", "ld+json", "x-httpd-php", "x-sh", "x-csh", "xhtml+xml", "xml"].contains(&mime_type.subtype().as_str())
     }
 }
 
 // TODO: Pretty sure this should work
 fn convert_to_base64(mime_type: Mime, data: Vec<u8>) -> String {
-    
     match infer::get(&data) {
         Some(mime_type) => {
             format!(
@@ -956,7 +946,7 @@ fn handle_twin_translate(
 mod test {
     use std::fs;
 
-    use crate::connection_wrapper::{detect_encoding, convert_to_utf8};
+    use crate::connection_wrapper::{convert_to_utf8, detect_encoding};
 
     #[test]
     fn test_pattern() {

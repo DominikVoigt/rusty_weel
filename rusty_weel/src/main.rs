@@ -4,6 +4,8 @@ use std::sync::{mpsc, Arc, Mutex};
 
 use indoc::indoc;
 
+use std::panic;
+
 use rusty_weel::connection_wrapper::ConnectionWrapper;
 use rusty_weel::dsl::DSL;
 // Needed for inject!
@@ -17,6 +19,8 @@ use reqwest::Method;
 
 fn main() {
     simple_logger::init_with_level(log::Level::Info).unwrap();
+
+    set_panic_hook();
 
     let static_data = StaticData::load("opts.yaml");
     let dynamic_data = DynamicData::load("context.yaml");
@@ -153,6 +157,15 @@ fn main() {
 
     // Executes the code and blocks until it is finished
     local_weel.start(model, stopped_signal_sender);
+}
+
+fn set_panic_hook() -> _ {
+    let original_hook = panic::take_hook();
+    panic::set_hook(Box::new(|info| {
+        // Log panic information in case we ever panic
+        log::error!("Panic occured. Panic information: {info}");
+        original_hook(info);
+    }))
 }
 
 fn setup_signal_handler(weel: &Arc<Weel>, mut stop_signal_receiver: Receiver<()>) {

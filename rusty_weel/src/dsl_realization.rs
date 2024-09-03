@@ -1,4 +1,5 @@
 use derive_more::From;
+use serde::{Deserialize, Serialize};
 use std::any::TypeId;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
@@ -20,7 +21,7 @@ use crate::redis_helper::{RedisHelper, Topic};
 
 pub struct Weel {
     pub static_data: StaticData,
-    pub dynamic_data: DynamicData,
+    pub dynamic_data: Mutex<DynamicData>,
     pub state: Mutex<State>,
     pub positions: Mutex<Vec<String>>,
     pub search_positions: Mutex<HashMap<String, Position>>,
@@ -409,88 +410,85 @@ impl Weel {
         }
 
         let result: Result<()> = {
-            let state = self.state.lock().unwrap();
-            let invalid_state = match *state {
-                State::Running => false,
-                _ => true,
-            };
-
-            {
-                let no_longer_necessary = self
-                    .thread_information
-                    .lock()
-                    .unwrap()
-                    .get(&thread::current().id())
-                    .map(|info| info.no_longer_necessary)
-                    .unwrap_or(true);
-
-                if invalid_state || no_longer_necessary {
-                    return Ok(());
-                }
-            }
-
-            let current_thread = thread::current().id();
-            let mut thread_info_map = self.thread_information.lock().unwrap();
-            let thread_info = thread_info_map.get_mut(&current_thread).unwrap();
-
-            thread_info.blocking_queue = Arc::new(BlockingQueue::new());
-            let mut connection_wrapper = ConnectionWrapper::new(
-                self.clone(),
-                Some(position.to_owned()),
-                Some(thread_info.blocking_queue.clone()),
-            );
-            // This allows thread_info to be dropped and thus we can get the mutable access to the parent thread
-            let parent = thread_info.parent.clone();
-            let branch_traces_id = thread_info.branch_traces_id.clone();
-            
-
-            if parent.is_some() && branch_traces_id.is_some() {
-                let branch_trace_id = branch_traces_id.as_ref().unwrap();
-                let parent_thread_info = thread_info_map
-                    .get_mut(&parent.unwrap())
-                    .unwrap();
-                let traces = parent_thread_info.branch_traces.get_mut(branch_trace_id);
-                match traces {
-                    Some(traces) => traces.push(position.to_owned()),
-                    None => {
-                        parent_thread_info
-                            .branch_traces
-                            .insert(branch_trace_id.to_owned(), Vec::new());
-                    }
-                }
-            }
-
-            // TODO: wp = __weel_progress position, connectionwrapper.activity_uuid
-            if search_mode /* == "after"*/ {
-                Err(Error::Signal(Signal::Proceed))
-            } else {
-                match activity_type {
-                    ActivityType::Manipulate => {
-                        let state_stopping_or_finished = matches!(*self.state.lock().unwrap(), State::Stopping | State::Finishing);
-                        if !self.vote_sync_before(&connection_wrapper, None)? {
-                            Err(Error::Signal(Signal::Stop))
-                        } else if state_stopping_or_finished {
-                            Err(Error::Signal(Signal::Skip))
-                        } else {
-                            match finalize_code {
-                                Some(finalize_code) => {
-                                    connection_wrapper.activity_manipulate_handle(label);
-                                    connection_wrapper.inform_activity_manipulate();
-                                    eval_helper::evaluate_expression(dynamic_context, static_context, expression)
-                                    Ok(())
-                                },
-                                None => Ok(()),
-                            }
-                        }
-                    },
-                    ActivityType::Call => todo!(),
-                }
-            }
+            self.execute_activity(position, search_mode, activity_type, finalize_code, label)?
         };
 
         todo!()
     }
 
+    fn execute_activity(self: Arc<Self>, position: &str, search_mode: bool, activity_type: ActivityType, finalize_code: Option<&str>, label: &str) -> Result<std::result::Result<(), Error>, Error> {
+        let state = self.state.lock().unwrap();
+        let invalid_state = match *state {
+            State::Running => false,
+            _ => true,
+        };
+        {
+            let no_longer_necessary = self
+                .thread_information
+                .lock()
+                .unwrap()
+                .get(&thread::current().id())
+                .map(|info| info.no_longer_necessary)
+                .unwrap_or(true);
+    
+            if invalid_state || no_longer_necessary {
+                return Ok(());
+            }
+        }
+        let current_thread = thread::current().id();
+        let mut thread_info_map = self.thread_information.lock().unwrap();
+        let thread_info = thread_info_map.get_mut(&current_thread).unwrap();
+        thread_info.blocking_queue = Arc::new(BlockingQueue::new());
+        let mut connection_wrapper = ConnectionWrapper::new(
+            self.clone(),
+            Some(position.to_owned()),
+            Some(thread_info.blocking_queue.clone()),
+        );
+        let parent = thread_info.parent.clone();
+        let branch_traces_id = thread_info.branch_traces_id.clone();
+        let local = thread_info.local.clone();
+        if parent.is_some() && branch_traces_id.is_some() {
+            let branch_trace_id = branch_traces_id.as_ref().unwrap();
+            let parent_thread_info = thread_info_map
+                .get_mut(&parent.unwrap())
+                .unwrap();
+            let traces = parent_thread_info.branch_traces.get_mut(branch_trace_id);
+            match traces {
+                Some(traces) => traces.push(position.to_owned()),
+                None => {
+                    parent_thread_info
+                        .branch_traces
+                        .insert(branch_trace_id.to_owned(), Vec::new());
+                }
+            }
+        }
+        Ok(if search_mode /* == "after"*/ {
+            Err(Error::Signal(Signal::Proceed))
+        } else {
+            match activity_type {
+                ActivityType::Manipulate => {
+                    let state_stopping_or_finished = matches!(*self.state.lock().unwrap(), State::Stopping | State::Finishing);
+                    if !self.vote_sync_before(&connection_wrapper, None)? {
+                        Err(Error::Signal(Signal::Stop))
+                    } else if state_stopping_or_finished {
+                        Err(Error::Signal(Signal::Skip))
+                    } else {
+                        match finalize_code {
+                            Some(finalize_code) => {
+                                connection_wrapper.activity_manipulate_handle(label);
+                                connection_wrapper.inform_activity_manipulate();
+                                let result = eval_helper::evaluate_expression(&self.dynamic_data.lock().unwrap(), &self.static_data, finalize_code, &self.state.lock().unwrap(), Some(&local), )?;
+                                Ok(())
+                            },
+                            None => Ok(()),
+                        }
+                    }
+                },
+                ActivityType::Call => todo!(),
+            }
+        })
+    }
+    
     fn position_test<'a>(&self, label: &'a str) -> Result<&'a str> {
         let is_alpha_numeric = label.chars().all(char::is_alphanumeric);
         if is_alpha_numeric {
@@ -577,7 +575,7 @@ pub enum Error {
     Signal(Signal)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum Signal {
     Again,
     Salvage,
@@ -621,6 +619,7 @@ impl Error {
             Error::HttpHelperError(_) => todo!(),
             Error::PoisonError() => todo!(),
             Error::FromStrError(_) => todo!(),
+            Error::Signal(_) => todo!(),
         }
     }
 }

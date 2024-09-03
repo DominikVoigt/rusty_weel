@@ -206,7 +206,7 @@ impl RedisHelper {
                             callback_keys.get(&topic.type_)
                                          .expect("Cannot happen as we check containment previously and hold mutex throughout")
                                          .lock()?
-                                         .callback(params?, headers, None)?;
+                                         .callback(params?, headers)?;
                         }
                     }
                     "callback-end:*" => {
@@ -569,6 +569,7 @@ mod test {
             )?;
             Ok(())
         });
+        
         let mut redis_sender =
             RedisHelper::new(&get_unix_socket_configuration(), "test_connection").unwrap();
 

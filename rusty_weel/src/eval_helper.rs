@@ -6,11 +6,12 @@ use std::{
 
 use http_helper::{Client, Parameter};
 use log;
+use serde_json::Value;
 use tempfile::tempfile;
 
 use crate::{
     data_types::{DynamicData, State, StaticData},
-    dsl_realization::{Error, Result},
+    dsl_realization::{Error, Result, Signal},
 };
 
 /**
@@ -19,50 +20,98 @@ use crate::{
  *  - Request body could not be parsed
  *  - Post request fails / Evaluation fails
  */
-pub fn evaluate_expressions(
+pub fn evaluate_expression(
     dynamic_context: &DynamicData,
     static_context: &StaticData,
-    expressions: HashMap<String, String>,
+    expression: &str,
     weel_state: &State,
-    local: Option<&HashMap<String, String>>
-) -> Result<HashMap<String, String>> {
+    local: Option<String>,
+    additional: Value
+) -> Result<EvaluationResult> {
     let mut client = Client::new(&static_context.eval_backend_url, http_helper::Method::POST)?;
 
-    // Handle serialization outside of json! macro as it will panic otherwise
-    let static_context = serde_json::to_string(&static_context)?;
-    let mut static_context_file = tempfile()?;
-    static_context_file.write_all(static_context.as_bytes())?;
-    static_context_file.rewind()?;
+    // Construct multipart request from data, expression, state and thread local data: 
+    let attributes = serde_json::to_string(&static_context.attributes)?;
+    let mut attributes_file = tempfile()?;
+    attributes_file.write_all(attributes.as_bytes())?;
+    attributes_file.rewind()?;
 
-    let dynamic_context = serde_json::to_string(&dynamic_context)?;
-    let mut dynamic_context_file = tempfile()?;
-    dynamic_context_file.write_all(dynamic_context.as_bytes())?;
-    dynamic_context_file.rewind()?;
+    let endpoints = serde_json::to_string(&dynamic_context.endpoints)?;
+    let mut endpoints_file = tempfile()?;
+    endpoints_file.write_all(endpoints.as_bytes())?;
+    endpoints_file.rewind()?;
+
+    let mut data_file = tempfile()?;
+    data_file.write_all(&dynamic_context.data.as_bytes())?;
+    data_file.rewind()?;
 
     let mut status_file = tempfile()?;
-    status_file.write_all(format!("{:?}", weel_state).as_bytes())?;
+    status_file.write_all(serde_json::to_string(weel_state)?.as_bytes())?;
     status_file.rewind()?;
 
-    let expressions = serde_json::to_string(&expressions)?;
+    let mut code_file = tempfile()?;
+    code_file.write_all(expression.as_bytes())?;
+    code_file.rewind()?;
 
-    let mut expressions_file = tempfile()?;
-    expressions_file.write_all(expressions.as_bytes())?;
-    expressions_file.rewind()?;
+
+    let mut code_file = tempfile()?;
+    code_file.write_all(expression.as_bytes())?;
+    code_file.rewind()?;
+    
+    client.add_parameter(Parameter::ComplexParameter {
+        name: "endpoints".to_owned(),
+        mime_type: mime::APPLICATION_JSON,
+        content_handle: endpoints_file,
+    });
 
     client.add_parameter(Parameter::ComplexParameter {
-        name: "static_context".to_owned(),
+        name: "dataelements".to_owned(),
         mime_type: mime::APPLICATION_JSON,
-        content_handle: static_context_file,
+        content_handle: data_file,
     });
+
     client.add_parameter(Parameter::ComplexParameter {
-        name: "dynamic_context".to_owned(),
-        mime_type: mime::APPLICATION_JSON,
-        content_handle: dynamic_context_file,
-    });
-    client.add_parameter(Parameter::ComplexParameter {
-        name: "expressions".to_owned(),
+        name: "code".to_owned(),
         mime_type: mime::TEXT_PLAIN_UTF_8,
-        content_handle: expressions_file,
+        content_handle: code_file,
+    });
+
+    client.add_parameter(Parameter::ComplexParameter {
+        name: "additional".to_owned(),
+        mime_type: mime::TEXT_PLAIN_UTF_8,
+        content_handle: code_file,
+    });
+    
+    
+    // -> Optional only for some cases
+    client.add_parameter(Parameter::ComplexParameter {
+        name: "local".to_owned(),
+        mime_type: mime::TEXT_PLAIN_UTF_8,
+        content_handle: code_file,
+    });
+
+    client.add_parameter(Parameter::ComplexParameter {
+        name: "status".to_owned(),
+        mime_type: mime::TEXT_PLAIN_UTF_8,
+        content_handle: code_file,
+    });
+
+    client.add_parameter(Parameter::ComplexParameter {
+        name: "info".to_owned(),
+        mime_type: mime::TEXT_PLAIN_UTF_8,
+        content_handle: code_file,
+    });
+
+    client.add_parameter(Parameter::ComplexParameter {
+        name: "call_result".to_owned(),
+        mime_type: mime::TEXT_PLAIN_UTF_8,
+        content_handle: code_file,
+    });
+
+    client.add_parameter(Parameter::ComplexParameter {
+        name: "call_headers".to_owned(),
+        mime_type: mime::TEXT_PLAIN_UTF_8,
+        content_handle: code_file,
     });
 
     if let Some(local) = local {
@@ -75,14 +124,31 @@ pub fn evaluate_expressions(
 
 
     let mut result = client.execute()?;
+    let status = result.status_code;
+    // Error in the provided code
+    if status == 555 {
+        
+    } else if status < 100 || status >= 300 {
+        
+    } 
     // Get the expressions parameter from the parsed response
-    let mut expression_results = None;
+    let mut expression_results: Option<HashMap<String, String>> = None;
+    let mut data: Option<String> = None;
+    let mut endpoints: Option<HashMap<String, String>> = None;
+    let mut state: Option<State> = None;
+    let mut local: Option<HashMap<String, String>> = None;
+    let mut signal: Option<Signal> = None;
+
+    /*
+     * Retrieve the result of the expression
+     * Also retrieves the data endpoints state and local data if there is some
+     * There will only be this additional data if the corresponding field was changed by the code.
+     */
     while let Some(parameter) = result.content.pop() {
-        // Find the expressions parameter, will result in None if it does not exist
-        expression_results = match parameter {
+        match parameter {
             Parameter::SimpleParameter { name, value, .. } => {
                 if name == "expressions" {
-                    Some(value.clone())
+                    expression_results = Some(serde_json::from_str(&value)?);
                 } else {
                     continue;
                 }
@@ -92,48 +158,56 @@ pub fn evaluate_expressions(
                 mut content_handle,
                 ..
             } => {
-                if name == "expressions" {
-                    let mut result = String::new();
-                    content_handle.read_to_string(&mut result)?;
-                    Some(result)
-                } else {
-                    continue;
-                }
+                let mut content = String::new();
+                content_handle.read_to_string(&mut content);
+                
+                match name.as_str() {
+                    "expressions" => {
+                        expression_results = Some(serde_json::from_str(&content)?);
+                    },
+                    "changed_dataelements" => {
+                        data = Some(serde_json::from_str(&content)?);
+                    },
+                    "changed_endpoints" => {
+                        endpoints = Some(serde_json::from_str(&content)?);
+                    },
+                    "changed_status" => {
+                        state = Some(serde_json::from_str(&content)?);
+                    },
+                    // If this is set -> loop and try again on Signal::Again
+                    // Handle others based on ruby code
+                    "signal" => {
+                        signal = Some(serde_json::from_str(&content)?);
+                    },
+                    "local" => {
+                        local = Some(serde_json::from_str(&content)?);
+                    },
+                    x => {
+                        log::info!("Eval endpoint send unexpected part: {x}");
+                        log::info!("Content: {}", content);
+                        continue;
+                    }
+                };
             }
         };
-        if expression_results.is_some() {
-            break;
-        }
-    }
+    };
     match expression_results {
-        Some(result1) => {
-            let evaluations: HashMap<String, String> = serde_json::from_str(&result1)?;
-            Ok(evaluations)
-        }
-        None => Err(Error::EvalError(EvalError::GeneralEvalError("Result does not contain result".to_owned()))),
+        Some(expression_results) => Ok(EvaluationResult { expression_results, changed_data: data, changed_endpoints: endpoints, changed_state: state, changed_local: local }),
+        None => Err(Error::EvalError(EvalError::GeneralEvalError("Response does not contain the evaluation results".to_owned()))),
     }
 }
 
-pub fn evaluate_expression(
-    dynamic_context: &DynamicData,
-    static_context: &StaticData,
-    expression: &str,
-    weel_state: &State,
-    local: Option<&HashMap<String, String>>
-) -> Result<String> {
-    let mut expressions = HashMap::new();
-    expressions.insert("k".to_owned(), expression.to_owned());
-    let result = evaluate_expressions(dynamic_context, static_context, expressions, weel_state, local)?;
-    match result.get("k") {
-        // TODO: Some kind of error handling: depends on service implementation
-        Some(x) => Ok(x.clone()),
-        None => {
-            log::error!("failure creating new key value pair. Evaluation failed");
-            Err(Error::EvalError(EvalError::GeneralEvalError(format!(
-                "Result misses value"
-            ))))
-        }
-    }
+/**
+ * Returns the result of the evaluation,
+ * If data, endpoints, state or local information changed, the corresponding field will be Some containing the new value
+ * If a field is none, then it did not change
+ */
+pub struct EvaluationResult {
+    expression_results: HashMap<String, String>,
+    changed_data: Option<String>,
+    changed_endpoints: Option<HashMap<String, String>>,
+    changed_state : Option<State>,
+    changed_local : Option<HashMap<String, String>>,
 }
 
 #[derive(Debug)]
@@ -153,4 +227,8 @@ impl Display for EvalError {
             }
         )
     }
+}
+
+pub(crate) fn structurize_result(options: HashMap<String, String>, body: &[u8]) -> _ {
+    todo!()
 }

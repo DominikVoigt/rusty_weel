@@ -51,7 +51,7 @@ pub struct KeyValuePair {
     pub value: Option<String>,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub enum State {
     Ready,
     Starting,
@@ -183,7 +183,8 @@ pub struct ThreadInfo {
     pub no_longer_necessary: bool,
     pub blocking_queue: Arc<BlockingQueue<Signal>>,
     pub branch_traces_id: Option<String>,
-    pub branch_traces: HashMap<String, Vec<String>>
+    pub branch_traces: HashMap<String, Vec<String>>,
+    pub local: HashMap<String, String>
 }
 
 /**

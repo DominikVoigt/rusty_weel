@@ -1,4 +1,4 @@
-use bytes::Buf;
+use bytes::{Buf, Bytes};
 use derive_more::From;
 use multipart::server::{FieldHeaders, ReadEntry};
 use reqwest::{
@@ -73,6 +73,7 @@ pub struct ParsedResponse {
     pub headers: HashMap<String, String>,
     pub content: Vec<Parameter>,
     pub status_code: u16,
+    pub raw: Bytes,
 }
 
 /**
@@ -398,6 +399,7 @@ impl RawResponse {
             headers: header_map_to_hash_map(self.headers.clone())?,
             content: parse_part(Headers::HeaderMap(self.headers), &self.body)?,
             status_code: self.status_code,
+            raw: self.body
         })
     }
 }
