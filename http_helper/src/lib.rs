@@ -11,7 +11,10 @@ use reqwest::{
 };
 
 use std::{
-    collections::HashMap, fs, io::{Read, Seek, Write}, str::FromStr
+    collections::HashMap,
+    fs,
+    io::{Read, Seek, Write},
+    str::FromStr,
 };
 
 pub use mime::*;
@@ -67,7 +70,6 @@ pub struct RawResponse {
     pub body: bytes::Bytes,
     pub status_code: u16,
 }
-
 
 pub struct ParsedResponse {
     pub headers: HashMap<String, String>,
@@ -177,10 +179,28 @@ impl Client {
      * `from_bytes` to create a `HeaderValue` that includes opaque octets
      * (128-255).
      */
-    pub fn add_request_headers(&mut self, name: &str, value: &str) -> Result<Option<HeaderValue>> {
-        Ok(self
-            .headers
-            .insert(HeaderName::from_str(name)?, HeaderValue::from_str(value)?))
+    pub fn add_request_header(&mut self, name: &str, value: &str) -> Result<()> {
+        self.headers
+            .insert(HeaderName::from_str(name)?, HeaderValue::from_str(value)?);
+        Ok(())
+    }
+
+    /**
+     * Inserts the header and replace the previous value. Currently not supporting multi valued headers
+     * If header parameters are desired, provide them as part of the value (delimited by the ;)
+     *
+     * Returns Some(value) of the previous header with the same name if one was present, otherwise None
+     *
+     * Only visible ASCII characters (32-127) are permitted. Use
+     * `from_bytes` to create a `HeaderValue` that includes opaque octets
+     * (128-255).
+     */
+    pub fn add_request_headers(&mut self, headers: HashMap<String, String>) -> Result<()> {
+        for (name, value) in headers.into_iter() {
+            self.headers
+                .insert(HeaderName::from_str(&name)?, HeaderValue::from_str(&value)?);
+        }
+        Ok(())
     }
 
     /**
@@ -242,7 +262,7 @@ impl Client {
      * Will execute the request and return the RawResponse
      * Requires the target to send headers that only contain visible ascii
      */
-    fn execute_raw(mut self) -> Result<RawResponse> {
+    pub fn execute_raw(mut self) -> Result<RawResponse> {
         // For now: Explicitly passing simple parameters of desired type self.mark_query_parameters();
         let url = self.generate_url();
         let mut request_builder = self.reqwest_client.request(self.method.clone(), url);
@@ -369,7 +389,7 @@ fn construct_multipart(
             Parameter::ComplexParameter {
                 name,
                 mime_type,
-                content_handle
+                content_handle,
             } => {
                 let part = Part::reader(content_handle).mime_str(&mime_type.to_string())?;
                 form = form.part(name, part);
@@ -382,24 +402,21 @@ fn construct_multipart(
 /**
  * Will be lossy if a header has multiple values.
  */
-fn header_map_to_hash_map(headers: HeaderMap) -> Result<HashMap<String, String>> {
+pub fn header_map_to_hash_map(headers: &HeaderMap) -> Result<HashMap<String, String>> {
     let mut header_map = HashMap::with_capacity(headers.keys_len());
     for (name, value) in headers.into_iter() {
-        // We only care for the first value of a header for now
-        if let Some(name) = name {
-            header_map.insert(name.as_str().to_owned(), value.to_str()?.to_owned());
-        }
-    };
+        header_map.insert(name.as_str().to_owned(), value.to_str()?.to_owned());
+    }
     Ok(header_map)
 }
 
 impl RawResponse {
     fn parse_response(self) -> Result<ParsedResponse> {
         Ok(ParsedResponse {
-            headers: header_map_to_hash_map(self.headers.clone())?,
+            headers: header_map_to_hash_map(&self.headers)?,
             content: parse_part(Headers::HeaderMap(self.headers), &self.body)?,
             status_code: self.status_code,
-            raw: self.body
+            raw: self.body,
         })
     }
 }
@@ -505,8 +522,8 @@ fn parse_multipart(body: &[u8], boundary: &str) -> Result<Vec<Parameter>> {
 
 #[cfg(test)]
 mod test {
-    use std::io::{Read, Seek};
     use super::*;
+    use std::io::{Read, Seek};
 
     #[test]
     fn test_mime_parsing() {
@@ -579,7 +596,15 @@ mod test {
             let mut request_builder = client.reqwest_client.request(Method::POST, test_url);
             request_builder = client.generate_body(request_builder)?;
             let request = request_builder.build()?;
-            assert_eq!(request.headers().get(CONTENT_TYPE).unwrap().to_str().unwrap(), APPLICATION_WWW_FORM_URLENCODED.to_string());
+            assert_eq!(
+                request
+                    .headers()
+                    .get(CONTENT_TYPE)
+                    .unwrap()
+                    .to_str()
+                    .unwrap(),
+                APPLICATION_WWW_FORM_URLENCODED.to_string()
+            );
             let response = client.reqwest_client.execute(request)?;
             assert_eq!(response.status().as_u16(), 200);
             println!("{:?}", response.text().unwrap());
@@ -605,7 +630,15 @@ mod test {
             let mut request_builder = client.reqwest_client.request(Method::POST, test_url);
             request_builder = client.generate_body(request_builder)?;
             let request = request_builder.build()?;
-            assert_eq!(request.headers().get(CONTENT_TYPE).unwrap().to_str().unwrap(), "text/xml");
+            assert_eq!(
+                request
+                    .headers()
+                    .get(CONTENT_TYPE)
+                    .unwrap()
+                    .to_str()
+                    .unwrap(),
+                "text/xml"
+            );
             let response = client.reqwest_client.execute(request)?;
             assert_eq!(response.status().as_u16(), 200);
 
@@ -756,7 +789,8 @@ mod test {
                 Parameter::SimpleParameter { .. } => panic!("Should not happen"),
                 Parameter::ComplexParameter {
                     mut content_handle,
-                    mime_type, ..
+                    mime_type,
+                    ..
                 } => {
                     println!("{:?}", content_handle);
                     let mut buffer = Vec::new();
@@ -843,7 +877,7 @@ mod test {
             let image: Vec<u8> =
                 fs::read("./test_files/binary/16x16.jpg").expect("Failed reading jpg");
             let expected_content = [image, xml_content, text_value];
- 
+
             result
                 .iter_mut()
                 .enumerate()
@@ -852,13 +886,15 @@ mod test {
                     Parameter::ComplexParameter {
                         name,
                         mime_type,
-                        content_handle
+                        content_handle,
                     } => {
                         assert_eq!(name, expected_names[index]);
                         assert_eq!(mime_type.to_string(), expected_mime_types[index]);
-                        
+
                         let mut content = Vec::new();
-                        content_handle.read_to_end(&mut content).expect("Error reading parameter content");
+                        content_handle
+                            .read_to_end(&mut content)
+                            .expect("Error reading parameter content");
                         assert_eq!(content, expected_content[index]);
                     }
                 });
