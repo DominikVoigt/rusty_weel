@@ -1,5 +1,5 @@
 use base64::Engine;
-use http_helper::{Mime, Parameter};
+use http_helper::{header_map_to_hash_map, Mime, Parameter};
 use mime::APPLICATION_JSON;
 use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue, CONTENT_TYPE},
@@ -305,7 +305,7 @@ impl ConnectionWrapper {
 
         let mut status: u16;
         let mut response_headers: HashMap<String, String>;
-        let mut content: Vec<Parameter>;
+        let mut body;
 
         let protocol_regex = match regex::Regex::new(r"^http(s)?-(get|put|post|delete):") {
             Ok(regex) => regex,
@@ -367,11 +367,10 @@ impl ConnectionWrapper {
             client.set_request_headers(headers.clone());
             client.add_parameters(params);
 
-            let response = client.execute()?;
+            let response = client.execute_raw()?;
             status = response.status_code;
-            response_headers = response.headers;
-            content = response.content;
-            content = response.content;
+            response_headers = header_map_to_hash_map(&response.headers)?;
+            body = response.body;
 
             if status == 561 {
                 match weel.static_data.attributes.get("twin_translate") {
@@ -390,30 +389,8 @@ impl ConnectionWrapper {
         // If status not okay:
         if status < 200 || status >= 300 {
             response_headers.insert("CPEE_SALVAGE".to_owned(), "true".to_owned());
-
-            // Assumption about "gtresult.first.value.read": first is the array method to get the first element, value is the value parameter, read is the read method for complex parameter
-            let err: String = match content.pop().unwrap() {
-                Parameter::SimpleParameter { value, .. } => value.clone(),
-                Parameter::ComplexParameter {
-                    mut content_handle, ..
-                } => {
-                    let mut body = String::new();
-                    content_handle.rewind()?;
-                    content_handle.read_to_string(&mut body)?;
-                    content_handle.rewind()?;
-                    body
-                }
-            };
-
-            let mut tempfile = tempfile()?;
-            tempfile.write_all(err.as_bytes())?;
-            tempfile.rewind()?;
             this.callback(
-                serde_json::to_string(Parameter::ComplexParameter {
-                    name: "error".to_owned(),
-                    mime_type: APPLICATION_JSON,
-                    content_handle: tempfile,
-                })?.as_bytes(),
+                &body,
                 response_headers
             )?
         } else {
@@ -423,24 +400,26 @@ impl ConnectionWrapper {
             };
 
             if callback_header_set {
-                if !content.is_empty() {
+                if !body.len() > 0 {
                     response_headers.insert("CPEE_UPDATE".to_owned(), "true".to_owned());
-                    this.callback(content, response_headers)?
+                    this.callback(&body, response_headers)?
                 } else {
                     let mut content = HashMap::new();
-                    content.insert(
-                        "activity_uuid".to_owned(),
-                        this.handler_activity_uuid.clone(),
-                    );
-                    content.insert("label".to_owned(), this.label.clone());
-                    content.insert(
-                        "activity".to_owned(),
-                        this.handler_position.clone().unwrap_or("".to_owned()),
-                    );
-                    content.insert(
-                        "endpoint".to_owned(),
-                        serde_json::to_string(&this.handler_endpoints)?,
-                    );
+                    {
+                        content.insert(
+                            "activity_uuid".to_owned(),
+                            this.handler_activity_uuid.clone(),
+                        );
+                        content.insert("label".to_owned(), this.label.clone());
+                        content.insert(
+                            "activity".to_owned(),
+                            this.handler_position.clone().unwrap_or("".to_owned()),
+                        );
+                        content.insert(
+                            "endpoint".to_owned(),
+                            serde_json::to_string(&this.handler_endpoints)?,
+                        );
+                    }
 
                     let instantiation_header_set = match response_headers.get("CPEE_INSTANTION") {
                         Some(instantiation_header) => !instantiation_header.is_empty(),
@@ -449,7 +428,7 @@ impl ConnectionWrapper {
 
                     if instantiation_header_set {
                         // TODO What about value_helper
-                        content.insert("received".to_owned(), "dummy value".to_owned());
+                        content.insert("received".to_owned(), response_headers.get("CPEE_INSTANTIATION").unwrap().clone());
                         weel.redis_notifications_client.lock().unwrap().notify(
                             "task/instantiation",
                             Some(content.clone()),
@@ -474,7 +453,7 @@ impl ConnectionWrapper {
                     }
                 }
             } else {
-                this.callback(, response_headers)?
+                this.callback(&body, response_headers)?
             }
         }
         Ok(())
@@ -486,9 +465,8 @@ impl ConnectionWrapper {
         options: HashMap<String, String>, // Headers
     ) -> Result<()> {
         let weel = self.weel();
-        let recv = eval_helper::structurize_result(options, body);
-        let recv = structurize_result(&mut parameters)?; // TODO: -> 1. eval_helper structurize endpoint -> Forward request (PUT) (take headers and body)
-                                                                                       // Receives a json with field struc -> String structurized result 
+        let recv = eval_helper::structurize_result(&weel.static_data.eval_backend_url, options, body)?; // TODO: -> 1. eval_helper structurize endpoint -> Forward request (PUT) (take headers and body)
+                                                                   // Receives a json with field struc -> String structurized result 
         let mut redis = weel.redis_notifications_client.lock()?;
         let content = self.construct_basic_content()?;
         {

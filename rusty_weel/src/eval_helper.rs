@@ -1,11 +1,11 @@
 use std::{
-    collections::HashMap,
-    fmt::Display,
-    io::{Read, Seek, Write},
+    collections::HashMap, fmt::Display, fs, io::{Read, Seek, Write}
 };
 
 use http_helper::{Client, Parameter};
 use log;
+use mime::APPLICATION_OCTET_STREAM;
+use reqwest::{header::{HeaderName, CONTENT_TYPE}, Method};
 use serde_json::Value;
 use tempfile::tempfile;
 
@@ -229,6 +229,48 @@ impl Display for EvalError {
     }
 }
 
-pub(crate) fn structurize_result(options: HashMap<String, String>, body: &[u8]) -> _ {
-    todo!()
+/**
+ * Sends the raw response body and headers to an external ruby service for evaluation
+ * Receives back an application/json
+ */
+pub fn structurize_result(eval_backend_url: &str, options: HashMap<String, String>, body: &[u8]) -> Result<String> {
+    let mut client = http_helper::Client::new(eval_backend_url, Method::PUT)?;
+    client.add_request_header(CONTENT_TYPE.as_str(), APPLICATION_OCTET_STREAM.essence_str());
+    client.add_request_headers(options);
+    let mut body_file = tempfile()?;
+    body_file.write_all(body);
+    body_file.rewind();
+    client.add_parameter(Parameter::ComplexParameter { name: "body".to_owned(), mime_type: APPLICATION_OCTET_STREAM, content_handle: body_file });
+    let response = client.execute()?;
+    let status = response.status_code;
+    let mut content = response.content;
+    if status == 200 {
+        if content.len() != 1 {
+            log::error!("Structurization call returned not one but {} parameters", content.len());
+            Err(Error::GeneralError(format!("Structurization call returned not one but {} parameters", content.len())))
+        } else {
+            Ok(match content.pop().unwrap() {
+                Parameter::SimpleParameter { value, ..} => value,
+                Parameter::ComplexParameter { mut content_handle, .. } => {let mut content = String::new(); content_handle.read_to_string(&mut content); content},
+            })
+        }
+    } else {
+        log::error!("Structurization call returned with status code {status}. Body: {:?}", content);
+        Err(Error::GeneralError(format!("Call to structurize service was unsuccessful. Code: {status}")))
+    }
+}
+
+mod test {
+    use reqwest::Method;
+
+    use super::structurize_result;
+
+    #[test]
+    fn test_structurize_result() {
+        let test_endpoint = "";
+
+    let mut client = http_helper::Client::new(test_endpoint, Method::GET).unwrap();
+    let response = client.execute_raw().unwrap();
+    structurize_result("", response.headers, &response.body).unwrap()
+    }
 }
