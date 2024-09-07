@@ -16,7 +16,7 @@ use rusty_weel_macro::get_str_from_value;
 use crate::connection_wrapper::ConnectionWrapper;
 use crate::data_types::{BlockingQueue, DynamicData, HTTPParams, State, StaticData, ThreadInfo};
 use crate::dsl::DSL;
-use crate::eval_helper::{self, EvalError};
+use crate::eval_helper::EvalError;
 use crate::redis_helper::{RedisHelper, Topic};
 
 pub struct Weel {

@@ -5,7 +5,7 @@ use std::{
 use http_helper::{Client, Parameter};
 use log;
 use mime::APPLICATION_OCTET_STREAM;
-use reqwest::{header::{HeaderName, CONTENT_TYPE}, Method};
+use reqwest::{header::CONTENT_TYPE, Method};
 use serde_json::Value;
 use tempfile::tempfile;
 
