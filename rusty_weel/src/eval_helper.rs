@@ -8,6 +8,7 @@ use mime::APPLICATION_OCTET_STREAM;
 use reqwest::{header::CONTENT_TYPE, Method};
 use serde_json::Value;
 use tempfile::tempfile;
+use urlencoding::encode;
 
 use crate::{
     data_types::{DynamicData, State, StaticData},
@@ -55,30 +56,32 @@ pub fn evaluate_expression(
     additional_file.rewind()?;
     
     let mut code_file = tempfile()?;
+    let expression = encode(expression);
     code_file.write_all(expression.as_bytes())?;
     code_file.rewind()?;
     
+    client.add_parameter(Parameter::ComplexParameter {
+        name: "code".to_owned(),
+        mime_type: mime::APPLICATION_WWW_FORM_URLENCODED,
+        content_handle: code_file,
+    });
+
+    client.add_parameter(Parameter::ComplexParameter {
+        name: "dataelements".to_owned(),
+        mime_type: mime::APPLICATION_JSON,
+        content_handle: data_file,
+    });
+
     client.add_parameter(Parameter::ComplexParameter {
         name: "endpoints".to_owned(),
         mime_type: mime::APPLICATION_JSON,
         content_handle: endpoints_file,
     });
     
-    client.add_parameter(Parameter::ComplexParameter {
-        name: "dataelements".to_owned(),
-        mime_type: mime::APPLICATION_JSON,
-        content_handle: data_file,
-    });
-    
-    client.add_parameter(Parameter::ComplexParameter {
-        name: "code".to_owned(),
-        mime_type: mime::TEXT_PLAIN_UTF_8,
-        content_handle: code_file,
-    });
     
     client.add_parameter(Parameter::ComplexParameter {
         name: "additional".to_owned(),
-        mime_type: mime::TEXT_PLAIN_UTF_8,
+        mime_type: mime::APPLICATION_JSON,
         content_handle: additional_file,
     });
     
@@ -91,14 +94,14 @@ pub fn evaluate_expression(
         
         client.add_parameter(Parameter::ComplexParameter {
             name: "local".to_owned(),
-            mime_type: mime::TEXT_PLAIN_UTF_8,
+            mime_type: mime::APPLICATION_JSON,
             content_handle: local_file,
         });
     }
 
     client.add_parameter(Parameter::ComplexParameter {
         name: "status".to_owned(),
-        mime_type: mime::TEXT_PLAIN_UTF_8,
+        mime_type: mime::APPLICATION_JSON,
         content_handle: status_file,
     });
         
@@ -153,7 +156,7 @@ pub fn evaluate_expression(
     while let Some(parameter) = result.content.pop() {
         match parameter {
             Parameter::SimpleParameter { name, value, .. } => {
-                if name == "expressions" {
+                if name == "result" {
                     expression_result = Some(serde_json::from_str(&value)?);
                 } else {
                     continue;
@@ -165,7 +168,7 @@ pub fn evaluate_expression(
                 ..
             } => {
                 let mut content = String::new();
-                content_handle.read_to_string(&mut content);
+                content_handle.read_to_string(&mut content)?;
                 
                 match name.as_str() {
                     "result" => {
