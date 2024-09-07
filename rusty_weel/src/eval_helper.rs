@@ -15,7 +15,7 @@ use crate::{
 };
 
 /**
- * Sends a list of expressions and the context to evaluate them in to the evaluation backend
+ * Sends an expression and the context to evaluate it in to the evaluation backend
  * Returns an error if:
  *  - Request body could not be parsed
  *  - Post request fails / Evaluation fails
@@ -96,13 +96,13 @@ pub fn evaluate_expression(
         });
     }
 
-    /* TODO: Add all these optional ones
     client.add_parameter(Parameter::ComplexParameter {
         name: "status".to_owned(),
         mime_type: mime::TEXT_PLAIN_UTF_8,
-        content_handle: code_file,
+        content_handle: status_file,
     });
-
+        
+    /* TODO: Add all these optional ones
     client.add_parameter(Parameter::ComplexParameter {
         name: "info".to_owned(),
         mime_type: mime::TEXT_PLAIN_UTF_8,
@@ -241,11 +241,11 @@ impl Display for EvalError {
  */
 pub fn structurize_result(eval_backend_url: &str, options: &HashMap<String, String>, body: &[u8]) -> Result<String> {
     let mut client = http_helper::Client::new(eval_backend_url, Method::PUT)?;
-    client.add_request_header(CONTENT_TYPE.as_str(), APPLICATION_OCTET_STREAM.essence_str());
-    client.add_request_headers(options.clone());
+    client.add_request_header(CONTENT_TYPE.as_str(), APPLICATION_OCTET_STREAM.essence_str())?;
+    client.add_request_headers(options.clone())?;
     let mut body_file = tempfile()?;
-    body_file.write_all(body);
-    body_file.rewind();
+    body_file.write_all(body)?;
+    body_file.rewind()?;
     client.add_parameter(Parameter::ComplexParameter { name: "body".to_owned(), mime_type: APPLICATION_OCTET_STREAM, content_handle: body_file });
     let response = client.execute()?;
     let status = response.status_code;
@@ -257,12 +257,12 @@ pub fn structurize_result(eval_backend_url: &str, options: &HashMap<String, Stri
         } else {
             Ok(match content.pop().unwrap() {
                 Parameter::SimpleParameter { value, ..} => value,
-                Parameter::ComplexParameter { mut content_handle, .. } => {let mut content = String::new(); content_handle.read_to_string(&mut content); content},
+                Parameter::ComplexParameter { mut content_handle, .. } => {let mut content = String::new(); content_handle.rewind()?; content_handle.read_to_string(&mut content)?; content},
             })
         }
     } else {
         log::error!("Structurization call returned with status code {status}. Body: {:?}", content);
-        Err(Error::GeneralError(format!("Call to structurize service was unsuccessful. Code: {status}")))
+        Err(Error::GeneralError(format!("Call to structurize service was unsuccessful. Code: {status}, Message: {:?}", content)))
     }
 }
 
@@ -270,6 +270,7 @@ pub fn structurize_result(eval_backend_url: &str, options: &HashMap<String, Stri
 mod test {
     use core::str;
 
+    use base64::Engine;
     use http_helper::Parameter;
     use mime::{Mime, TEXT_PLAIN_UTF_8};
     use reqwest::Method;
@@ -290,7 +291,10 @@ mod test {
         let response = client.execute_raw().unwrap(); 
         let body = str::from_utf8(&response.body).unwrap();
         println!("Received response: {}", body);
-        // SSH connect 8550 to 9302
-        structurize_result("localhost:8550", &http_helper::header_map_to_hash_map(&response.headers).unwrap(), &response.body).unwrap();
+        // SSH connect 8550 to 9302 `ssh -L 8550:localhost:9302 echo`
+        let result = structurize_result("http://localhost:8550/structurize", &http_helper::header_map_to_hash_map(&response.headers).unwrap(), &response.body).unwrap();
+        println!("Result: {result}");
+        let result = base64::engine::general_purpose::STANDARD.decode("aWQ9QVVBJmNvc3RzPTEzNg==").unwrap();
+        println!("{}", String::from_utf8_lossy(&result))
     }
 }

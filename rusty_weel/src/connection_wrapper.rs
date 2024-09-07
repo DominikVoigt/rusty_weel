@@ -459,17 +459,16 @@ impl ConnectionWrapper {
 
     pub fn callback(
         &mut self,
-        mut body: &[u8],
+        body: &[u8],
         options: HashMap<String, String>, // Headers
     ) -> Result<()> {
         let weel = self.weel();
-        let recv = eval_helper::structurize_result(&weel.static_data.eval_backend_url, &options, body)?; // TODO: -> 1. eval_helper structurize endpoint -> Forward request (PUT) (take headers and body)
-                                                                   // Receives a json with field struc -> String structurized result 
+        let recv = eval_helper::structurize_result(&weel.static_data.eval_backend_url, &options, body)?;
         let mut redis = weel.redis_notifications_client.lock()?;
         let content = self.construct_basic_content()?;
         {
             let mut content = content.clone();
-            content.insert("received".to_owned(), serde_json::to_string(&recv)?);
+            content.insert("received".to_owned(), recv.clone());
             content.insert(
                 "annotations".to_owned(),
                 self.annotations.clone().unwrap_or("".to_owned()),
@@ -484,8 +483,8 @@ impl ConnectionWrapper {
 
         if contains_non_empty(&options, "CPEE_INSTANTIATION") {
             let mut content = content.clone();
-            // CPEE::ValueHelper.parse(options['CPEE_INSTANTIATION'])
-            content.insert("received".to_owned(), todo!());
+            // TODO: Unsure whether this is equivalent to: CPEE::ValueHelper.parse(options['CPEE_INSTANTIATION'])
+            content.insert("received".to_owned(), options.get("CPEE_INSTANTIATION").unwrap().clone());
 
             redis.notify(
                 "activity/receiving",
@@ -507,7 +506,7 @@ impl ConnectionWrapper {
             let event = event_regex.replace_all(&event, "");
 
             let mut content = content.clone();
-            content.insert("received".to_owned(), serde_json::to_string(&recv)?);
+            content.insert("received".to_owned(), recv.clone());
 
             redis.notify(
                 &format!("task/{event}"),
@@ -515,7 +514,7 @@ impl ConnectionWrapper {
                 weel.static_data.get_instance_meta_data(),
             )?;
         } else {
-            // self.handler_return_value = Some(simplify_result(&mut parameters)?); // TODO: -> 2. do nothing, just structurized from 1.
+            self.handler_return_value = Some(recv);
             self.handler_return_options = Some(options.clone());
         }
 
@@ -525,18 +524,30 @@ impl ConnectionWrapper {
             content.insert("status".to_owned(), options["CPEE_STATUS"].clone());
         }
         if contains_non_empty(&options, "CPEE_UPDATE") {
-            // TODO: self.handler_continue.continue(Signal::Again)
+            match &self.handler_continue {
+                Some(x) => x.enqueue(Signal::Again),
+                None => log::error!("Received CPEE_UPDATE but handler_continue is empty?"),
+            }
         } else {
             if let Some(passthrough) = &self.handler_passthrough {
                 weel.cancel_callback(passthrough)?;
                 self.handler_passthrough = None;
             }
             if contains_non_empty(&options, "CPEE_SALVAGE") {
-                // TODO: self.handler_continue.continue(Signal::Salvage)
+                match &self.handler_continue {
+                    Some(x) => x.enqueue(Signal::Salvage),
+                    None => log::error!("Received CPEE_SALVAGE but handler_continue is empty?"),
+                }
             } else if contains_non_empty(&options, "CPEE_STOP") {
-                // TODO: self.handler_continue.continue(Signal::Stop)
+                match &self.handler_continue {
+                    Some(x) => x.enqueue(Signal::Stop),
+                    None => log::error!("Received CPEE_STOP but handler_continue is empty?"),
+                }
             } else {
-                // self.handler_continue.continue()
+                match &self.handler_continue {
+                    Some(x) => x.enqueue(Signal::None),
+                    None => log::error!("Received neither salvage or stop but handler_continue is empty?"),
+                }
             }
         }
 
@@ -546,6 +557,7 @@ impl ConnectionWrapper {
     /**
      * Contains:
      *  - activity-uuid
+     *  - label
      *  - activity
      *  - endpoint
      */

@@ -584,7 +584,8 @@ pub enum Signal {
     Salvage,
     Stop,
     Proceed,
-    Skip
+    Skip,
+    None // If nothing has to be signaled (see else case in connection::callback at the end)
 }
 
 pub enum ActivityType {
