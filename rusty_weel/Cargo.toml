@@ -23,8 +23,6 @@ reqwest = "0.12.5"
 tempfile = "3.10.1"
 urlencoding = "2.1.3"
 
-# Charset encoding detection
-rust_icu_ucsdet = "5.0.0"
 # encoding
 encoding_rs = "0.8.34"
 base64 = "0.22.1"

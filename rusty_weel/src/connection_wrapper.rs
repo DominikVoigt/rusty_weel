@@ -1,22 +1,19 @@
 use base64::Engine;
 use http_helper::{header_map_to_hash_map, Mime, Parameter};
-use mime::APPLICATION_JSON;
 use reqwest::{
-    header::{HeaderMap, HeaderName, HeaderValue, CONTENT_TYPE},
+    header::{HeaderMap, HeaderName, HeaderValue},
     Method,
 };
-use rust_icu_ucsdet::CharsetDetector;
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::{
     collections::HashMap,
-    io::{Read, Seek, Write},
+    io::{Read, Seek},
     str::FromStr,
     sync::{Arc, Mutex, MutexGuard, Weak},
     thread::sleep,
     time::{Duration, SystemTime},
 };
-use tempfile::tempfile;
 use urlencoding::encode;
 
 use crate::{
@@ -190,9 +187,10 @@ impl ConnectionWrapper {
      * Resolves the endpoint names in endpoints to the actual endpoint URLs
      */
     fn resolve_endpoints(&mut self, endpoints: &Vec<String>, weel: &Arc<Weel>) {
+        let weel_endpoint_urls = weel.dynamic_data.lock().unwrap(); 
         self.handler_endpoints = endpoints
             .iter()
-            .map(|ep| weel.dynamic_data.endpoints.get(ep))
+            .map(|ep| weel_endpoint_urls.endpoints.get(ep))
             .filter_map(|item| match item {
                 Some(item) => Some(item.clone()),
                 None => None,
@@ -465,7 +463,7 @@ impl ConnectionWrapper {
         options: HashMap<String, String>, // Headers
     ) -> Result<()> {
         let weel = self.weel();
-        let recv = eval_helper::structurize_result(&weel.static_data.eval_backend_url, options, body)?; // TODO: -> 1. eval_helper structurize endpoint -> Forward request (PUT) (take headers and body)
+        let recv = eval_helper::structurize_result(&weel.static_data.eval_backend_url, &options, body)?; // TODO: -> 1. eval_helper structurize endpoint -> Forward request (PUT) (take headers and body)
                                                                    // Receives a json with field struc -> String structurized result 
         let mut redis = weel.redis_notifications_client.lock()?;
         let content = self.construct_basic_content()?;
@@ -517,7 +515,7 @@ impl ConnectionWrapper {
                 weel.static_data.get_instance_meta_data(),
             )?;
         } else {
-            self.handler_return_value = Some(simplify_result(&mut parameters)?); // TODO: -> 2. do nothing, just structurized from 1.
+            // self.handler_return_value = Some(simplify_result(&mut parameters)?); // TODO: -> 2. do nothing, just structurized from 1.
             self.handler_return_options = Some(options.clone());
         }
 
@@ -674,6 +672,7 @@ struct StructuredResultElement {
  * TODO: Determine whether this has to be the exact same as the ruby impl
  */
 fn structurize_result(parameters: &mut Vec<Parameter>) -> Result<Vec<StructuredResultElement>> {
+    todo!();
     let mut result = Vec::new();
     for parameter in parameters.iter_mut() {
         match parameter {
@@ -770,6 +769,9 @@ fn convert_to_base64(mime_type: Mime, data: Vec<u8>) -> String {
  * Returns the charset and a confidence
  */
 fn detect_encoding(data: &[u8]) -> (String, i32) {
+    todo!()
+    // TODO: I believe this is no longer required with the eval service
+    /*
     let mut detector = match CharsetDetector::new() {
         Ok(x) => x,
         Err(err) => {
@@ -806,6 +808,7 @@ fn detect_encoding(data: &[u8]) -> (String, i32) {
             ("OTHER".to_owned(), 0)
         }
     }
+     */
 }
 
 fn handle_twin_translate(
