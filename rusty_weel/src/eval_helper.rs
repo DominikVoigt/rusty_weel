@@ -49,11 +49,11 @@ pub fn evaluate_expression(
     status_file.write_all(serde_json::to_string(weel_state)?.as_bytes())?;
     status_file.rewind()?;
 
-    let mut code_file = tempfile()?;
-    code_file.write_all(expression.as_bytes())?;
-    code_file.rewind()?;
-
-
+    
+    let mut additional_file = tempfile()?;
+    additional_file.write_all(serde_json::to_string(&additional)?.as_bytes())?;
+    additional_file.rewind()?;
+    
     let mut code_file = tempfile()?;
     code_file.write_all(expression.as_bytes())?;
     code_file.rewind()?;
@@ -63,33 +63,40 @@ pub fn evaluate_expression(
         mime_type: mime::APPLICATION_JSON,
         content_handle: endpoints_file,
     });
-
+    
     client.add_parameter(Parameter::ComplexParameter {
         name: "dataelements".to_owned(),
         mime_type: mime::APPLICATION_JSON,
         content_handle: data_file,
     });
-
+    
     client.add_parameter(Parameter::ComplexParameter {
         name: "code".to_owned(),
         mime_type: mime::TEXT_PLAIN_UTF_8,
         content_handle: code_file,
     });
-
+    
     client.add_parameter(Parameter::ComplexParameter {
         name: "additional".to_owned(),
         mime_type: mime::TEXT_PLAIN_UTF_8,
-        content_handle: code_file,
+        content_handle: additional_file,
     });
     
     
     // -> Optional only for some cases
-    client.add_parameter(Parameter::ComplexParameter {
-        name: "local".to_owned(),
-        mime_type: mime::TEXT_PLAIN_UTF_8,
-        content_handle: code_file,
-    });
+    if let Some(local) = local {
+        let mut local_file = tempfile()?;
+        local_file.write_all(local.as_bytes())?;
+        local_file.rewind()?;
+        
+        client.add_parameter(Parameter::ComplexParameter {
+            name: "local".to_owned(),
+            mime_type: mime::TEXT_PLAIN_UTF_8,
+            content_handle: local_file,
+        });
+    }
 
+    /* TODO: Add all these optional ones
     client.add_parameter(Parameter::ComplexParameter {
         name: "status".to_owned(),
         mime_type: mime::TEXT_PLAIN_UTF_8,
@@ -116,12 +123,11 @@ pub fn evaluate_expression(
 
     if let Some(local) = local {
         let mut local_file = tempfile()?;
-        let local = serde_json::to_string(local)?;
         local_file.write_all(local.as_bytes())?;
         local_file.rewind()?;
         client.add_parameter(Parameter::ComplexParameter { name: "local".to_owned(), mime_type: mime::APPLICATION_JSON, content_handle: local_file })
     }
-
+    */
 
     let mut result = client.execute()?;
     let status = result.status_code;
@@ -233,10 +239,10 @@ impl Display for EvalError {
  * Sends the raw response body and headers to an external ruby service for evaluation
  * Receives back an application/json
  */
-pub fn structurize_result(eval_backend_url: &str, options: HashMap<String, String>, body: &[u8]) -> Result<String> {
+pub fn structurize_result(eval_backend_url: &str, options: &HashMap<String, String>, body: &[u8]) -> Result<String> {
     let mut client = http_helper::Client::new(eval_backend_url, Method::PUT)?;
     client.add_request_header(CONTENT_TYPE.as_str(), APPLICATION_OCTET_STREAM.essence_str());
-    client.add_request_headers(options);
+    client.add_request_headers(options.clone());
     let mut body_file = tempfile()?;
     body_file.write_all(body);
     body_file.rewind();
@@ -260,17 +266,31 @@ pub fn structurize_result(eval_backend_url: &str, options: HashMap<String, Strin
     }
 }
 
+#[cfg(test)]
 mod test {
+    use core::str;
+
+    use http_helper::Parameter;
+    use mime::{Mime, TEXT_PLAIN_UTF_8};
     use reqwest::Method;
 
     use super::structurize_result;
 
     #[test]
     fn test_structurize_result() {
-        let test_endpoint = "";
+        let test_endpoint = "http://gruppe.wst.univie.ac.at/~mangler/services/airline.php";
+        let params = vec![
+            Parameter::SimpleParameter { name: "from".to_owned(), value: "Vienna".to_owned(), param_type: http_helper::ParameterType::Query },
+            Parameter::SimpleParameter { name: "to".to_owned(), value: "Prague".to_owned(), param_type: http_helper::ParameterType::Query },
+            Parameter::SimpleParameter { name: "persons".to_owned(), value: "2".to_owned(), param_type: http_helper::ParameterType::Query }
+        ];
 
-    let mut client = http_helper::Client::new(test_endpoint, Method::GET).unwrap();
-    let response = client.execute_raw().unwrap();
-    structurize_result("", response.headers, &response.body).unwrap()
+        let mut client = http_helper::Client::new(test_endpoint, Method::POST).unwrap();
+        client.add_parameters(params);
+        let response = client.execute_raw().unwrap(); 
+        let body = str::from_utf8(&response.body).unwrap();
+        println!("Received response: {}", body);
+        // SSH connect 8550 to 9302
+        structurize_result("localhost:8550", &http_helper::header_map_to_hash_map(&response.headers).unwrap(), &response.body).unwrap();
     }
 }

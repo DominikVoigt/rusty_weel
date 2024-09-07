@@ -201,12 +201,12 @@ impl RedisHelper {
                             {
                                 log_error_and_panic("message[content][headers] is either null, or ..[headers] is not a hash")
                             }
-                            let params = construct_parameters(&message_json);
+                            let params = message_json["content"]["values"].as_str().unwrap().as_bytes(); // TODO: Determine whether we need this still: construct_parameters(&message_json);
                             let headers = convert_headers_to_map(&message_json["content"]["headers"]);
                             callback_keys.get(&topic.type_)
                                          .expect("Cannot happen as we check containment previously and hold mutex throughout")
                                          .lock()?
-                                         .callback(params?, headers)?;
+                                         .callback(params, headers)?;
                         }
                     }
                     "callback-end:*" => {

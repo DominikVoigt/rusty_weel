@@ -410,13 +410,13 @@ impl Weel {
         }
 
         let result: Result<()> = {
-            self.execute_activity(position, search_mode, activity_type, finalize_code, label)?
+            self.execute_activity(position, search_mode, activity_type, finalize_code, label)
         };
 
         todo!()
     }
 
-    fn execute_activity(self: Arc<Self>, position: &str, search_mode: bool, activity_type: ActivityType, finalize_code: Option<&str>, label: &str) -> Result<std::result::Result<(), Error>, Error> {
+    fn execute_activity(self: Arc<Self>, position: &str, search_mode: bool, activity_type: ActivityType, finalize_code: Option<&str>, label: &str) -> Result<()> {
         let state = self.state.lock().unwrap();
         let invalid_state = match *state {
             State::Running => false,
@@ -461,7 +461,9 @@ impl Weel {
                         .insert(branch_trace_id.to_owned(), Vec::new());
                 }
             }
-        }
+        };
+        Ok(())
+        /*
         Ok(if search_mode /* == "after"*/ {
             Err(Error::Signal(Signal::Proceed))
         } else {
@@ -487,6 +489,7 @@ impl Weel {
                 ActivityType::Call => todo!(),
             }
         })
+         */
     }
     
     fn position_test<'a>(&self, label: &'a str) -> Result<&'a str> {
