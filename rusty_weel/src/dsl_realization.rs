@@ -16,7 +16,7 @@ use rusty_weel_macro::get_str_from_value;
 use crate::connection_wrapper::ConnectionWrapper;
 use crate::data_types::{BlockingQueue, DynamicData, HTTPParams, State, StaticData, ThreadInfo};
 use crate::dsl::DSL;
-use crate::eval_helper::EvalError;
+use crate::eval_helper::{self, EvalError};
 use crate::redis_helper::{RedisHelper, Topic};
 
 pub struct Weel {
@@ -410,13 +410,13 @@ impl Weel {
         }
 
         let result: Result<()> = {
-            self.execute_activity(position, search_mode, activity_type, finalize_code, label)
+            self.execute_activity(position, activity_type, finalize_code, label)
         };
 
         todo!()
     }
 
-    fn execute_activity(self: Arc<Self>, position: &str, search_mode: bool, activity_type: ActivityType, finalize_code: Option<&str>, label: &str) -> Result<()> {
+    fn execute_activity(self: Arc<Self>, position: &str, activity_type: ActivityType, finalize_code: Option<&str>, label: &str) -> Result<()> {
         let state = self.state.lock().unwrap();
         let invalid_state = match *state {
             State::Running => false,
@@ -462,34 +462,31 @@ impl Weel {
                 }
             }
         };
-        Ok(())
-        /*
-        Ok(if search_mode /* == "after"*/ {
-            Err(Error::Signal(Signal::Proceed))
-        } else {
-            match activity_type {
-                ActivityType::Manipulate => {
-                    let state_stopping_or_finished = matches!(*self.state.lock().unwrap(), State::Stopping | State::Finishing);
-                    if !self.vote_sync_before(&connection_wrapper, None)? {
-                        Err(Error::Signal(Signal::Stop))
-                    } else if state_stopping_or_finished {
-                        Err(Error::Signal(Signal::Skip))
-                    } else {
-                        match finalize_code {
-                            Some(finalize_code) => {
-                                connection_wrapper.activity_manipulate_handle(label);
-                                connection_wrapper.inform_activity_manipulate();
-                                let result = eval_helper::evaluate_expression(&self.dynamic_data.lock().unwrap(), &self.static_data, finalize_code, &self.state.lock().unwrap(), Some(&local), )?;
-                                Ok(())
-                            },
-                            None => Ok(()),
-                        }
+
+        // TODO: We deleted raise Signal::Proceed if searchmode == :after (also from ruby code)
+        match activity_type {
+            ActivityType::Manipulate => {
+                let state_stopping_or_finished = matches!(*self.state.lock().unwrap(), State::Stopping | State::Finishing);
+                if !self.vote_sync_before(&connection_wrapper, None)? {
+                    Err(Error::Signal(Signal::Stop))
+                } else if state_stopping_or_finished {
+                    Err(Error::Signal(Signal::Skip))
+                } else {
+                    match finalize_code {
+                        Some(finalize_code) => {
+                            connection_wrapper.activity_manipulate_handle(label);
+                            connection_wrapper.inform_activity_manipulate();
+                            let result = eval_helper::evaluate_expression(&self.dynamic_data.lock().unwrap(), &self.static_data, finalize_code, &self.state.lock().unwrap(), Some(local), connection_wrapper.additional())?;
+                            connection_wrapper.inform_manipulate_change(
+                                result
+                            )
+                        },
+                        None => Ok(()),
                     }
-                },
-                ActivityType::Call => todo!(),
-            }
-        })
-         */
+                }
+            },
+            ActivityType::Call => todo!(),
+        }
     }
     
     fn position_test<'a>(&self, label: &'a str) -> Result<&'a str> {

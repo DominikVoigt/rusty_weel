@@ -184,7 +184,7 @@ pub struct ThreadInfo {
     pub blocking_queue: Arc<BlockingQueue<Signal>>,
     pub branch_traces_id: Option<String>,
     pub branch_traces: HashMap<String, Vec<String>>,
-    pub local: HashMap<String, String>
+    pub local: String
 }
 
 /**

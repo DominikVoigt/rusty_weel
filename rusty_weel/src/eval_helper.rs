@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap, fmt::Display, fs, io::{Read, Seek, Write}
+    collections::HashMap, fmt::Display, fs, hash::Hash, io::{Read, Seek, Write}
 };
 
 use http_helper::{Client, Parameter};
@@ -28,7 +28,7 @@ pub fn evaluate_expression(
     local: Option<String>,
     additional: Value
 ) -> Result<EvaluationResult> {
-    let mut client = Client::new(&static_context.eval_backend_url, http_helper::Method::POST)?;
+    let mut client = Client::new(&static_context.eval_backend_url, http_helper::Method::PUT)?;
 
     // Construct multipart request from data, expression, state and thread local data: 
     let attributes = serde_json::to_string(&static_context.attributes)?;
@@ -138,8 +138,8 @@ pub fn evaluate_expression(
         
     } 
     // Get the expressions parameter from the parsed response
-    let mut expression_results: Option<HashMap<String, String>> = None;
-    let mut data: Option<String> = None;
+    let mut expression_result: Option<String> = None;
+    let mut data: Option<HashMap<String, String>> = None;
     let mut endpoints: Option<HashMap<String, String>> = None;
     let mut state: Option<State> = None;
     let mut local: Option<HashMap<String, String>> = None;
@@ -154,7 +154,7 @@ pub fn evaluate_expression(
         match parameter {
             Parameter::SimpleParameter { name, value, .. } => {
                 if name == "expressions" {
-                    expression_results = Some(serde_json::from_str(&value)?);
+                    expression_result = Some(serde_json::from_str(&value)?);
                 } else {
                     continue;
                 }
@@ -168,8 +168,8 @@ pub fn evaluate_expression(
                 content_handle.read_to_string(&mut content);
                 
                 match name.as_str() {
-                    "expressions" => {
-                        expression_results = Some(serde_json::from_str(&content)?);
+                    "result" => {
+                        expression_result = Some(content);
                     },
                     "changed_dataelements" => {
                         data = Some(serde_json::from_str(&content)?);
@@ -197,8 +197,8 @@ pub fn evaluate_expression(
             }
         };
     };
-    match expression_results {
-        Some(expression_results) => Ok(EvaluationResult { expression_results, changed_data: data, changed_endpoints: endpoints, changed_state: state, changed_local: local }),
+    match expression_result {
+        Some(expression_result) => Ok(EvaluationResult { expression_result, changed_data: data, changed_endpoints: endpoints, changed_state: state }),
         None => Err(Error::EvalError(EvalError::GeneralEvalError("Response does not contain the evaluation results".to_owned()))),
     }
 }
@@ -208,12 +208,12 @@ pub fn evaluate_expression(
  * If data, endpoints, state or local information changed, the corresponding field will be Some containing the new value
  * If a field is none, then it did not change
  */
+#[derive(Debug)]
 pub struct EvaluationResult {
-    expression_results: HashMap<String, String>,
-    changed_data: Option<String>,
-    changed_endpoints: Option<HashMap<String, String>>,
-    changed_state : Option<State>,
-    changed_local : Option<HashMap<String, String>>,
+    pub expression_result: String,
+    pub changed_data: Option<HashMap<String, String>>,
+    pub changed_endpoints: Option<HashMap<String, String>>,
+    pub changed_state : Option<State>,
 }
 
 #[derive(Debug)]
@@ -269,13 +269,52 @@ pub fn structurize_result(eval_backend_url: &str, options: &HashMap<String, Stri
 #[cfg(test)]
 mod test {
     use core::str;
+    use std::collections::HashMap;
 
     use base64::Engine;
     use http_helper::Parameter;
     use mime::{Mime, TEXT_PLAIN_UTF_8};
     use reqwest::Method;
 
-    use super::structurize_result;
+    use crate::data_types::{DynamicData, State, StaticData};
+
+    use super::{evaluate_expression, structurize_result};
+
+    #[test]
+    fn test_evaluation() {
+        simple_logger::init_with_level(log::Level::Info).unwrap();
+        let endpoints = HashMap::new();
+        let mut data = HashMap::new();
+        data.insert("name".to_owned(), "Testhodor".to_owned());
+        data.insert("age".to_owned(), "29".to_owned());
+        let data = serde_json::to_string(&data).unwrap();
+
+        let dynamic_data = DynamicData {
+            endpoints,
+            data: data,
+        };
+
+        let static_data = StaticData {
+            instance_id: "1".to_owned(),
+            host: "".to_owned(),
+            base_url: "".to_owned(),
+            redis_url: None,
+            redis_path: Some("".to_owned()),
+            redis_db: 0,
+            redis_workers: 1,
+            global_executionhandlers: "".to_owned(),
+            executionhandlers: "".to_owned(),
+            executionhandler: "".to_owned(),
+            eval_language: "".to_owned(),
+            eval_backend_url: "http://localhost:8550/exec".to_owned(),
+            attributes: HashMap::new(),
+        };
+        let state = State::Running;
+
+        let result = evaluate_expression(&dynamic_data, &static_data, "data.name = 'Tom'", &state, None, serde_json::Value::Null).unwrap();
+        println!("Result: {:?}", result)
+    }
+
 
     #[test]
     fn test_structurize_result() {

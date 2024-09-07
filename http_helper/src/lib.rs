@@ -117,6 +117,7 @@ type Result<T> = std::result::Result<T, Error>;
 impl Client {
     pub fn new(url: &str, method: Method) -> Result<Client> {
         let client = reqwest::blocking::Client::new();
+
         let (base_url, parameters) = generate_base_url(url)?;
         let mut client = Client {
             method,
@@ -377,7 +378,6 @@ fn construct_multipart(
     parameters: Vec<Parameter>,
     mut request_builder: RequestBuilder,
 ) -> Result<RequestBuilder> {
-    request_builder = request_builder.header(CONTENT_TYPE, mime::MULTIPART_FORM_DATA.to_string());
     let mut form = Form::new();
     for parameter in parameters {
         match parameter {
@@ -389,9 +389,13 @@ fn construct_multipart(
             Parameter::ComplexParameter {
                 name,
                 mime_type,
-                content_handle,
+                mut content_handle,
             } => {
-                let part = Part::reader(content_handle).mime_str(&mime_type.to_string())?;
+                let mut content = String::new();
+                // We read out the content handle, otherwise we could stream in the file read (better) but then it would use transfer-encoding chunked -> currently not supported
+                content_handle.rewind()?;
+                content_handle.read_to_string(&mut content)?;
+                let part = Part::text(content).mime_str(&mime_type.to_string())?;
                 form = form.part(name, part);
             }
         }

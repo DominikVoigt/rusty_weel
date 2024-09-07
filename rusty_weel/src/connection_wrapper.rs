@@ -144,6 +144,34 @@ impl ConnectionWrapper {
         self.inform("activity/manipulating", Some(content))
     }
 
+    pub fn inform_manipulate_change(&self, evaluation_result: eval_helper::EvaluationResult) -> Result<()> {
+        let mut content = self.construct_basic_content()?;
+        if let Some(changed_status) = evaluation_result.changed_state {
+            let mut content = content.clone();
+            // What about status.id and status.message? I thought they are symbols?
+            self.inform("status/change", Some(content))?;       
+        }
+        if let Some(changed_data) = evaluation_result.changed_data {
+            let mut content = content.clone();
+            // TODO For us, we need the direct pairs of changed data: (name, new value)
+            // In the ManipulateStructure implementation, the values where changed directly via the instance_eval => Changed data/endpoints just contained the names
+            content.insert("changed".to_owned(), serde_json::to_string(&changed_data)?);
+            // TODO: de = dataelements.slice(*changed_dataelements).transform_values { |v| enc = CPEE::EvalRuby::Translation::detect_encoding(v); (enc == 'OTHER' ? v : (v.encode('UTF-8',enc) rescue CPEE::EvalRuby::Translation::convert_to_base64(v))) }
+            // value => de
+            self.inform("dataelements/change", Some(content))?;       
+        }
+        if let Some(changed_endpoints) = evaluation_result.changed_endpoints {
+            let mut content = content.clone();
+            content.insert("changed".to_owned(), serde_json::to_string(&changed_endpoints)?);
+            // TODO: de = dataelements.slice(*changed_dataelements).transform_values { |v| enc = CPEE::EvalRuby::Translation::detect_encoding(v); (enc == 'OTHER' ? v : (v.encode('UTF-8',enc) rescue CPEE::EvalRuby::Translation::convert_to_base64(v))) }
+            // value => de
+            self.inform("dataelements/change", Some(content))?;       
+        }
+
+        todo!()
+        
+    }
+
     fn inform(&self, what: &str, content: Option<HashMap<String, String>>) -> Result<()> {
         let weel = self.weel();
         weel.redis_notifications_client
