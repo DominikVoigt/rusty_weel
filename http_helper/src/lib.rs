@@ -9,6 +9,7 @@ use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue, ToStrError, CONTENT_TYPE},
     Url,
 };
+use tempfile::tempfile;
 
 use std::{
     collections::HashMap,
@@ -158,6 +159,23 @@ impl Client {
             },
         };
         self.parameters.push(parameter);
+    }
+
+    /**
+     * Will add the parameter to the client parameters for the request
+     * If the parameter is a simple parameter, it will be URL encoded
+     */
+    pub fn add_complex_parameter(&mut self, name: &str, mime_type: Mime, data: &[u8]) -> Result<()> {
+        let mut file = tempfile()?;
+        file.write_all(data)?;
+        file.rewind()?;
+            
+        self.add_parameter(Parameter::ComplexParameter {
+            name: name.to_owned(),
+            mime_type,
+            content_handle: file,
+        });
+        Ok(())
     }
 
     pub fn add_parameters(&mut self, parameters: Vec<Parameter>) {
