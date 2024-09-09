@@ -51,7 +51,7 @@ pub struct KeyValuePair {
     pub value: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Copy)]
 pub enum State {
     Ready,
     Starting,
@@ -90,11 +90,22 @@ pub struct DynamicData {
     pub data: String,
 }
 
-pub struct ManipulateStructure {
-    pub endpoints: HashMap<String, String>,
-    pub data: String,
-    pub state: State,
-    pub local: String
+#[derive(Serialize, Deserialize, Debug, Default)]
+pub struct Status {
+    pub id: u32,
+    pub message: String,
+    #[serde(skip)]
+    pub nudge: BlockingQueue<Status>,
+}
+
+impl Status {
+    pub fn new(id: u32, message: String) -> Status {
+        Self {
+            id,
+            message,
+            nudge: BlockingQueue::new(),
+        }
+    }
 }
 
 /**
@@ -192,6 +203,7 @@ pub struct ThreadInfo {
  * Queue blocks on dequeue if it is empty.
  * Unblocks threads if elements are enqueued
  */
+#[derive(Debug, Default)]
 pub struct BlockingQueue<T> {
     queue: Mutex<VecDeque<T>>,
     signal: Condvar,
