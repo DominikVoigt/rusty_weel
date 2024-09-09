@@ -230,7 +230,12 @@ impl Client {
                 _ => (),
             });
         let query_string = query_params.join("&");
-        let url = format!("{}?{}", self.base_url.as_str(), query_string);
+        let url = if query_string.is_empty() {
+            // if we have no query parameters, just send the base url
+            self.base_url.as_str().to_owned()
+        } else {
+            format!("{}?{}", self.base_url.as_str(), query_string)
+        };
         Url::parse(&url).expect("Cannot happen")
     }
 
