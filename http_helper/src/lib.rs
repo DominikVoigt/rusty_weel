@@ -456,11 +456,11 @@ impl RawResponse {
 fn parse_part(headers: Headers, body: &[u8]) -> Result<Vec<Parameter>> {
     let (name, content_type) = get_name_and_content_type(&headers)?;
     // We use essence_str to remove any attached parameters for this comparison
-    if content_type.essence_str() == mime::MULTIPART_FORM_DATA {
+    if content_type.type_() == mime::MULTIPART {
         let boundary = content_type
             .get_param(BOUNDARY)
             .ok_or(Error::HeaderParseError(
-                "Content type multipart/form-data misses boundary parameter".to_owned(),
+                "Content type multipart misses boundary parameter".to_owned(),
             ))?
             .to_string();
         parse_multipart(body, &boundary)
@@ -542,7 +542,10 @@ fn parse_multipart(body: &[u8], boundary: &str) -> Result<Vec<Parameter>> {
                 parameters.extend(parse_part(Headers::PartHeaders(entry.headers), &body)?)
             }
             multipart::server::ReadEntryResult::End(_) => return Ok(parameters),
-            multipart::server::ReadEntryResult::Error(_, error) => return Err(Error::from(error)),
+            multipart::server::ReadEntryResult::Error(_, error) => {
+                println!("Ran into error during reading of multipart: {}", error);
+                return Err(Error::from(error))
+            },
         };
     }
 }

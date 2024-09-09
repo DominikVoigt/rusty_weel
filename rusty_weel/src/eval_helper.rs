@@ -74,6 +74,7 @@ pub fn evaluate_expression(
     if status == 555 {
     } else if status < 100 || status >= 300 {
     }
+    println!("{:?}", result.headers);
     // Get the expressions parameter from the parsed response
     let mut expression_result: Option<String> = None;
     let mut data: Option<HashMap<String, String>> = None;
