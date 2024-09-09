@@ -14,7 +14,7 @@ use reqwest::header::ToStrError;
 use rusty_weel_macro::get_str_from_value;
 
 use crate::connection_wrapper::ConnectionWrapper;
-use crate::data_types::{BlockingQueue, DynamicData, HTTPParams, State, StaticData, ThreadInfo};
+use crate::data_types::{BlockingQueue, DynamicData, HTTPParams, State, StaticData, Status, ThreadInfo};
 use crate::dsl::DSL;
 use crate::eval_helper::{self, EvalError};
 use crate::redis_helper::{RedisHelper, Topic};
@@ -23,6 +23,7 @@ pub struct Weel {
     pub static_data: StaticData,
     pub dynamic_data: Mutex<DynamicData>,
     pub state: Mutex<State>,
+    pub status: Mutex<Status>,
     pub positions: Mutex<Vec<String>>,
     pub search_positions: Mutex<HashMap<String, Position>>,
     // Contains all open callbacks from async connections, ArcMutex as it is shared between the instance (to insert callbacks) and the callback thread (RedisHelper)
@@ -475,8 +476,8 @@ impl Weel {
                     match finalize_code {
                         Some(finalize_code) => {
                             connection_wrapper.activity_manipulate_handle(label);
-                            connection_wrapper.inform_activity_manipulate();
-                            let result = eval_helper::evaluate_expression(&self.dynamic_data.lock().unwrap(), &self.static_data, finalize_code, &self.state.lock().unwrap(), Some(local), connection_wrapper.additional())?;
+                            connection_wrapper.inform_activity_manipulate()?;
+                            let result = eval_helper::evaluate_expression(&self.dynamic_data.lock().unwrap(), &self.static_data, finalize_code, Some(&self.status.lock().unwrap()), Some(local), connection_wrapper.additional(), None, None)?;
                             connection_wrapper.inform_manipulate_change(
                                 result
                             )

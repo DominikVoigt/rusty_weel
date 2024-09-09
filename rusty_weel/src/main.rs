@@ -9,9 +9,9 @@ use std::panic;
 use rusty_weel::connection_wrapper::ConnectionWrapper;
 use rusty_weel::dsl::DSL;
 // Needed for inject!
-use rusty_weel::data_types::{DynamicData, HTTPParams, KeyValuePair, State, StaticData};
+use rusty_weel::data_types::{DynamicData, HTTPParams, KeyValuePair, Status, StaticData};
 use rusty_weel::dsl_realization::{Weel, Error, Result};
-use rusty_weel::eval_helper::evaluate_expressions;
+use rusty_weel::eval_helper::{self, evaluate_expression};
 use rusty_weel::redis_helper::RedisHelper;
 use rusty_weel_macro::inject;
 use reqwest::Method;
@@ -23,7 +23,7 @@ fn main() {
     set_panic_hook();
 
     let static_data = StaticData::load("opts.yaml");
-    let dynamic_data = DynamicData::load("context.yaml");
+    let dynamic_data = Mutex::new(DynamicData::load("context.yaml"));
     let callback_keys: Arc<Mutex<HashMap<String, Arc<Mutex<ConnectionWrapper>>>>> =
         Arc::new(Mutex::new(HashMap::new()));
     let redis_helper = match RedisHelper::new(&static_data, "notifications") {
@@ -35,7 +35,7 @@ fn main() {
         static_data,
         dynamic_data,
         callback_keys,
-        state: Mutex::new(State::Starting),
+        state: Mutex::new(Status::Starting),
         open_votes: Mutex::new(HashSet::new()),
         loop_guard: Mutex::new(HashMap::new()),
         positions: Mutex::new(Vec::new()),
@@ -159,13 +159,13 @@ fn main() {
     local_weel.start(model, stopped_signal_sender);
 }
 
-fn set_panic_hook() -> _ {
+fn set_panic_hook() -> () {
     let original_hook = panic::take_hook();
-    panic::set_hook(Box::new(|info| {
+    panic::set_hook(Box::new(move |info| {
         // Log panic information in case we ever panic
         log::error!("Panic occured. Panic information: {info}");
         original_hook(info);
-    }))
+    }));
 }
 
 fn setup_signal_handler(weel: &Arc<Weel>, mut stop_signal_receiver: Receiver<()>) {
@@ -199,11 +199,11 @@ pub fn new_key_value_pair_ex(
     let mut statement = HashMap::new();
     statement.insert("k".to_owned(), value_expression.to_owned());
     // TODO: Should we lock `dynamic data` here as mutex or just pass copy? -> Do we want to modify it here?
-    let eval_result = match evaluate_expressions(
-        static_data.eval_backend_url.as_str(),
+    let eval_result = match eval_helper::evaluate_expression(
         dynamic_data,
         static_data,
         statement,
+        
     ) {
         Ok(eval_result) => match eval_result.get("k") {
             Some(x) => x.clone(),
