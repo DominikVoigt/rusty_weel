@@ -419,6 +419,8 @@ fn construct_parameters(message: &serde_json::Value) -> Result<Vec<Parameter>> {
     Ok(parameters)
 }
 
+
+#[cfg(test)]
 mod test {
     use super::*;
 

@@ -150,7 +150,7 @@ impl Weel {
      */
     pub fn start(
         &self,
-        model: impl Fn() -> Result<()> + Send + 'static,
+        model: impl FnOnce() -> Result<()> + Send + 'static,
         stop_signal_sender: Sender<()>,
     ) {
         let mut content = HashMap::new();
@@ -212,6 +212,7 @@ impl Weel {
                 State::Running => {
                     // TODO: Where will this be set to stopped?
                     *state = State::Stopping;
+                    // Wait for instance to stop
                     let rec_result = stop_signal_receiver.recv();
                     if matches!(rec_result, Err(_)) {
                         log::error!("Error receiving termination signal for model thread. Sender must have been dropped.")

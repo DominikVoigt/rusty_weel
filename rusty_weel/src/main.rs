@@ -9,13 +9,12 @@ use std::panic;
 use rusty_weel::connection_wrapper::ConnectionWrapper;
 use rusty_weel::dsl::DSL;
 // Needed for inject!
-use rusty_weel::data_types::{DynamicData, HTTPParams, KeyValuePair, Status, StaticData};
+use rusty_weel::data_types::{DynamicData, HTTPParams, KeyValuePair, State, StaticData, Status};
 use rusty_weel::dsl_realization::{Weel, Error, Result};
 use rusty_weel::eval_helper::{self, evaluate_expression};
 use rusty_weel::redis_helper::RedisHelper;
 use rusty_weel_macro::inject;
 use reqwest::Method;
-
 
 fn main() {
     simple_logger::init_with_level(log::Level::Info).unwrap();
@@ -35,27 +34,33 @@ fn main() {
         static_data,
         dynamic_data,
         callback_keys,
-        state: Mutex::new(Status::Starting),
+        state: Mutex::new(State::Starting),
+        status: Mutex::new(Status::new(todo!(), todo!())),
         open_votes: Mutex::new(HashSet::new()),
         loop_guard: Mutex::new(HashMap::new()),
         positions: Mutex::new(Vec::new()),
         search_positions: todo!(),
         thread_information: todo!(),
     };
+    
     // create thread for callback subscriptions with redis
     RedisHelper::establish_callback_subscriptions(
         &weel.static_data,
         Arc::clone(&weel.callback_keys),
     );
     let weel = Arc::new(weel);
+    let weel_clone = weel.clone();
+    
     let (stopped_signal_sender, stopped_signal_receiver) = mpsc::channel::<()>();
     setup_signal_handler(&weel, stopped_signal_receiver);
     let local_weel = Arc::clone(&weel);
-
+    let weel = move || {
+        weel_clone.clone()
+    };
     let model = move || -> Result<()> {
         //inject!("/home/i17/git-repositories/ma-code/rusty-weel/resources/model_instance.eic");
         // Inject start
-        weel.call(
+        weel().call(
             "a1",
             "bookAir",
             HTTPParams {
@@ -76,7 +81,7 @@ fn main() {
             "###}),
             Option::None,
         )?;
-        weel.call(
+        weel().call(
             "a1",
             "bookAir",
             HTTPParams {
@@ -98,10 +103,10 @@ fn main() {
             Option::None,
         )?;
 
-        weel.parallel_do(Option::None, "last", || -> Result<()> {
-            weel.loop_exec(weel.pre_test("data.persons > 0"), || -> Result<()> {
-                weel.parallel_branch(/*data,*/ || -> Result<()> {
-                    weel.call(
+        weel().parallel_do(Option::None, "last", move || -> Result<()> {
+            weel().loop_exec(weel().pre_test("data.persons > 0"), || -> Result<()> {
+                weel().parallel_branch(/*data,*/ || -> Result<()> {
+                    weel().call(
                         "a2",
                         "bookHotel",
                         HTTPParams {
@@ -119,7 +124,7 @@ fn main() {
                     )?;
                     Ok(())
                 })?;
-                weel.manipulate(
+                weel().manipulate(
                     "a3",
                     Option::None,
                     indoc! {r###"
@@ -130,26 +135,6 @@ fn main() {
             })?;
             Ok(())
         })?;
-
-        /*
-        weel.choose("exclusive", || {
-            weel.alternative("data.costs > 700", || {
-                weel.call(
-                    "a4",
-                    "approve",
-                    HTTPRequest {
-                        label: "Approve Hotel",
-                        method: HTTP::POST,
-                        arguments: Some(vec![new_key_value_pair("costs", "data.costs")]),
-                    },
-                    Option::None,
-                    Option::None,
-                    Option::None,
-                    Option::None,
-                );
-            })
-        });
-         */
         // Inject end
         Ok(())
     };
@@ -173,7 +158,14 @@ fn setup_signal_handler(weel: &Arc<Weel>, mut stop_signal_receiver: Receiver<()>
     
     if let Err(err) = ctrlc::set_handler(move || {
        log::info!("Received SIGINT/SIGTERM/SIGHUP. Set state to stopping...");
-       weel.stop(&mut stop_signal_receiver);
+       let res = weel.stop(&mut stop_signal_receiver);
+       match res {
+        Ok(_) => (),
+        Err(err) => {
+            log::error!("Error occured when trying to stop: {:?}", err);
+            panic!("Could not stop -> Crash instgead of failing silently")
+        },
+        }
        log::info!("Set state to stopping");
     }) {
         panic!("Could not setup SIGINT/SIGTERM/SIGHUP handler: {err}")
@@ -195,32 +187,30 @@ pub fn new_key_value_pair_ex(
     static_data: &StaticData,
     dynamic_data: &DynamicData,
 ) -> KeyValuePair {
-    let key = key_expression;
-    let mut statement = HashMap::new();
-    statement.insert("k".to_owned(), value_expression.to_owned());
     // TODO: Should we lock `dynamic data` here as mutex or just pass copy? -> Do we want to modify it here?
-    let eval_result = match eval_helper::evaluate_expression(
+    let key = eval_helper::evaluate_expression(
         dynamic_data,
         static_data,
-        statement,
-        
-    ) {
-        Ok(eval_result) => match eval_result.get("k") {
-            Some(x) => x.clone(),
-            None => {
-                log::error!("failure creating new key value pair. Evaluation failed");
-                panic!("Failure creating KV pair.")
-            }
-        },
-        Err(err) => {
-            log::error!(
-                "failure creating new key value pair. EvaluationError: {:?}",
-                err
-            );
-            panic!("Failure creating KV pair.")
-        }
-    };
+        key_expression,
+        None,
+        None,
+        serde_json::Value::Null,
+        None,
+        None
+    ).unwrap().expression_result; // Cannot change the data as such we can just extract the expression
 
-    let value = Option::Some(eval_result);
-    KeyValuePair { key, value }
+    // TODO: Should we lock `dynamic data` here as mutex or just pass copy? -> Do we want to modify it here?
+    let value = eval_helper::evaluate_expression(
+        dynamic_data,
+        static_data,
+        key_expression,
+        None,
+        None,
+        serde_json::Value::Null,
+        None,
+        None
+    ).unwrap().expression_result; // Cannot change the data as such we can just extract the expression
+    // TODO: Decide on whether we make the key modifiable (as an expression or just a static string, depending on it we need to change the type from &str to String)
+    todo!()
+    // KeyValuePair { key, value: Some(value) }
 }

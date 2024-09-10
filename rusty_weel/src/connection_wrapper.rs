@@ -24,13 +24,10 @@ use crate::{
 pub struct ConnectionWrapper {
     weel: Weak<Weel>,
     handler_position: Option<String>,
-    // Continue object for thread synchronization -> TODO: See whether we need this/how we implement this
     handler_continue: Option<Arc<crate::data_types::BlockingQueue<Signal>>>,
     // See proto_curl in connection.rb
     handler_passthrough: Option<String>,
-    // TODO: Unsure about this type:
     handler_return_value: Option<String>,
-    // TODO: Determine this type:
     handler_return_options: Option<HashMap<String, String>>,
     // We keep them as arrays to be flexible but will only contain one element for now
     // Contains the actual endpoint URL
@@ -282,7 +279,19 @@ impl ConnectionWrapper {
         {
             let mut redis = weel.redis_notifications_client.lock()?;
             // TODO: Resource utilization seems to be non-straight forward, especially Memory usage
-            // redis.notify("status/resource_utilization", content, instace_meta_data)
+            let mut content = match crate::proc::get_cpu_times() {
+                Ok(x) => x,
+                Err(err) => match err {
+                    crate::proc::Error::ParseFloatError(_) => return Err(Error::GeneralError("Error parsing floats when calculating CPU Times".to_owned())),
+                    crate::proc::Error::IOError(err) => return Err(Error::IOError(err)),
+                    crate::proc::Error::Utf8Error(err) => return Err(Error::StrUTF8Error(err)),
+                },
+            };
+            content.insert("mb".to_owned(), match crate::proc::get_prop_set_size() {
+                Ok(x) => x,
+                Err(err) => return Err(Error::GeneralError(format!("An error occured when calculating the memory usage: {:?}", err))),
+            });
+            redis.notify("status/resource_utilization", Some(content), weel.static_data.get_instance_meta_data())?;
             let mut content = this.construct_basic_content()?;
             content.insert("label".to_owned(), this.label.clone());
             content.insert("passthrough".to_owned(), passthrough.to_owned());
@@ -509,7 +518,6 @@ impl ConnectionWrapper {
 
         if contains_non_empty(&options, "CPEE_INSTANTIATION") {
             let mut content = content.clone();
-            // TODO: Unsure whether this is equivalent to: CPEE::ValueHelper.parse(options['CPEE_INSTANTIATION'])
             content.insert("received".to_owned(), options.get("CPEE_INSTANTIATION").unwrap().clone());
 
             redis.notify(
@@ -659,7 +667,6 @@ impl ConnectionWrapper {
             Some(weel) => weel,
             None => {
                 log::error!("Weel instance no longer exists, this connection wrapper instance should have been dropped...");
-                // Todo: What should we do here?
                 panic!()
             }
         }

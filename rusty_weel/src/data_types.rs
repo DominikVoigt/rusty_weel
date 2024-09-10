@@ -243,6 +243,7 @@ type UndefinedTypeTODO = ();
 #[allow(non_camel_case_types)]
 type float = f32;
 
+#[cfg(test)]
 mod testing {
     use std::{collections::HashMap, fs};
 
