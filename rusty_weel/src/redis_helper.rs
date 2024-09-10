@@ -25,7 +25,7 @@ const CALLBACK_RESPONSE_ERROR_MESSAGE: &str =
  */
 pub struct RedisHelper {
     pub connection: redis::Connection,
-    workers: u32,
+    number_workers: u32,
     last: u32,
 }
 
@@ -35,18 +35,18 @@ impl RedisHelper {
      * connection_name: Name of the connection displayed within the redis instance
      */
     pub fn new(static_data: &StaticData, connection_name: &str) -> Result<Self> {
-        let workers = static_data.redis_workers;
+        let number_workers = static_data.redis_workers;
         let connection = connect_to_redis(static_data, connection_name)?;
 
         Ok(Self {
             connection,
-            workers,
-            last: workers,
+            number_workers,
+            last: number_workers,
         })
     }
 
     fn target_worker(&mut self) -> u32 {
-        self.last = if self.last >= self.workers {
+        self.last = if self.last >= self.number_workers {
             0
         } else {
             self.last + 1
@@ -89,7 +89,6 @@ impl RedisHelper {
         instace_meta_data: InstanceMetaData,
         content: Option<&str>,
     ) -> Result<()> {
-        // TODO: Handle target / workers
         let cpee_url = instace_meta_data.cpee_base_url;
         let instance_id = instace_meta_data.instance_id;
         let instance_uuid = instace_meta_data.instance_uuid;
@@ -181,7 +180,7 @@ impl RedisHelper {
 
             let mut redis_helper = RedisHelper {
                 connection,
-                workers,
+                number_workers: workers,
                 last,
             };
             let topics = vec![
@@ -201,7 +200,8 @@ impl RedisHelper {
                             {
                                 log_error_and_panic("message[content][headers] is either null, or ..[headers] is not a hash")
                             }
-                            let params = message_json["content"]["values"].as_str().unwrap().as_bytes(); // TODO: Determine whether we need this still: construct_parameters(&message_json);
+                            let params = message_json["content"]["values"].as_str().unwrap().as_bytes(); 
+                            // TODO: Determine whether we need this still: construct_parameters(&message_json);
                             let headers = convert_headers_to_map(&message_json["content"]["headers"]);
                             callback_keys.get(&topic.type_)
                                          .expect("Cannot happen as we check containment previously and hold mutex throughout")
