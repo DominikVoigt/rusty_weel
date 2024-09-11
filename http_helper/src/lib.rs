@@ -143,10 +143,22 @@ impl Client {
                 name,
                 value,
                 param_type,
-            } => Parameter::SimpleParameter {
-                name: encode(&name).to_string(),
-                value: encode(&value).to_string(),
-                param_type,
+            } =>
+            match param_type {
+                ParameterType::Query => {
+                    Parameter::SimpleParameter {
+                        name: encode(&name).to_string(),
+                        value: encode(&value).to_string(),
+                        param_type,
+                    }
+                },
+                ParameterType::Body => {
+                    Parameter::SimpleParameter {
+                        name,
+                        value,
+                        param_type,
+                    }
+                },
             },
             Parameter::ComplexParameter {
                 name,
@@ -406,7 +418,7 @@ fn construct_multipart(
         match parameter {
             Parameter::SimpleParameter { name, value, .. } => {
                 // A simple parameter without a value will result in a part without a part body
-                let part = Part::text(value).mime_str(&mime::TEXT_PLAIN_UTF_8.to_string())?;
+                let part = Part::text(value);
                 form = form.part(name, part);
             }
             Parameter::ComplexParameter {
