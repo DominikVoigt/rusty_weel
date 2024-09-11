@@ -16,7 +16,7 @@ use urlencoding::encode;
 
 use crate::{
     data_types::{BlockingQueue, HTTPParams, InstanceMetaData},
-    dsl_realization::{generate_random_key, Error, Result, Signal, Weel}, eval_helper,
+    dsl_realization::{generate_random_key, Error, Result, Signal, Weel}, eval_helper, redis_helper::RedisHelper,
 };
 
 // Expected to be guarded with mutex to sensure that method invocations do not deadlock
@@ -141,10 +141,35 @@ impl ConnectionWrapper {
         self.inform("activity/manipulating", Some(content))
     }
 
+
+    pub fn inform_activity_done(&self) -> Result<()> {
+        let content = self.construct_basic_content()?;
+        self.inform("activity/done", Some(content))?;
+        self.inform_resource_utilization()
+    }
+
+    fn inform_resource_utilization(&self) -> Result<()> {
+        let mut content = match crate::proc::get_cpu_times() {
+            Ok(x) => x,
+            Err(err) => match err {
+                crate::proc::Error::ParseFloatError(_) => return Err(Error::GeneralError("Error parsing floats when calculating CPU Times".to_owned())),
+                crate::proc::Error::IOError(err) => return Err(Error::IOError(err)),
+                crate::proc::Error::Utf8Error(err) => return Err(Error::StrUTF8Error(err)),
+            },
+        };
+        content.insert("mb".to_owned(), match crate::proc::get_prop_set_size() {
+            Ok(x) => x,
+            Err(err) => return Err(Error::GeneralError(format!("An error occured when calculating the memory usage: {:?}", err))),
+        });
+        
+        self.inform("status/resource_utilization", Some(content))?;
+        Ok(())
+    }
+
     pub fn inform_manipulate_change(&self, evaluation_result: eval_helper::EvaluationResult) -> Result<()> {
-        let mut content = self.construct_basic_content()?;
+        let content = self.construct_basic_content()?;
         if let Some(changed_status) = evaluation_result.changed_state {
-            let mut content = content.clone();
+            let content = content.clone();
             // What about status.id and status.message? I thought they are symbols?
             self.inform("status/change", Some(content))?;       
         }
@@ -277,21 +302,8 @@ impl ConnectionWrapper {
         this.label = parameters.label.to_owned();
         // We do not model annotations anyway -> Can skip this from the original code
         {
-            let mut redis = weel.redis_notifications_client.lock()?;
-            // TODO: Resource utilization seems to be non-straight forward, especially Memory usage
-            let mut content = match crate::proc::get_cpu_times() {
-                Ok(x) => x,
-                Err(err) => match err {
-                    crate::proc::Error::ParseFloatError(_) => return Err(Error::GeneralError("Error parsing floats when calculating CPU Times".to_owned())),
-                    crate::proc::Error::IOError(err) => return Err(Error::IOError(err)),
-                    crate::proc::Error::Utf8Error(err) => return Err(Error::StrUTF8Error(err)),
-                },
-            };
-            content.insert("mb".to_owned(), match crate::proc::get_prop_set_size() {
-                Ok(x) => x,
-                Err(err) => return Err(Error::GeneralError(format!("An error occured when calculating the memory usage: {:?}", err))),
-            });
-            redis.notify("status/resource_utilization", Some(content), weel.static_data.get_instance_meta_data())?;
+            this.inform_resource_utilization()?;
+            let mut redis: MutexGuard<'_, RedisHelper> = weel.redis_notifications_client.lock()?;
             let mut content = this.construct_basic_content()?;
             content.insert("label".to_owned(), this.label.clone());
             content.insert("passthrough".to_owned(), passthrough.to_owned());
@@ -535,6 +547,7 @@ impl ConnectionWrapper {
                     panic!()
                 }
             };
+
             // contains_non_empty ensures it it contained
             let event = options["CPEE_EVENT"].clone();
             let event = event_regex.replace_all(&event, "");
@@ -672,6 +685,7 @@ impl ConnectionWrapper {
         }
     }
 }
+
 
 fn contains_non_empty(options: &HashMap<String, String>, key: &str) -> bool {
     options.get(key).map(|e| !e.is_empty()).unwrap_or(false)
