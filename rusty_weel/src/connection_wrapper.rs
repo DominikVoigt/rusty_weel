@@ -34,7 +34,7 @@ pub struct ConnectionWrapper {
     handler_endpoints: Vec<String>,
     // Original endpoint without the twintranslate
     handler_endpoint_origin: Vec<String>,
-    handler_activity_uuid: String,
+    pub handler_activity_uuid: String,
     label: String,
     annotations: Option<String>,
 }

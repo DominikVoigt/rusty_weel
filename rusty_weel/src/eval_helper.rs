@@ -10,7 +10,6 @@ use mime::{Mime, APPLICATION_JSON, APPLICATION_OCTET_STREAM, APPLICATION_WWW_FOR
 use reqwest::{header::CONTENT_TYPE, Method};
 use serde_json::Value;
 use tempfile::tempfile;
-use urlencoding::encode;
 
 use crate::{
     data_types::{DynamicData, Status, StaticData},
@@ -34,11 +33,10 @@ pub fn evaluate_expression(
     call_headers: Option<String>
 ) -> Result<EvaluationResult> {
     let mut client = Client::new(&static_context.eval_backend_url, http_helper::Method::PUT)?;
-
     {
         // Construct multipart request
-        let expression = encode(expression);
-        client.add_complex_parameter("code", APPLICATION_WWW_FORM_URLENCODED, expression.as_bytes())?;
+        //let expression = encode(expression);
+        client.add_parameter(Parameter::SimpleParameter { name: "code".to_owned(), value: expression.to_owned(), param_type: http_helper::ParameterType::Body });
         
         client.add_complex_parameter("dataelements", APPLICATION_JSON, dynamic_context.data.as_bytes())?;
         
@@ -154,9 +152,9 @@ pub fn evaluate_expression(
 #[derive(Debug)]
 pub struct EvaluationResult {
     pub expression_result: String,
-    pub changed_data: Option<HashMap<String, String>>,
-    pub changed_endpoints: Option<HashMap<String, String>>,
-    pub changed_state: Option<Status>,
+    pub data: String,
+    pub endpoints: String,
+    pub state: String,
 }
 
 #[derive(Debug)]

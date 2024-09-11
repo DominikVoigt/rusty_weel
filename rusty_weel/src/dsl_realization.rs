@@ -21,6 +21,8 @@ use crate::dsl::DSL;
 use crate::eval_helper::{self, EvalError};
 use crate::redis_helper::{RedisHelper, Topic};
 
+static EVALUATION_LOCK: Mutex<()> = Mutex::new(());
+
 pub struct Weel {
     pub static_data: StaticData,
     pub dynamic_data: Mutex<DynamicData>,
@@ -472,6 +474,8 @@ impl Weel {
             }
         };
 
+        let mut weel_position = self.weel_progress(position.to_owned(), connection_wrapper.handler_activity_uuid.clone(), false)?;
+
         // TODO: We deleted raise Signal::Proceed if searchmode == :after (also from ruby code)
         match activity_type {
             ActivityType::Manipulate => {
@@ -488,28 +492,47 @@ impl Weel {
                         Some(finalize_code) => {
                             connection_wrapper.activity_manipulate_handle(label);
                             connection_wrapper.inform_activity_manipulate()?;
-                            let result = eval_helper::evaluate_expression(
-                                &self.dynamic_data.lock().unwrap(),
-                                &self.static_data,
-                                finalize_code,
-                                Some(&self.status.lock().unwrap()),
-                                Some(local),
-                                connection_wrapper.additional(),
-                                None,
-                                None,
-                            )?;
+                            let result = self.clone().execute_code(finalize_code, local, &connection_wrapper)?;
                             connection_wrapper.inform_manipulate_change(result)?;
                         }
                         None => (),
                     };
-                    connection_wrapper.inform_activity_done();
-                    todo!()
+                    connection_wrapper.inform_activity_done()?;
+                    weel_position.detail = Mark::After;
+                    let mut ipc = HashMap::new();
+                    ipc.insert("after".to_owned(), serde_json::to_string(&weel_position)?);
+                    ConnectionWrapper::new(self.clone(), None, None).inform_position_change(Some(ipc))?;
+                    Ok(())
                 }
             }
-            ActivityType::Call => todo!(),
+            ActivityType::Call => {
+                
+                Ok(())
+            },
         }
     }
 
+    fn execute_code(self: Arc<Self>, finalize_code: &str, local: String, connection_wrapper: &ConnectionWrapper) -> Result<eval_helper::EvaluationResult> {
+        let guard = EVALUATION_LOCK.lock().unwrap();
+        let result = eval_helper::evaluate_expression(
+            &self.dynamic_data.lock().unwrap(),
+            &self.static_data,
+            finalize_code,
+            Some(&self.status.lock().unwrap()),
+            Some(local),
+            connection_wrapper.additional(),
+            None,
+            None,
+        )?;
+        let data = self.dynamic_data.lock().unwrap();
+        if let Some(changed_data) = result.changed_data {
+            data.data = result.data;
+        }
+
+        drop(guard);
+        Ok(result)
+    }
+    
     fn position_test<'a>(&self, label: &'a str) -> Result<&'a str> {
         let is_alpha_numeric = label.chars().all(char::is_alphanumeric);
         if is_alpha_numeric {
@@ -560,14 +583,14 @@ impl Weel {
         }
     }
 
-    fn weel_progress(self: Arc<Self>, position: String, uuid: String, skip: bool) -> Result<()>{
+    fn weel_progress(self: &Arc<Self>, position: String, uuid: String, skip: bool) -> Result<Position>{
         // TODO: We could also guard the thread_info with a mutex again
         let mut ipc = HashMap::new();
         let current_thread = thread::current();
         let mut thread_info_map = self.thread_information.lock().unwrap();
 
-        let parent_thread_id = { // We need to limit the borrow of current_thread_info s.t. we can access the parents infor afterwards -> scope it
-            let mut current_thread_info = match thread_info_map.get_mut(&current_thread.id()) {
+        let (parent_thread_id, weel_position) = { // We need to limit the borrow of current_thread_info s.t. we can access the parents infor afterwards -> scope it
+            let current_thread_info = match thread_info_map.get_mut(&current_thread.id()) {
                 Some(x) => x,
                 None => {
                     log::error!(
@@ -613,9 +636,9 @@ impl Weel {
                 ipc.get_mut("unmark").expect("we added unmark above").insert(value.clone());
             });
             self.positions.lock().unwrap().push(weel_position.clone());
-            current_thread_info.branch_position = Some(weel_position);
+            current_thread_info.branch_position = Some(weel_position.clone());
 
-            current_thread_info.parent
+            (current_thread_info.parent, weel_position)
         };
 
         if let Some(parent_thread_id) = parent_thread_id {
@@ -643,7 +666,8 @@ impl Weel {
         let ipc: HashMap<String, String> = ipc.into_iter().map(|(k,v)| {
             (k, serde_json::to_string(&v).unwrap())
         }).collect();
-        ConnectionWrapper::new(self.clone(), None, None).inform_position_change(Some(ipc))
+        ConnectionWrapper::new(self.clone(), None, None).inform_position_change(Some(ipc))?;
+        Ok(weel_position)
     }
 }
 
