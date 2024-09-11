@@ -13,8 +13,10 @@ use rand::Rng;
 use reqwest::header::ToStrError;
 use rusty_weel_macro::get_str_from_value;
 
-use crate::connection_wrapper::ConnectionWrapper;
-use crate::data_types::{BlockingQueue, DynamicData, HTTPParams, State, StaticData, Status, ThreadInfo};
+use crate::connection_wrapper::{self, ConnectionWrapper};
+use crate::data_types::{
+    BlockingQueue, DynamicData, HTTPParams, State, StaticData, Status, ThreadInfo,
+};
 use crate::dsl::DSL;
 use crate::eval_helper::{self, EvalError};
 use crate::redis_helper::{RedisHelper, Topic};
@@ -24,7 +26,7 @@ pub struct Weel {
     pub dynamic_data: Mutex<DynamicData>,
     pub state: Mutex<State>,
     pub status: Mutex<Status>,
-    pub positions: Mutex<Vec<String>>,
+    pub positions: Mutex<Vec<Position>>,
     pub search_positions: Mutex<HashMap<String, Position>>,
     // Contains all open callbacks from async connections, ArcMutex as it is shared between the instance (to insert callbacks) and the callback thread (RedisHelper)
     pub callback_keys: Arc<Mutex<std::collections::HashMap<String, Arc<Mutex<ConnectionWrapper>>>>>,
@@ -346,15 +348,17 @@ impl Weel {
     /*
      * vote_sync_before of controller
      */
-    fn vote_sync_before(&self, connection_wrapper: &ConnectionWrapper, parameters: Option<HashMap<String, String>>) -> Result<bool> {
+    fn vote_sync_before(
+        &self,
+        connection_wrapper: &ConnectionWrapper,
+        parameters: Option<HashMap<String, String>>,
+    ) -> Result<bool> {
         let mut content = connection_wrapper.construct_basic_content()?;
         content.insert("parameters".to_owned(), serde_json::to_string(&parameters)?);
         self.vote("activity/syncing_before", content)
     }
 
-    fn generate_content() {
-
-    }
+    fn generate_content() {}
 
     pub fn callback(
         &self,
@@ -411,14 +415,19 @@ impl Weel {
             return Ok(());
         }
 
-        let result: Result<()> = {
-            self.execute_activity(position, activity_type, finalize_code, label)
-        };
+        let result: Result<()> =
+            { self.execute_activity(position, activity_type, finalize_code, label) };
 
         todo!()
     }
 
-    fn execute_activity(self: Arc<Self>, position: &str, activity_type: ActivityType, finalize_code: Option<&str>, label: &str) -> Result<()> {
+    fn execute_activity(
+        self: Arc<Self>,
+        position: &str,
+        activity_type: ActivityType,
+        finalize_code: Option<&str>,
+        label: &str,
+    ) -> Result<()> {
         let state = self.state.lock().unwrap();
         let invalid_state = match *state {
             State::Running => false,
@@ -432,7 +441,7 @@ impl Weel {
                 .get(&thread::current().id())
                 .map(|info| info.no_longer_necessary)
                 .unwrap_or(true);
-    
+
             if invalid_state || no_longer_necessary {
                 return Ok(());
             }
@@ -451,9 +460,7 @@ impl Weel {
         let local = thread_info.local.clone();
         if parent.is_some() && branch_traces_id.is_some() {
             let branch_trace_id = branch_traces_id.as_ref().unwrap();
-            let parent_thread_info = thread_info_map
-                .get_mut(&parent.unwrap())
-                .unwrap();
+            let parent_thread_info = thread_info_map.get_mut(&parent.unwrap()).unwrap();
             let traces = parent_thread_info.branch_traces.get_mut(branch_trace_id);
             match traces {
                 Some(traces) => traces.push(position.to_owned()),
@@ -468,7 +475,10 @@ impl Weel {
         // TODO: We deleted raise Signal::Proceed if searchmode == :after (also from ruby code)
         match activity_type {
             ActivityType::Manipulate => {
-                let state_stopping_or_finished = matches!(*self.state.lock().unwrap(), State::Stopping | State::Finishing);
+                let state_stopping_or_finished = matches!(
+                    *self.state.lock().unwrap(),
+                    State::Stopping | State::Finishing
+                );
                 if !self.vote_sync_before(&connection_wrapper, None)? {
                     Err(Error::Signal(Signal::Stop))
                 } else if state_stopping_or_finished {
@@ -478,19 +488,28 @@ impl Weel {
                         Some(finalize_code) => {
                             connection_wrapper.activity_manipulate_handle(label);
                             connection_wrapper.inform_activity_manipulate()?;
-                            let result = eval_helper::evaluate_expression(&self.dynamic_data.lock().unwrap(), &self.static_data, finalize_code, Some(&self.status.lock().unwrap()), Some(local), connection_wrapper.additional(), None, None)?;
-                            connection_wrapper.inform_manipulate_change(
-                                result
-                            )
-                        },
-                        None => Ok(()),
-                    }
+                            let result = eval_helper::evaluate_expression(
+                                &self.dynamic_data.lock().unwrap(),
+                                &self.static_data,
+                                finalize_code,
+                                Some(&self.status.lock().unwrap()),
+                                Some(local),
+                                connection_wrapper.additional(),
+                                None,
+                                None,
+                            )?;
+                            connection_wrapper.inform_manipulate_change(result)?;
+                        }
+                        None => (),
+                    };
+                    connection_wrapper.inform_activity_done();
+                    todo!()
                 }
-            },
+            }
             ActivityType::Call => todo!(),
         }
     }
-    
+
     fn position_test<'a>(&self, label: &'a str) -> Result<&'a str> {
         let is_alpha_numeric = label.chars().all(char::is_alphanumeric);
         if is_alpha_numeric {
@@ -540,6 +559,92 @@ impl Weel {
             true
         }
     }
+
+    fn weel_progress(self: Arc<Self>, position: String, uuid: String, skip: bool) -> Result<()>{
+        // TODO: We could also guard the thread_info with a mutex again
+        let mut ipc = HashMap::new();
+        let current_thread = thread::current();
+        let mut thread_info_map = self.thread_information.lock().unwrap();
+
+        let parent_thread_id = { // We need to limit the borrow of current_thread_info s.t. we can access the parents infor afterwards -> scope it
+            let mut current_thread_info = match thread_info_map.get_mut(&current_thread.id()) {
+                Some(x) => x,
+                None => {
+                    log::error!(
+                        "Thread information for branch {:?} is empty",
+                        current_thread.id()
+                    );
+                    panic!("Thread information not present!")
+                }
+            };
+            
+            if let Some(branch_position) = &current_thread_info.branch_position {
+                self.positions
+                .lock()
+                .unwrap()
+                .retain(|x| x != branch_position);
+                let mut set = HashSet::new();
+                set.insert(branch_position.clone());
+                ipc.insert("unmark".to_owned(), set);
+            };
+            let mut search_positions = self.search_positions.lock().unwrap();
+            let search_position = search_positions.remove(&position);
+            let passthrough = search_position.map(|pos| pos.handler_passthrough).flatten();            
+            let weel_position = if current_thread_info.branch_search_now {
+                current_thread_info.branch_search_now = false;
+                Position::new(position.clone(), uuid, if skip {Mark::After} else {Mark::At}, passthrough)
+            } else {
+                Position::new(position.clone(), uuid, if skip {Mark::After} else {Mark::At}, None)
+            };
+
+            let mut set = HashSet::new();
+            if skip {
+                set.insert(weel_position.clone());
+                ipc.insert("after".to_owned(), set);
+            } else {
+                set.insert(weel_position.clone());
+                ipc.insert("at".to_owned(), set);
+            }
+
+            if !search_positions.is_empty() {
+                ipc.insert("unmark".to_owned(), HashSet::new());
+            }
+            search_positions.iter().for_each(|(_, value)| {
+                ipc.get_mut("unmark").expect("we added unmark above").insert(value.clone());
+            });
+            self.positions.lock().unwrap().push(weel_position.clone());
+            current_thread_info.branch_position = Some(weel_position);
+
+            current_thread_info.parent
+        };
+
+        if let Some(parent_thread_id) = parent_thread_id {
+            let parent_thread_info = match thread_info_map.get_mut(&parent_thread_id) {
+                Some(x) => x,
+                None => {
+                    log::error!(
+                        "Thread information for branch {:?} is empty",
+                        current_thread.id()
+                    );
+                    panic!("Thread information not present!")
+                }
+            };
+            if let Some(branch_position) = parent_thread_info.branch_position.take() {
+                self.positions
+                .lock()
+                .unwrap()
+                .retain(|x| *x != branch_position);
+                // TODO: Probably clone here right?
+                let mut set = HashSet::new();
+                set.insert(branch_position);
+                ipc.insert("unmark".to_owned(), set);
+            };
+        };
+        let ipc: HashMap<String, String> = ipc.into_iter().map(|(k,v)| {
+            (k, serde_json::to_string(&v).unwrap())
+        }).collect();
+        ConnectionWrapper::new(self.clone(), None, None).inform_position_change(Some(ipc))
+    }
 }
 
 fn handle_join_error(err: Box<dyn std::any::Any + Send>) {
@@ -574,7 +679,7 @@ pub enum Error {
     HttpHelperError(http_helper::Error),
     PoisonError(),
     FromStrError(mime::FromStrError),
-    Signal(Signal)
+    Signal(Signal),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -584,7 +689,7 @@ pub enum Signal {
     Stop,
     Proceed,
     Skip,
-    None // If nothing has to be signaled (see else case in connection::callback at the end)
+    None, // If nothing has to be signaled (see else case in connection::callback at the end)
 }
 
 pub enum ActivityType {
@@ -592,11 +697,21 @@ pub enum ActivityType {
     Manipulate,
 }
 
+#[derive(PartialEq, Eq, Debug, Clone, Hash, Serialize)]
 pub struct Position {
+    position: String,
+    uuid: String,
     detail: Mark,
+    handler_passthrough: Option<String>,
+}
+impl Position {
+    fn new(position: String, uuid: String, detail: Mark, handler_passthrough: Option<String>) -> Self {
+        Self { position, uuid, detail, handler_passthrough }
+    }
+
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Debug, Clone, Hash, Serialize)]
 pub enum Mark {
     At,
     After,

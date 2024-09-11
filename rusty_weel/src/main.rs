@@ -102,7 +102,7 @@ fn main() {
             "###}),
             Option::None,
         )?;
-
+        /*
         weel().parallel_do(Option::None, "last", move || -> Result<()> {
             weel().loop_exec(weel().pre_test("data.persons > 0"), || -> Result<()> {
                 weel().parallel_branch(/*data,*/ || -> Result<()> {
@@ -135,6 +135,7 @@ fn main() {
             })?;
             Ok(())
         })?;
+         */
         // Inject end
         Ok(())
     };

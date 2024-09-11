@@ -6,7 +6,7 @@ use std::{collections::HashMap, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::dsl_realization::Signal;
+use crate::dsl_realization::{Position, Signal};
 
 #[derive(Debug, Clone)]
 pub struct HTTPParams {
@@ -195,6 +195,7 @@ pub struct ThreadInfo {
     pub blocking_queue: Arc<BlockingQueue<Signal>>,
     pub branch_traces_id: Option<String>,
     pub branch_traces: HashMap<String, Vec<String>>,
+    pub branch_position: Option<Position>,
     pub local: String
 }
 
