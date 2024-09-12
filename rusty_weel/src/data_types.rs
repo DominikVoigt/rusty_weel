@@ -189,7 +189,7 @@ impl DynamicData {
 
 pub struct ThreadInfo {
     pub parent: Option<ThreadId>,
-    pub branch_search: bool,
+    pub in_search_mode: bool,
     pub branch_search_now: bool,
     pub no_longer_necessary: bool,
     pub blocking_queue: Arc<BlockingQueue<Signal>>,

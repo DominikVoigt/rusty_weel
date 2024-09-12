@@ -125,9 +125,10 @@ impl RedisHelper {
         }
     }
 
+
     pub fn extract_handler(&mut self, instance_id: &str, key: &str) -> HashSet<String> {
         self.connection
-            .smembers(format!("instance:#{}/handlers/#{})", instance_id, key))
+            .smembers(format!("instance:{}/handlers/{})", instance_id, key))
             .expect("Could not extract handlers")
     }
 
@@ -206,7 +207,7 @@ impl RedisHelper {
                             callback_keys.get(&topic.type_)
                                          .expect("Cannot happen as we check containment previously and hold mutex throughout")
                                          .lock()?
-                                         .callback(params, headers)?;
+                                         .handle_callback(params, headers)?;
                         }
                     }
                     "callback-end:*" => {

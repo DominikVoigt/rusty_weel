@@ -12,7 +12,7 @@ use serde_json::Value;
 use tempfile::tempfile;
 
 use crate::{
-    data_types::{DynamicData, Status, StaticData},
+    data_types::{DynamicData, StaticData, Status},
     dsl_realization::{Error, Result, Signal},
 };
 
@@ -154,7 +154,10 @@ pub struct EvaluationResult {
     pub expression_result: String,
     pub data: String,
     pub endpoints: String,
-    pub state: String,
+    pub status: String,
+    pub changed_data: Option<String>,
+    pub changed_endpoints: Option<String>,
+    pub changed_status: Option<Status>,
 }
 
 #[derive(Debug)]

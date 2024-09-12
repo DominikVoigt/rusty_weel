@@ -29,6 +29,7 @@ pub struct Weel {
     pub state: Mutex<State>,
     pub status: Mutex<Status>,
     pub positions: Mutex<Vec<Position>>,
+    // The positions we search for -> Positions from which we start the execution
     pub search_positions: Mutex<HashMap<String, Position>>,
     // Contains all open callbacks from async connections, ArcMutex as it is shared between the instance (to insert callbacks) and the callback thread (RedisHelper)
     pub callback_keys: Arc<Mutex<std::collections::HashMap<String, Arc<Mutex<ConnectionWrapper>>>>>,
@@ -249,7 +250,9 @@ impl Weel {
         Ok(())
     }
 
-    /*
+    /**
+     * Allows veto-voting on arbitrary topics and will return true if no veto was cast (otherwise false) 
+     * 
      * Vote of controller
      */
     pub fn vote(&self, vote_topic: &str, mut content: HashMap<String, String>) -> Result<bool> {
@@ -362,7 +365,10 @@ impl Weel {
 
     fn generate_content() {}
 
-    pub fn callback(
+    /**
+     * Registers a callback
+     */
+    pub fn register_callback(
         &self,
         connection_wrapper: Arc<Mutex<ConnectionWrapper>>,
         key: &str,
@@ -387,6 +393,9 @@ impl Weel {
         Ok(())
     }
 
+    /**
+     * Removes a registered callback
+     */
     pub fn cancel_callback(&self, key: &str) -> Result<()> {
         self.redis_notifications_client
             .lock()
@@ -400,16 +409,20 @@ impl Weel {
         Ok(())
     }
 
+    /**
+     * Executes the activity, handles errors
+     *   - handles search mode: skips activities if in search mode
+     */
     fn weel_activity(
         self: Arc<Self>,
         label: &str,
         activity_type: ActivityType,
-        endpoint_name: Option<&str>,
-        parameters: Option<HTTPParams>,
-        finalize_code: Option<&str>,
-        update_code: Option<&str>,
         prepare_code: Option<&str>,
+        update_code: Option<&str>,
         rescue_code: Option<&str>,
+        finalize_code: Option<&str>,
+        parameters: Option<HTTPParams>,
+        endpoint_name: Option<&str>,
     ) -> Result<()> {
         let position = self.position_test(label)?;
         let search_mode = self.in_search_mode(Some(label));
@@ -418,39 +431,43 @@ impl Weel {
         }
 
         let result: Result<()> =
-            { self.execute_activity(position, activity_type, finalize_code, label) };
+            { self.execute_activity(label, position, activity_type, prepare_code, update_code, rescue_code, finalize_code, parameters, endpoint_name) };
 
         todo!()
     }
 
+    /**
+     * Contains the actual execution logic for all activities (service calls and manipulates)
+     */
     fn execute_activity(
         self: Arc<Self>,
+        label: &str,
         position: &str,
         activity_type: ActivityType,
+        prepare_code: Option<&str>,
+        update_code: Option<&str>,
+        rescue_code: Option<&str>,
         finalize_code: Option<&str>,
-        label: &str,
+        parameters: Option<HTTPParams>,
+        endpoint_name: Option<&str>,
     ) -> Result<()> {
         let state = self.state.lock().unwrap();
         let invalid_state = match *state {
             State::Running => false,
             _ => true,
         };
+        let current_thread = thread::current().id();
+        let mut thread_info_map = self.thread_information.lock().unwrap();
+        // Unwrap as we have precondition that thread info is available on spawning
+        let thread_info = thread_info_map.get_mut(&current_thread).unwrap();
         {
-            let no_longer_necessary = self
-                .thread_information
-                .lock()
-                .unwrap()
-                .get(&thread::current().id())
-                .map(|info| info.no_longer_necessary)
-                .unwrap_or(true);
+            // Skip execution if the branch was set to no longer necessary or the instance is supposed to stop
+            let no_longer_necessary = thread_info.no_longer_necessary;
 
             if invalid_state || no_longer_necessary {
                 return Ok(());
             }
         }
-        let current_thread = thread::current().id();
-        let mut thread_info_map = self.thread_information.lock().unwrap();
-        let thread_info = thread_info_map.get_mut(&current_thread).unwrap();
         thread_info.blocking_queue = Arc::new(BlockingQueue::new());
         let mut connection_wrapper = ConnectionWrapper::new(
             self.clone(),
@@ -474,7 +491,11 @@ impl Weel {
             }
         };
 
-        let mut weel_position = self.weel_progress(position.to_owned(), connection_wrapper.handler_activity_uuid.clone(), false)?;
+        let mut weel_position = self.weel_progress(
+            position.to_owned(),
+            connection_wrapper.handler_activity_uuid.clone(),
+            false,
+        )?;
 
         // TODO: We deleted raise Signal::Proceed if searchmode == :after (also from ruby code)
         match activity_type {
@@ -492,7 +513,11 @@ impl Weel {
                         Some(finalize_code) => {
                             connection_wrapper.activity_manipulate_handle(label);
                             connection_wrapper.inform_activity_manipulate()?;
-                            let result = self.clone().execute_code(finalize_code, local, &connection_wrapper)?;
+                            let result = self.clone().execute_code(
+                                finalize_code,
+                                local,
+                                &connection_wrapper,
+                            )?;
                             connection_wrapper.inform_manipulate_change(result)?;
                         }
                         None => (),
@@ -501,18 +526,21 @@ impl Weel {
                     weel_position.detail = Mark::After;
                     let mut ipc = HashMap::new();
                     ipc.insert("after".to_owned(), serde_json::to_string(&weel_position)?);
-                    ConnectionWrapper::new(self.clone(), None, None).inform_position_change(Some(ipc))?;
+                    ConnectionWrapper::new(self.clone(), None, None)
+                        .inform_position_change(Some(ipc))?;
                     Ok(())
                 }
             }
-            ActivityType::Call => {
-                
-                Ok(())
-            },
+            ActivityType::Call => Ok(()),
         }
     }
 
-    fn execute_code(self: Arc<Self>, finalize_code: &str, local: String, connection_wrapper: &ConnectionWrapper) -> Result<eval_helper::EvaluationResult> {
+    fn execute_code(
+        self: Arc<Self>,
+        finalize_code: &str,
+        local: String,
+        connection_wrapper: &ConnectionWrapper,
+    ) -> Result<eval_helper::EvaluationResult> {
         let guard = EVALUATION_LOCK.lock().unwrap();
         let result = eval_helper::evaluate_expression(
             &self.dynamic_data.lock().unwrap(),
@@ -524,47 +552,57 @@ impl Weel {
             None,
             None,
         )?;
-        let data = self.dynamic_data.lock().unwrap();
-        if let Some(changed_data) = result.changed_data {
-            data.data = result.data;
-        }
+        let mut data = self.dynamic_data.lock().unwrap();
+        data.data = result.data.clone();
+        data.endpoints = serde_json::from_str(&result.endpoints)?;
+        *self.status.lock().unwrap() = serde_json::from_str(&result.status)?;
 
         drop(guard);
         Ok(result)
     }
-    
+
+    /**
+     * Checks whether the provided label is valid
+     */
     fn position_test<'a>(&self, label: &'a str) -> Result<&'a str> {
-        let is_alpha_numeric = label.chars().all(char::is_alphanumeric);
-        if is_alpha_numeric {
+        if label.chars().all(char::is_alphanumeric) {
             Ok(label)
         } else {
-            {
-                *self.state.lock().unwrap() = State::Stopping
-            };
+            *self.state.lock().unwrap() = State::Stopping;
             Err(Error::GeneralError(format!("position: {label} not valid")))
         }
     }
 
+    /**
+     * Checks whether the instance is in search mode w.r.t. the current position
+     *
+     */
     fn in_search_mode(&self, label: Option<&str>) -> bool {
         let thread = thread::current();
         let mut thread_info_map = self.thread_information.lock().unwrap();
         // We unwrap here but we need to ensure that when the weel creates a thread, it registers the thread info!
         let mut thread_info = thread_info_map.get_mut(&thread.id()).unwrap();
 
+        if !thread_info.in_search_mode {
+            return false;
+        }
+
         if let Some(label) = label {
-            let found_position = thread_info.branch_search
-                && self
-                    .search_positions
-                    .lock()
-                    .unwrap()
-                    .contains_key(&label.to_owned());
+            // Whether the current position was searched for
+            let found_position = self
+                .search_positions
+                .lock()
+                .unwrap()
+                .contains_key(&label.to_owned());
             if found_position {
-                thread_info.branch_search = false;
+                // We found the first position on this branch -> We do not need to search futher along this branch of execution
+                thread_info.in_search_mode = false;
                 thread_info.branch_search_now = true;
                 while let Some(parent) = thread_info.parent {
                     // Each parent thread has to have some thread information. In general all threads should, when they spawn via weel register and add their thread information
+                    // Communicate to ancestor branches that in one of its childs a label was found and the search is done.
                     thread_info = thread_info_map.get_mut(&parent).unwrap();
-                    thread_info.branch_search = false;
+                    thread_info.in_search_mode = false;
                     thread_info.branch_search_now = true;
                 }
                 // checked earlier for membership, thus we can simply unwrap:
@@ -583,13 +621,19 @@ impl Weel {
         }
     }
 
-    fn weel_progress(self: &Arc<Self>, position: String, uuid: String, skip: bool) -> Result<Position>{
+    fn weel_progress(
+        self: &Arc<Self>,
+        position: String,
+        uuid: String,
+        skip: bool,
+    ) -> Result<Position> {
         // TODO: We could also guard the thread_info with a mutex again
         let mut ipc = HashMap::new();
         let current_thread = thread::current();
         let mut thread_info_map = self.thread_information.lock().unwrap();
 
-        let (parent_thread_id, weel_position) = { // We need to limit the borrow of current_thread_info s.t. we can access the parents infor afterwards -> scope it
+        let (parent_thread_id, weel_position) = {
+            // We need to limit the borrow of current_thread_info s.t. we can access the parents infor afterwards -> scope it
             let current_thread_info = match thread_info_map.get_mut(&current_thread.id()) {
                 Some(x) => x,
                 None => {
@@ -600,24 +644,34 @@ impl Weel {
                     panic!("Thread information not present!")
                 }
             };
-            
+
             if let Some(branch_position) = &current_thread_info.branch_position {
                 self.positions
-                .lock()
-                .unwrap()
-                .retain(|x| x != branch_position);
+                    .lock()
+                    .unwrap()
+                    .retain(|x| x != branch_position);
                 let mut set = HashSet::new();
                 set.insert(branch_position.clone());
                 ipc.insert("unmark".to_owned(), set);
             };
             let mut search_positions = self.search_positions.lock().unwrap();
             let search_position = search_positions.remove(&position);
-            let passthrough = search_position.map(|pos| pos.handler_passthrough).flatten();            
+            let passthrough = search_position.map(|pos| pos.handler_passthrough).flatten();
             let weel_position = if current_thread_info.branch_search_now {
                 current_thread_info.branch_search_now = false;
-                Position::new(position.clone(), uuid, if skip {Mark::After} else {Mark::At}, passthrough)
+                Position::new(
+                    position.clone(),
+                    uuid,
+                    if skip { Mark::After } else { Mark::At },
+                    passthrough,
+                )
             } else {
-                Position::new(position.clone(), uuid, if skip {Mark::After} else {Mark::At}, None)
+                Position::new(
+                    position.clone(),
+                    uuid,
+                    if skip { Mark::After } else { Mark::At },
+                    None,
+                )
             };
 
             let mut set = HashSet::new();
@@ -633,7 +687,9 @@ impl Weel {
                 ipc.insert("unmark".to_owned(), HashSet::new());
             }
             search_positions.iter().for_each(|(_, value)| {
-                ipc.get_mut("unmark").expect("we added unmark above").insert(value.clone());
+                ipc.get_mut("unmark")
+                    .expect("we added unmark above")
+                    .insert(value.clone());
             });
             self.positions.lock().unwrap().push(weel_position.clone());
             current_thread_info.branch_position = Some(weel_position.clone());
@@ -654,18 +710,19 @@ impl Weel {
             };
             if let Some(branch_position) = parent_thread_info.branch_position.take() {
                 self.positions
-                .lock()
-                .unwrap()
-                .retain(|x| *x != branch_position);
+                    .lock()
+                    .unwrap()
+                    .retain(|x| *x != branch_position);
                 // TODO: Probably clone here right?
                 let mut set = HashSet::new();
                 set.insert(branch_position);
                 ipc.insert("unmark".to_owned(), set);
             };
         };
-        let ipc: HashMap<String, String> = ipc.into_iter().map(|(k,v)| {
-            (k, serde_json::to_string(&v).unwrap())
-        }).collect();
+        let ipc: HashMap<String, String> = ipc
+            .into_iter()
+            .map(|(k, v)| (k, serde_json::to_string(&v).unwrap()))
+            .collect();
         ConnectionWrapper::new(self.clone(), None, None).inform_position_change(Some(ipc))?;
         Ok(weel_position)
     }
@@ -729,10 +786,19 @@ pub struct Position {
     handler_passthrough: Option<String>,
 }
 impl Position {
-    fn new(position: String, uuid: String, detail: Mark, handler_passthrough: Option<String>) -> Self {
-        Self { position, uuid, detail, handler_passthrough }
+    fn new(
+        position: String,
+        uuid: String,
+        detail: Mark,
+        handler_passthrough: Option<String>,
+    ) -> Self {
+        Self {
+            position,
+            uuid,
+            detail,
+            handler_passthrough,
+        }
     }
-
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash, Serialize)]

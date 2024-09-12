@@ -68,6 +68,9 @@ impl ConnectionWrapper {
         }
     }
 
+    /**
+     * If too many request are issued to an address by the same wrapper, will throttle these requests
+     */
     pub fn loop_guard(&self, id: String) {
         let attributes = &self.weel().static_data.attributes;
         let loop_guard_attribute = attributes.get("nednoamol");
@@ -321,7 +324,7 @@ impl ConnectionWrapper {
             let mut content = this.construct_basic_content()?;
             content.insert("label".to_owned(), this.label.clone());
             content.remove("endpoint");
-            weel.callback(selfy.clone(), passthrough, content)?;
+            weel.register_callback(selfy.clone(), passthrough, content)?;
         }
         Ok(())
     }
@@ -398,7 +401,7 @@ impl ConnectionWrapper {
                 .unwrap_or("".to_owned());
             content_json.insert("activity".to_owned(), position);
 
-            weel.callback(Arc::clone(selfy), &callback_id, content_json)?;
+            weel.register_callback(Arc::clone(selfy), &callback_id, content_json)?;
             let endpoint = match this.handler_endpoints.get(0) {
                 // TODO: Set method by matched method in url
                 Some(endpoint) => protocol_regex.replace_all(&endpoint, r"http\\1:"),
@@ -420,7 +423,7 @@ impl ConnectionWrapper {
             if status == 561 {
                 match weel.static_data.attributes.get("twin_translate") {
                     Some(twin_translate) => {
-                        handle_twin_translate(twin_translate, &mut headers, &mut this)?;
+                        Self::handle_twin_translate(twin_translate, &mut headers, &mut this)?;
                     }
                     None => this.handler_endpoints = this.handler_endpoint_origin.clone(),
                 }
@@ -434,7 +437,7 @@ impl ConnectionWrapper {
         // If status not okay:
         if status < 200 || status >= 300 {
             response_headers.insert("CPEE_SALVAGE".to_owned(), "true".to_owned());
-            this.callback(
+            this.handle_callback(
                 &body,
                 response_headers
             )?
@@ -444,10 +447,11 @@ impl ConnectionWrapper {
                 None => false,
             };
 
+            // In this case we have an asynchroneous task
             if callback_header_set {
                 if !body.len() > 0 {
                     response_headers.insert("CPEE_UPDATE".to_owned(), "true".to_owned());
-                    this.callback(&body, response_headers)?
+                    this.handle_callback(&body, response_headers)?
                 } else {
                     let mut content = HashMap::new();
                     {
@@ -498,13 +502,19 @@ impl ConnectionWrapper {
                     }
                 }
             } else {
-                this.callback(&body, response_headers)?
+                this.handle_callback(&body, response_headers)?
             }
         }
         Ok(())
     }
 
-    pub fn callback(
+    /**
+     * Handles a returning callback
+     * This is called for any response comming back from the service.
+     * In case of a synchroneous call, it is called directly (within the curl method)
+     * In case of an asynchroneous call, it is called from the callback thread (started when the instance is spun up via the `establish_callback_subscriptions` in the redis_helper)
+     */
+    pub fn handle_callback(
         &mut self,
         body: &[u8],
         options: HashMap<String, String>, // Headers
@@ -684,114 +694,109 @@ impl ConnectionWrapper {
             }
         }
     }
-}
-
-
-fn contains_non_empty(options: &HashMap<String, String>, key: &str) -> bool {
-    options.get(key).map(|e| !e.is_empty()).unwrap_or(false)
-}
-
-fn handle_twin_translate(
-    twin_translate_url: &String,
-    headers: &mut HeaderMap,
-    this: &mut std::sync::MutexGuard<ConnectionWrapper>,
-) -> Result<()> {
-    let client = http_helper::Client::new(&twin_translate_url, Method::GET)?;
-    let result = client.execute()?;
-    let status = result.status_code;
-    let result_headers = result.headers;
-    let mut content = result.content;
-    Ok(if status >= 200 && status < 300 {
-        let translation_type = match headers.get("CPEE-TWIN-TASKTYPE") {
-            Some(transl_type) => match transl_type.to_str()? {
-                "i" => "instantiation",
-                "ir" => "ipc-receive",
-                "is" => "ipc-send",
-                _ => "instantiation",
-            },
-            None => "instantiation",
-        };
-
-        // Assumption about "gtresult.first.value.read": first is the array method to get the first element
-        let body = match content.pop().unwrap() {
-            Parameter::SimpleParameter { value, .. } => value.clone(),
-            Parameter::ComplexParameter {
-                mut content_handle, ..
-            } => {
-                let mut body = String::new();
-                content_handle.rewind()?;
-                content_handle.read_to_string(&mut body)?;
-                content_handle.rewind()?;
-                body
-            }
-        };
-
-        // TODO: Very unsure about the semantics of the original code and the usage
-        let mut array = json!(body);
-        assert!(array.is_array());
-        if let Some(array) = array.as_array_mut() {
-            for element in array.iter_mut() {
-                if let Some(type_) = element.get("type").map(|e| e.as_str()).flatten() {
-                    if type_ == translation_type {
-                        if let Some(endpoint) =
-                            element.get("endpoint").map(|e| e.as_str()).flatten()
-                        {
-                            this.handler_endpoints = vec![endpoint.to_owned()];
-                        }
-                        if let Some(arguments) = element
-                            .get_mut("arguments")
-                            .map(|e| e.as_object_mut())
-                            .flatten()
-                        {
-                            for (a_name, a_value) in arguments.iter_mut() {
-                                if a_value.is_string() {
-                                    let header_name = a_value.as_str().unwrap().replace("-", "_");
-                                    if let Some(header) = result_headers.get(&header_name) {
-                                        *a_value = Value::from_str(header)?;
-                                    }
-                                } else if a_value.is_object() {
-                                    let a_value_clone = a_value.clone();
-                                    let a_value_map = a_value_clone.as_object().unwrap();
-                                    let a_value = a_value.as_object_mut().unwrap();
-                                    for (key, value) in a_value_map {
-                                        if value.is_string() {
-                                            let header_name =
-                                                value.as_str().unwrap().replace("-", "_");
-                                            if let Some(header) = headers.get(header_name) {
-                                                a_value.insert(
-                                                    key.clone(),
-                                                    serde_json::from_str(header.to_str()?)?,
-                                                );
+    
+    fn handle_twin_translate(
+        twin_translate_url: &String,
+        headers: &mut HeaderMap,
+        this: &mut std::sync::MutexGuard<ConnectionWrapper>,
+    ) -> Result<()> {
+        let client = http_helper::Client::new(&twin_translate_url, Method::GET)?;
+        let result = client.execute()?;
+        let status = result.status_code;
+        let result_headers = result.headers;
+        let mut content = result.content;
+        Ok(if status >= 200 && status < 300 {
+            let translation_type = match headers.get("CPEE-TWIN-TASKTYPE") {
+                Some(transl_type) => match transl_type.to_str()? {
+                    "i" => "instantiation",
+                    "ir" => "ipc-receive",
+                    "is" => "ipc-send",
+                    _ => "instantiation",
+                },
+                None => "instantiation",
+            };
+    
+            // Assumption about "gtresult.first.value.read": first is the array method to get the first element
+            let body = match content.pop().unwrap() {
+                Parameter::SimpleParameter { value, .. } => value.clone(),
+                Parameter::ComplexParameter {
+                    mut content_handle, ..
+                } => {
+                    let mut body = String::new();
+                    content_handle.rewind()?;
+                    content_handle.read_to_string(&mut body)?;
+                    content_handle.rewind()?;
+                    body
+                }
+            };
+    
+            // TODO: Very unsure about the semantics of the original code and the usage
+            let mut array = json!(body);
+            assert!(array.is_array());
+            if let Some(array) = array.as_array_mut() {
+                for element in array.iter_mut() {
+                    if let Some(type_) = element.get("type").map(|e| e.as_str()).flatten() {
+                        if type_ == translation_type {
+                            if let Some(endpoint) =
+                                element.get("endpoint").map(|e| e.as_str()).flatten()
+                            {
+                                this.handler_endpoints = vec![endpoint.to_owned()];
+                            }
+                            if let Some(arguments) = element
+                                .get_mut("arguments")
+                                .map(|e| e.as_object_mut())
+                                .flatten()
+                            {
+                                for (a_name, a_value) in arguments.iter_mut() {
+                                    if a_value.is_string() {
+                                        let header_name = a_value.as_str().unwrap().replace("-", "_");
+                                        if let Some(header) = result_headers.get(&header_name) {
+                                            *a_value = Value::from_str(header)?;
+                                        }
+                                    } else if a_value.is_object() {
+                                        let a_value_clone = a_value.clone();
+                                        let a_value_map = a_value_clone.as_object().unwrap();
+                                        let a_value = a_value.as_object_mut().unwrap();
+                                        for (key, value) in a_value_map {
+                                            if value.is_string() {
+                                                let header_name =
+                                                    value.as_str().unwrap().replace("-", "_");
+                                                if let Some(header) = headers.get(header_name) {
+                                                    a_value.insert(
+                                                        key.clone(),
+                                                        serde_json::from_str(header.to_str()?)?,
+                                                    );
+                                                }
                                             }
                                         }
                                     }
-                                }
-
-                                for (h_name, h_value) in headers.iter_mut() {
-                                    if h_name.as_str() == a_name {
-                                        if a_value.is_string() {
-                                            *h_value =
-                                                HeaderValue::from_str(a_value.as_str().unwrap())?;
-                                        } else if a_value.is_object() {
-                                            let mut current: HashMap<String, String> =
-                                                match serde_json::from_str(h_value.to_str()?) {
-                                                    Ok(val) => val,
-                                                    Err(_err) => {
-                                                        // Ignore parsing error like in original code for now
-                                                        HashMap::new()
+    
+                                    for (h_name, h_value) in headers.iter_mut() {
+                                        if h_name.as_str() == a_name {
+                                            if a_value.is_string() {
+                                                *h_value =
+                                                    HeaderValue::from_str(a_value.as_str().unwrap())?;
+                                            } else if a_value.is_object() {
+                                                let mut current: HashMap<String, String> =
+                                                    match serde_json::from_str(h_value.to_str()?) {
+                                                        Ok(val) => val,
+                                                        Err(_err) => {
+                                                            // Ignore parsing error like in original code for now
+                                                            HashMap::new()
+                                                        }
+                                                    };
+                                                let iter = a_value.as_object().unwrap().iter().map(
+                                                    |(key, value)| {
+                                                        (key.clone(), value.as_str().map(|e| e.to_owned()).unwrap_or_else(|| {
+                                                            log::error!("Could not convert value to string");
+                                                            "".to_owned()
+                                                        }))
                                                     }
-                                                };
-                                            let iter = a_value.as_object().unwrap().iter().map(
-                                                |(key, value)| {
-                                                    (key.clone(), value.as_str().map(|e| e.to_owned()).unwrap_or_else(|| {
-                                                        log::error!("Could not convert value to string");
-                                                        "".to_owned()
-                                                    }))
-                                                }
-                                            );
-                                            current.extend(iter);
-                                            let header = serde_json::to_string(&current)?;
-                                            *h_value = HeaderValue::from_str(&header)?;
+                                                );
+                                                current.extend(iter);
+                                                let header = serde_json::to_string(&current)?;
+                                                *h_value = HeaderValue::from_str(&header)?;
+                                            }
                                         }
                                     }
                                 }
@@ -800,6 +805,11 @@ fn handle_twin_translate(
                     }
                 }
             }
-        }
-    })
+        })
+    }
+}
+
+
+fn contains_non_empty(options: &HashMap<String, String>, key: &str) -> bool {
+    options.get(key).map(|e| !e.is_empty()).unwrap_or(false)
 }
