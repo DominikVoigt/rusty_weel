@@ -73,9 +73,11 @@ pub fn evaluate_expression(
     println!("{:?}", result.headers);
     // Get the expressions parameter from the parsed response
     let mut expression_result: Option<String> = None;
-    let mut data: Option<HashMap<String, String>> = None;
+    let mut changed_data: Option<HashMap<String, String>> = None;
+    let mut changed_endpoints: Option<HashMap<String, String>> = None;
+    let mut changed_status: Option<Status> = None;
+    let mut data: Option<String> = None;
     let mut endpoints: Option<HashMap<String, String>> = None;
-    let mut status: Option<Status> = None;
     let mut local: Option<HashMap<String, String>> = None;
     let mut signal: Option<Signal> = None;
     
@@ -106,13 +108,19 @@ pub fn evaluate_expression(
                         expression_result = Some(content);
                     }
                     "changed_dataelements" => {
-                        data = Some(serde_json::from_str(&content)?);
+                        changed_data = Some(serde_json::from_str(&content)?);
                     }
                     "changed_endpoints" => {
-                        endpoints = Some(serde_json::from_str(&content)?);
+                        changed_endpoints = Some(serde_json::from_str(&content)?);
                     }
                     "changed_status" => {
-                        status = Some(serde_json::from_str(&content)?);
+                        changed_status = Some(serde_json::from_str(&content)?);
+                    }
+                    "dataelements" => {
+                        data = serde_json::from_str(&content)?;
+                    }
+                    "endpoints" => {
+                        endpoints = serde_json::from_str(&content)?;
                     }
                     // If this is set -> loop and try again on Signal::Again
                     // Handle others based on ruby code
@@ -131,16 +139,28 @@ pub fn evaluate_expression(
             }
         };
     }
-    match expression_result {
-        Some(expression_result) => Ok(EvaluationResult {
-            expression_result,
-            changed_data: data,
-            changed_endpoints: endpoints,
-            changed_state: status,
-        }),
-        None => Err(Error::EvalError(EvalError::GeneralEvalError(
-            "Response does not contain the evaluation results".to_owned(),
-        ))),
+    if data.is_some() && endpoints.is_some() {
+        let data = data.unwrap();
+        let endpoints = endpoints.unwrap();
+        match expression_result {
+            Some(expression_result) => Ok(EvaluationResult {
+                expression_result,
+                changed_data,
+                changed_endpoints,
+                changed_status,
+                data,
+                endpoints,
+                local,
+                signal
+            }),
+            None => Err(Error::EvalError(EvalError::GeneralEvalError(
+                "Response does not contain the evaluation results".to_owned(),
+            ))),
+        }
+    } else {
+        Err(Error::EvalError(EvalError::GeneralEvalError(
+            "Response does not data or endpoints the evaluation results".to_owned(),
+        )))
     }
 }
 
@@ -153,11 +173,12 @@ pub fn evaluate_expression(
 pub struct EvaluationResult {
     pub expression_result: String,
     pub data: String,
-    pub endpoints: String,
-    pub status: String,
-    pub changed_data: Option<String>,
-    pub changed_endpoints: Option<String>,
+    pub endpoints: HashMap<String, String>,
+    pub changed_data: Option<HashMap<String, String>>,
+    pub changed_endpoints: Option<HashMap<String, String>>,
     pub changed_status: Option<Status>,
+    pub local: Option<HashMap<String, String>>,
+    pub signal: Option<Signal>,
 }
 
 #[derive(Debug)]
