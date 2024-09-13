@@ -458,9 +458,9 @@ impl Weel {
             _ => true,
         };
         let current_thread = thread::current().id();
-        let mut thread_info_map = self.thread_information.lock().unwrap();
+        let thread_info_map = self.thread_information.lock().unwrap();
         // Unwrap as we have precondition that thread info is available on spawning
-        let thread_info = thread_info_map.get_mut(&current_thread).unwrap();
+        let mut thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
         {
             // Skip execution if the branch was set to no longer necessary or the instance is supposed to stop
             let no_longer_necessary = thread_info.no_longer_necessary;
@@ -480,7 +480,7 @@ impl Weel {
         let local = thread_info.local.clone();
         if parent.is_some() && branch_traces_id.is_some() {
             let branch_trace_id = branch_traces_id.as_ref().unwrap();
-            let parent_thread_info = thread_info_map.get_mut(&parent.unwrap()).unwrap();
+            let mut parent_thread_info = thread_info_map.get(&parent.unwrap()).unwrap().borrow_mut();
             let traces = parent_thread_info.branch_traces.get_mut(branch_trace_id);
             match traces {
                 Some(traces) => traces.push(position.to_owned()),
@@ -534,8 +534,16 @@ impl Weel {
                 }
             }
             ActivityType::Call => {
+                drop(thread_info);
+                drop(thread_info_map);
                 let connection_wrapper = Arc::new(Mutex::new(connection_wrapper));
                 'again: loop {
+                    let current_thread = thread::current().id();
+                            let thread_info_map = self.thread_information.lock().unwrap();
+                            // Unwrap as we have precondition that thread info is available on spawning
+                            let mut thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
+                            
+                    // Reacquire thread information mutex every loop again as we might need to drop it during wait
                     // TODO: In manipulate we directly "abort" and do not run code, here we run code and then check for abort, is this correct?
                     let endpoint_urls: HashMap<String, String> = match prepare_code {
                         Some(code) => {
@@ -567,17 +575,24 @@ impl Weel {
                         let mut content = HashMap::new();
                         content.insert("wait".to_owned(), serde_json::to_string(&weel_position)?);
                         connection_wrapper.inform_position_change(Some(content));
-
+                        drop(thread_info);
+                        drop(thread_info_map);
                         'inner: loop {
+                            let current_thread = thread::current().id();
+                            let thread_info_map = self.thread_information.lock().unwrap();
+                            // Unwrap as we have precondition that thread info is available on spawning
+                            let mut thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
                             let state_stopping_or_finished = matches!(
                                 *self.state.lock().unwrap(),
                                 State::Stopping | State::Stopped | State::Finishing
                             );
-                            if !state_stopping_or_finished && !thread_info.no_longer_necessary {
-                                // TODO: issue this will block the whole thread -> We need to have no mutexed locked at this point or the whole instance will block!
+                            let thread_sleep = !state_stopping_or_finished && !thread_info.no_longer_necessary;
+                            if thread_sleep {
+                                let thread_queue = thread_info.blocking_queue.clone();
                                 drop(thread_info);
                                 drop(thread_info_map);
-                                let wait_result = thread_info.blocking_queue.dequeue();
+                                // TODO: issue this will block the whole thread -> We need to have no mutexed locked at this point or the whole instance will block!
+                                let wait_result = thread_queue.dequeue();
                             }
                         }
                     }
