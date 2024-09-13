@@ -84,18 +84,29 @@ pub struct StaticData {
 /**
  * Contains meta data that might be changing during execution
  */
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DynamicData {
     pub endpoints: HashMap<String, String>,
     pub data: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Default)]
+#[derive(Debug, Default)]
 pub struct Status {
     pub id: u32,
     pub message: String,
-    #[serde(skip)]
     pub nudge: BlockingQueue<Status>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Default)]
+pub struct StatusDTO {
+    pub id: u32,
+    pub message: String,
+}
+
+impl<'a> Status {
+    pub fn to_dto(&self) -> StatusDTO {
+        StatusDTO { id: self.id, message: self.message.clone() }
+    }
 }
 
 impl Status {
