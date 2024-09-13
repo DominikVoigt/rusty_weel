@@ -432,7 +432,7 @@ impl Weel {
             return Ok(());
         }
 
-        let result: Result<Signal> = self.execute_activity(
+        let result: Result<()> = self.execute_activity(
             label,
             position,
             activity_type,
@@ -444,7 +444,27 @@ impl Weel {
             endpoint_name,
         );
 
-        todo!()
+        if let Err(error) = result {
+            match error {
+                Error::Signal(signal) => match signal {
+                    Signal::Again => todo!(),
+                    Signal::Salvage => todo!(),
+                    Signal::Stop => todo!(),
+                    Signal::Proceed => todo!(),
+                    Signal::Skip => todo!(),
+                    Signal::None => todo!(),
+                    Signal::NoLongerNecessary => todo!(),
+                },
+                err => {
+                    log::error!("Encountered error: {:?}", err);
+                    ConnectionWrapper::new(
+                        self.clone(),
+                        Some(position.to_owned()),
+                        None,
+                    ).inform_connectionwrapper_error(err);
+                }
+            }
+        };
     }
 
     /**
@@ -522,9 +542,9 @@ impl Weel {
                     State::Stopping | State::Finishing
                 );
                 if !self.vote_sync_before(&connection_wrapper, None)? {
-                    Err(Signal::Stop.into())
+                    return Err(Signal::Stop.into())
                 } else if state_stopping_or_finished {
-                    Err(Signal::Skip.into())
+                    return Err(Signal::Skip.into())
                 } else {
                     match finalize_code {
                         Some(finalize_code) => {
@@ -546,7 +566,7 @@ impl Weel {
                     ipc.insert("after".to_owned(), serde_json::to_string(&weel_position)?);
                     ConnectionWrapper::new(self.clone(), None, None)
                         .inform_position_change(Some(ipc))?;
-                    Ok(())
+                    ()
                 }
             }
             ActivityType::Call => {
@@ -627,7 +647,7 @@ impl Weel {
 
                             let thread_sleep =
                                 !state_stopping_or_finished && !thread_info.no_longer_necessary;
-                            let wait_result = None;
+                            let mut wait_result = None;
                             let thread_queue = thread_info.blocking_queue.clone();
                             drop(thread_info);
                             drop(thread_info_map);
@@ -702,13 +722,13 @@ impl Weel {
                                 let cond = false;
                                 if cond {
                                     // TODO: What to return here
-                                    break 'again Ok(());
+                                    break 'again;
                                 }
                                 if wait_result.as_ref()
                                     .map(|res| !matches!(res, Signal::Again))
                                     .unwrap_or(true)
                                 {
-                                    break 'inner ();
+                                    break 'inner;
                                 }
                             }
                         }
@@ -723,9 +743,10 @@ impl Weel {
                         ConnectionWrapper::new(self.clone(), None, None)
                             .inform_position_change(Some(content))?;
                     }
-                }
-            }
-        }
+                };
+            }    
+        };
+        return Err(Signal::Proceed.into());
     }
 
     /**
