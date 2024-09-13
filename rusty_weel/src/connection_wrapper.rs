@@ -808,6 +808,10 @@ impl ConnectionWrapper {
             }
         })
     }
+    
+    pub fn activity_no_longer_necessary(&self) -> bool {
+        true
+    }
 }
 
 

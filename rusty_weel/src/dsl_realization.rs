@@ -253,8 +253,8 @@ impl Weel {
     }
 
     /**
-     * Allows veto-voting on arbitrary topics and will return true if no veto was cast (otherwise false) 
-     * 
+     * Allows veto-voting on arbitrary topics and will return true if no veto was cast (otherwise false)
+     *
      * Vote of controller
      */
     pub fn vote(&self, vote_topic: &str, mut content: HashMap<String, String>) -> Result<bool> {
@@ -432,7 +432,17 @@ impl Weel {
             return Ok(());
         }
 
-        let result: Result<()> =  self.execute_activity(label, position, activity_type, prepare_code, update_code, rescue_code, finalize_code, parameters, endpoint_name);
+        let result: Result<Signal> = self.execute_activity(
+            label,
+            position,
+            activity_type,
+            prepare_code,
+            update_code,
+            rescue_code,
+            finalize_code,
+            parameters,
+            endpoint_name,
+        );
 
         todo!()
     }
@@ -465,8 +475,13 @@ impl Weel {
             // Skip execution if the branch was set to no longer necessary or the instance is supposed to stop
             let no_longer_necessary = thread_info.no_longer_necessary;
 
-            if invalid_state || no_longer_necessary {
-                return Ok(());
+            if no_longer_necessary {
+                // TODO: In original code incosistent: further down it raises the Signal for no longer necessary
+                return Err(Signal::NoLongerNecessary.into());
+            }
+            if invalid_state {
+                // Consistent with further below
+                return Err(Signal::Skip.into());
             }
         }
         thread_info.blocking_queue = Arc::new(BlockingQueue::new());
@@ -480,7 +495,8 @@ impl Weel {
         let local = thread_info.local.clone();
         if parent.is_some() && branch_traces_id.is_some() {
             let branch_trace_id = branch_traces_id.as_ref().unwrap();
-            let mut parent_thread_info = thread_info_map.get(&parent.unwrap()).unwrap().borrow_mut();
+            let mut parent_thread_info =
+                thread_info_map.get(&parent.unwrap()).unwrap().borrow_mut();
             let traces = parent_thread_info.branch_traces.get_mut(branch_trace_id);
             match traces {
                 Some(traces) => traces.push(position.to_owned()),
@@ -506,9 +522,9 @@ impl Weel {
                     State::Stopping | State::Finishing
                 );
                 if !self.vote_sync_before(&connection_wrapper, None)? {
-                    Err(Error::Signal(Signal::Stop))
+                    Err(Signal::Stop.into())
                 } else if state_stopping_or_finished {
-                    Err(Error::Signal(Signal::Skip))
+                    Err(Signal::Skip.into())
                 } else {
                     match finalize_code {
                         Some(finalize_code) => {
@@ -539,38 +555,59 @@ impl Weel {
                 let connection_wrapper = Arc::new(Mutex::new(connection_wrapper));
                 'again: loop {
                     let current_thread = thread::current().id();
-                            let thread_info_map = self.thread_information.lock().unwrap();
-                            // Unwrap as we have precondition that thread info is available on spawning
-                            let mut thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
-                            
+                    let thread_info_map = self.thread_information.lock().unwrap();
+                    // Unwrap as we have precondition that thread info is available on spawning
+                    let mut thread_info =
+                        thread_info_map.get(&current_thread).unwrap().borrow_mut();
+
                     // Reacquire thread information mutex every loop again as we might need to drop it during wait
                     // TODO: In manipulate we directly "abort" and do not run code, here we run code and then check for abort, is this correct?
                     let endpoint_urls: HashMap<String, String> = match prepare_code {
                         Some(code) => {
-                            let result = self.clone().execute_code(true, code, thread_info.local.clone(), &connection_wrapper.lock().unwrap())?;
+                            let result = self.clone().execute_code(
+                                true,
+                                code,
+                                thread_info.local.clone(),
+                                &connection_wrapper.lock().unwrap(),
+                            )?;
                             result.endpoints
-                        },
+                        }
                         None => self.dynamic_data.lock().unwrap().endpoints.clone(),
                     };
-                    connection_wrapper.lock().unwrap().prepare(endpoint_urls, &vec![endpoint_name.unwrap()], parameters.as_ref().unwrap());
-                    
+                    connection_wrapper.lock().unwrap().prepare(
+                        endpoint_urls,
+                        &vec![endpoint_name.unwrap()],
+                        parameters.as_ref().unwrap(),
+                    );
+
                     let state_stopping_or_finished = matches!(
                         *self.state.lock().unwrap(),
                         State::Stopping | State::Finishing
                     );
                     if !self.vote_sync_before(&connection_wrapper.lock().unwrap(), None)? {
-                        return Err(Error::Signal(Signal::Stop))
+                        return Err(Signal::Stop.into());
                     } else if state_stopping_or_finished {
-                        return Err(Error::Signal(Signal::Skip))
+                        return Err(Signal::Skip.into());
                     }
-                    
-                    ConnectionWrapper::activity_handle(&connection_wrapper, weel_position.handler_passthrough.as_ref().map(|x| x.as_str()), parameters.as_ref().unwrap());
-                    weel_position.handler_passthrough = connection_wrapper.lock().unwrap().handler_passthrough.clone();
+
+                    ConnectionWrapper::activity_handle(
+                        &connection_wrapper,
+                        weel_position
+                            .handler_passthrough
+                            .as_ref()
+                            .map(|x| x.as_str()),
+                        parameters.as_ref().unwrap(),
+                    );
+                    weel_position.handler_passthrough = connection_wrapper
+                        .lock()
+                        .unwrap()
+                        .handler_passthrough
+                        .clone();
                     if let Some(position) = &weel_position.handler_passthrough {
                         let connection_wrapper = ConnectionWrapper::new(
-                        self.clone(),
-            Some(position.to_owned()),
-            Some(thread_info.blocking_queue.clone()),
+                            self.clone(),
+                            Some(position.to_owned()),
+                            Some(thread_info.blocking_queue.clone()),
                         );
                         let mut content = HashMap::new();
                         content.insert("wait".to_owned(), serde_json::to_string(&weel_position)?);
@@ -581,35 +618,125 @@ impl Weel {
                             let current_thread = thread::current().id();
                             let thread_info_map = self.thread_information.lock().unwrap();
                             // Unwrap as we have precondition that thread info is available on spawning
-                            let mut thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
+                            let thread_info =
+                                thread_info_map.get(&current_thread).unwrap().borrow();
                             let state_stopping_or_finished = matches!(
                                 *self.state.lock().unwrap(),
                                 State::Stopping | State::Stopped | State::Finishing
                             );
-                            let thread_sleep = !state_stopping_or_finished && !thread_info.no_longer_necessary;
+
+                            let thread_sleep =
+                                !state_stopping_or_finished && !thread_info.no_longer_necessary;
+                            let wait_result = None;
+                            let thread_queue = thread_info.blocking_queue.clone();
+                            drop(thread_info);
+                            drop(thread_info_map);
                             if thread_sleep {
-                                let thread_queue = thread_info.blocking_queue.clone();
-                                drop(thread_info);
-                                drop(thread_info_map);
                                 // TODO: issue this will block the whole thread -> We need to have no mutexed locked at this point or the whole instance will block!
-                                let wait_result = thread_queue.dequeue();
+                                wait_result = Some(thread_queue.dequeue());
+                            };
+
+                            // TODO: What about waitingresult array?
+
+                            // Reacquire locks after waiting
+                            let current_thread = thread::current().id();
+                            let thread_info_map = self.thread_information.lock().unwrap();
+                            // Unwrap as we have precondition that thread info is available on spawning
+                            let thread_info =
+                                thread_info_map.get(&current_thread).unwrap().borrow();
+
+                            if thread_info.no_longer_necessary {
+                                // TODO: Definition of this method is basically empty?
+                                connection_wrapper.activity_no_longer_necessary();
+                                return Err(Signal::NoLongerNecessary.into());
+                            }
+                            let state_stopping_or_finished = matches!(
+                                *self.state.lock().unwrap(),
+                                State::Stopping | State::Stopped | State::Finishing
+                            );
+                            if state_stopping_or_finished {
+                                return Err(Signal::Proceed.into());
+                            };
+
+                            if wait_result.as_ref()
+                                .map(|res| matches!(res, Signal::Again))
+                                .unwrap_or(false)
+                                && connection_wrapper
+                                    .activity_result_value()
+                                    .map(|x| x.is_empty())
+                                    .unwrap_or(true)
+                            {
+                                continue;
+                            }
+
+                            let code = if wait_result.as_ref()
+                                .map(|res| matches!(res, Signal::Again))
+                                .unwrap_or(false)
+                            {
+                                update_code
+                            } else if wait_result.as_ref()
+                                .map(|res| matches!(res, Signal::Salvage))
+                                .unwrap_or(false)
+                            {
+                                rescue_code
+                            } else {
+                                finalize_code
+                            };
+
+                            connection_wrapper.inform_activity_manipulate();
+                            if let Some(code) = code {
+                                let current_thread = thread::current().id();
+                                let thread_info_map = self.thread_information.lock().unwrap();
+                                // Unwrap as we have precondition that th(());read info is available on spawning
+                                let mut thread_info =
+                                    thread_info_map.get(&current_thread).unwrap().borrow_mut();
+                                // TODO: I do not get this line in the original with the catch Signal::Again and the the Signal::Proceed
+                                let evaluation_result = self.execute_code(
+                                    false,
+                                    code,
+                                    thread_info.local.clone(),
+                                    &connection_wrapper,
+                                )?;
+                                connection_wrapper.inform_manipulate_change(evaluation_result);
+                                // TODO: What would this ma.nil? result in rust?
+                                let cond = false;
+                                if cond {
+                                    // TODO: What to return here
+                                    break 'again Ok(());
+                                }
+                                if wait_result.as_ref()
+                                    .map(|res| !matches!(res, Signal::Again))
+                                    .unwrap_or(true)
+                                {
+                                    break 'inner ();
+                                }
                             }
                         }
                     }
+                    let connection_wrapper = connection_wrapper.lock().unwrap();
+                    if connection_wrapper.activity_passthrough_value().is_none() {
+                        connection_wrapper.inform_activity_done();
+                        weel_position.handler_passthrough = None;
+                        weel_position.detail = Mark::After;
+                        let mut content = HashMap::new();
+                        content.insert("after".to_owned(), serde_json::to_string(&weel_position)?);
+                        ConnectionWrapper::new(self.clone(), None, None)
+                            .inform_position_change(Some(content))?;
+                    }
                 }
-            },
+            }
         }
     }
 
     /**
      * Will execute the provided ruby code using the eval_helper and the evaluation backend
-     * 
+     *
      * The EvaluationResult will contain the complete data and endpoints after the code is executed (cody might change them even in readonly mode)
-     * 
+     *
      * The read_only flag governs whether changes to dataelements and endpoints are applied to the instance (read_only=false) or not (read_only=true)
      */
     fn execute_code(
-        self: Arc<Self>,
+        self: &Arc<Self>,
         read_only: bool,
         code: &str,
         local: String,
@@ -617,7 +744,7 @@ impl Weel {
     ) -> Result<eval_helper::EvaluationResult> {
         // We clone the dynamic data and status dto here which is expensive but allows us to not block the whole weel until the eval call returns
         let dynamic_data = self.dynamic_data.lock().unwrap().clone();
-        let status = self.status.lock().unwrap().to_dto(); 
+        let status = self.status.lock().unwrap().to_dto();
         if read_only {
             let result = eval_helper::evaluate_expression(
                 &dynamic_data,
@@ -683,7 +810,7 @@ impl Weel {
         let thread = thread::current();
         let mut thread_info_map = self.thread_information.lock().unwrap();
         // We unwrap here but we need to ensure that when the weel creates a thread, it registers the thread info!
-        let mut thread_info = thread_info_map.get_mut(&thread.id()).unwrap();
+        let mut thread_info = thread_info_map.get(&thread.id()).unwrap().borrow_mut();
 
         if !thread_info.in_search_mode {
             return false;
@@ -703,7 +830,7 @@ impl Weel {
                 while let Some(parent) = thread_info.parent {
                     // Each parent thread has to have some thread information. In general all threads should, when they spawn via weel register and add their thread information
                     // Communicate to ancestor branches that in one of its childs a label was found and the search is done.
-                    thread_info = thread_info_map.get_mut(&parent).unwrap();
+                    thread_info = thread_info_map.get(&parent).unwrap().borrow_mut();
                     thread_info.in_search_mode = false;
                     thread_info.branch_search_now = true;
                 }
@@ -736,8 +863,8 @@ impl Weel {
 
         let (parent_thread_id, weel_position) = {
             // We need to limit the borrow of current_thread_info s.t. we can access the parents infor afterwards -> scope it
-            let current_thread_info = match thread_info_map.get_mut(&current_thread.id()) {
-                Some(x) => x,
+            let mut current_thread_info = match thread_info_map.get(&current_thread.id()) {
+                Some(x) => x.borrow_mut(),
                 None => {
                     log::error!(
                         "Thread information for branch {:?} is empty",
@@ -800,8 +927,8 @@ impl Weel {
         };
 
         if let Some(parent_thread_id) = parent_thread_id {
-            let parent_thread_info = match thread_info_map.get_mut(&parent_thread_id) {
-                Some(x) => x,
+            let mut parent_thread_info = match thread_info_map.get(&parent_thread_id) {
+                Some(x) => x.borrow_mut(),
                 None => {
                     log::error!(
                         "Thread information for branch {:?} is empty",
@@ -872,7 +999,8 @@ pub enum Signal {
     Stop,
     Proceed,
     Skip,
-    None, // If nothing has to be signaled (see else case in connection::callback at the end)
+    None,
+    NoLongerNecessary, // If nothing has to be signaled (see else case in connection::callback at the end)
 }
 
 pub enum ActivityType {
