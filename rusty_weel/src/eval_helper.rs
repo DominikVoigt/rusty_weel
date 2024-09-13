@@ -12,7 +12,7 @@ use serde_json::Value;
 use tempfile::tempfile;
 
 use crate::{
-    data_types::{DynamicData, StaticData, Status},
+    data_types::{DynamicData, StaticData, Status, StatusDTO},
     dsl_realization::{Error, Result, Signal},
 };
 
@@ -26,7 +26,7 @@ pub fn evaluate_expression(
     dynamic_context: &DynamicData,
     static_context: &StaticData,
     expression: &str,
-    weel_status: Option<&Status>,
+    weel_status: Option<StatusDTO>,
     local: Option<String>,
     additional: Value,
     call_result: Option<String>,
@@ -51,8 +51,7 @@ pub fn evaluate_expression(
         client.add_complex_parameter("additional", APPLICATION_JSON, additional.as_bytes())?;
         
         if let Some(status) = weel_status {
-            let status = serde_json::to_string(status)?;
-            client.add_complex_parameter("status", APPLICATION_JSON, status.as_bytes())?;
+            client.add_complex_parameter("status", APPLICATION_JSON, serde_json::to_string(&status)?.as_bytes())?;
         }
         
         if let Some(call_result) = call_result {
@@ -75,7 +74,7 @@ pub fn evaluate_expression(
     let mut expression_result: Option<String> = None;
     let mut changed_data: Option<HashMap<String, String>> = None;
     let mut changed_endpoints: Option<HashMap<String, String>> = None;
-    let mut changed_status: Option<Status> = None;
+    let mut changed_status: Option<StatusDTO> = None;
     let mut data: Option<String> = None;
     let mut endpoints: Option<HashMap<String, String>> = None;
     let mut local: Option<HashMap<String, String>> = None;
@@ -176,7 +175,7 @@ pub struct EvaluationResult {
     pub endpoints: HashMap<String, String>,
     pub changed_data: Option<HashMap<String, String>>,
     pub changed_endpoints: Option<HashMap<String, String>>,
-    pub changed_status: Option<Status>,
+    pub changed_status: Option<StatusDTO>,
     pub local: Option<HashMap<String, String>>,
     pub signal: Option<Signal>,
 }

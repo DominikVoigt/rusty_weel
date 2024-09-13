@@ -563,6 +563,11 @@ impl Weel {
         }
     }
 
+    /**
+     * Will execute the provided ruby code using the eval_helper and the evaluation backend
+     * 
+     * If the read_only flag is set, then the changes to dataelements and endpoints are not applied to the instance and vice versa
+     */
     fn execute_code(
         self: Arc<Self>,
         read_only: bool,
@@ -570,24 +575,52 @@ impl Weel {
         local: String,
         connection_wrapper: &ConnectionWrapper,
     ) -> Result<eval_helper::EvaluationResult> {
-        let mut dynamic_data = self.dynamic_data.lock().unwrap();
-        let result = eval_helper::evaluate_expression(
-            &dynamic_data,
-            &self.static_data,
-            code,
-            Some(&self.status.lock().unwrap()),
-            Some(local),
-            connection_wrapper.additional(),
-            None,
-            None,
-        )?;
-        if !read_only {
+        // We clone the dynamic data and status dto here which is expensive but allows us to not block the whole weel until the eval call returns
+        let dynamic_data = self.dynamic_data.lock().unwrap().clone();
+        let status = self.status.lock().unwrap().to_dto(); 
+        if read_only {
+            let result = eval_helper::evaluate_expression(
+                &dynamic_data,
+                &self.static_data,
+                code,
+                Some(status),
+                Some(local),
+                connection_wrapper.additional(),
+                None,
+                None,
+            )?;
+            Ok(result)
+        } else {
+            let mut dynamic_data = dynamic_data;
+            // Lock down all evaluation calls to prevent race condition
+            let eval_lock = EVALUATION_LOCK.lock().unwrap();
+            let result = eval_helper::evaluate_expression(
+                &dynamic_data,
+                &self.static_data,
+                code,
+                Some(status),
+                Some(local),
+                connection_wrapper.additional(),
+                None,
+                None,
+            )?;
+            // Apply changes to instance
             dynamic_data.data = result.data.clone();
-            dynamic_data.endpoints = serde_json::from_str(&result.endpoints)?;
-            *self.status.lock().unwrap() = serde_json::from_str(&result.status)?;
+            dynamic_data.endpoints = result.endpoints.clone();
+            if let Some(new_status) = &result.changed_status {
+                // TODO: We probably reuse the existing blocking queue instead of adding a new one right?
+                let mut current_status = self.status.lock().unwrap();
+                *current_status = Status {
+                    id: new_status.id,
+                    message: new_status.message.clone(),
+                    // Here we reuse the blocking queue from the previous status as this is noy changed by the script and not serialized
+                    // We need to obeserve whether taking the memory plays nice with the condvar but should be fine since we have exclusive access to the status
+                    nudge: std::mem::take(&mut current_status.nudge),
+                };
+            }
+            drop(eval_lock);
+            Ok(result)
         }
-
-        Ok(result)
     }
 
     /**
