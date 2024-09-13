@@ -59,12 +59,12 @@ impl DSL for Weel {
         self.weel_activity(
             label,
             ActivityType::Call,
-            Some(endpoint_name),
-            Some(parameters),
-            finalize_code,
-            update_code,
             prepare_code,
+            update_code,
             rescue_code,
+            finalize_code,
+            Some(parameters),
+            Some(endpoint_name),
         )
     }
 
@@ -430,8 +430,7 @@ impl Weel {
             return Ok(());
         }
 
-        let result: Result<()> =
-            { self.execute_activity(label, position, activity_type, prepare_code, update_code, rescue_code, finalize_code, parameters, endpoint_name) };
+        let result: Result<()> =  self.execute_activity(label, position, activity_type, prepare_code, update_code, rescue_code, finalize_code, parameters, endpoint_name);
 
         todo!()
     }
@@ -514,6 +513,7 @@ impl Weel {
                             connection_wrapper.activity_manipulate_handle(label);
                             connection_wrapper.inform_activity_manipulate()?;
                             let result = self.clone().execute_code(
+                                false,
                                 finalize_code,
                                 local,
                                 &connection_wrapper,
@@ -531,33 +531,62 @@ impl Weel {
                     Ok(())
                 }
             }
-            ActivityType::Call => Ok(()),
+            ActivityType::Call => {
+                let connection_wrapper = Arc::new(Mutex::new(connection_wrapper));
+                'again: loop {
+                    // TODO: In manipulate we directly "abort" and do not run code, here we run code and then check for abort, is this correct?
+                    let endpoint_urls: HashMap<String, String> = match prepare_code {
+                        Some(code) => {
+                            let result = self.clone().execute_code(true, code, thread_info.local.clone(), &connection_wrapper.lock().unwrap())?;
+                            result.endpoints
+                        },
+                        None => self.dynamic_data.lock().unwrap().endpoints.clone(),
+                    };
+                    connection_wrapper.lock().unwrap().prepare(endpoint_urls, &vec![endpoint_name.unwrap()], parameters.as_ref().unwrap());
+                    
+                    let state_stopping_or_finished = matches!(
+                        *self.state.lock().unwrap(),
+                        State::Stopping | State::Finishing
+                    );
+                    if !self.vote_sync_before(&connection_wrapper.lock().unwrap(), None)? {
+                        return Err(Error::Signal(Signal::Stop))
+                    } else if state_stopping_or_finished {
+                        return Err(Error::Signal(Signal::Skip))
+                    }
+                    
+                    ConnectionWrapper::activity_handle(&connection_wrapper, weel_position.handler_passthrough.clone(), parameters.as_ref().unwrap());
+                }
+
+
+                Ok(())
+            },
         }
     }
 
     fn execute_code(
         self: Arc<Self>,
-        finalize_code: &str,
+        read_only: bool,
+        code: &str,
         local: String,
         connection_wrapper: &ConnectionWrapper,
     ) -> Result<eval_helper::EvaluationResult> {
-        let guard = EVALUATION_LOCK.lock().unwrap();
+        let mut dynamic_data = self.dynamic_data.lock().unwrap();
         let result = eval_helper::evaluate_expression(
-            &self.dynamic_data.lock().unwrap(),
+            &dynamic_data,
             &self.static_data,
-            finalize_code,
+            code,
             Some(&self.status.lock().unwrap()),
             Some(local),
             connection_wrapper.additional(),
             None,
             None,
         )?;
-        let mut data = self.dynamic_data.lock().unwrap();
-        data.data = result.data.clone();
-        data.endpoints = serde_json::from_str(&result.endpoints)?;
-        *self.status.lock().unwrap() = serde_json::from_str(&result.status)?;
+        if !read_only {
+            dynamic_data.data = result.data.clone();
+            dynamic_data.endpoints = serde_json::from_str(&result.endpoints)?;
+            *self.status.lock().unwrap() = serde_json::from_str(&result.status)?;
+        }
 
-        drop(guard);
         Ok(result)
     }
 
