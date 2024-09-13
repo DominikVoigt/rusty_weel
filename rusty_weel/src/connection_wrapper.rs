@@ -26,7 +26,7 @@ pub struct ConnectionWrapper {
     handler_position: Option<String>,
     handler_continue: Option<Arc<crate::data_types::BlockingQueue<Signal>>>,
     // See proto_curl in connection.rb
-    handler_passthrough: Option<String>,
+    pub handler_passthrough: Option<String>,
     handler_return_value: Option<String>,
     handler_return_options: Option<HashMap<String, String>>,
     // We keep them as arrays to be flexible but will only contain one element for now
@@ -293,7 +293,7 @@ impl ConnectionWrapper {
 
     pub fn activity_handle(
         selfy: &Arc<Mutex<Self>>,
-        passthrough: Option<String>,
+        passthrough: Option<&str>,
         parameters: &HTTPParams,
     ) -> Result<()> {
         let mut this = selfy.lock()?;
@@ -309,7 +309,7 @@ impl ConnectionWrapper {
             let mut redis: MutexGuard<'_, RedisHelper> = weel.redis_notifications_client.lock()?;
             let mut content = this.construct_basic_content()?;
             content.insert("label".to_owned(), this.label.clone());
-            content.insert("passthrough".to_owned(), passthrough.clone().unwrap_or("".to_owned()));
+            content.insert("passthrough".to_owned(), passthrough.unwrap_or("").to_owned());
             // parameters do not look exactly like in the original (string representation looks different):
             content.insert("parameters".to_owned(), parameters.clone().try_into()?);
             redis.notify(
@@ -323,7 +323,7 @@ impl ConnectionWrapper {
                 let mut content = this.construct_basic_content()?;
                 content.insert("label".to_owned(), this.label.clone());
                 content.remove("endpoint");
-                weel.register_callback(selfy.clone(), &passthrough, content)?;
+                weel.register_callback(selfy.clone(), passthrough, content)?;
             },
             None => Self::curl(this, selfy, parameters, weel)?,
         }

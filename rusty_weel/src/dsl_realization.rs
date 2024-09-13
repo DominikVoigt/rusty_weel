@@ -1,6 +1,7 @@
 use derive_more::From;
 use serde::{Deserialize, Serialize};
 use std::any::TypeId;
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::sync::mpsc::{Receiver, Sender};
@@ -41,7 +42,8 @@ pub struct Weel {
     // To allow threads to access parent data => thread_local storage is, as the name suggest, thread local
     // stores information such as the parents thread id, search mode ...
     // Invariant: When a thread is spawned within any weel method, thread information for this thread has to be created
-    pub thread_information: Mutex<HashMap<ThreadId, ThreadInfo>>,
+    // Use ref cell here to allow immutable borrows -> Allows to independently borrow distinct elements
+    pub thread_information: Mutex<HashMap<ThreadId, RefCell<ThreadInfo>>>,
 }
 
 impl DSL for Weel {
@@ -554,11 +556,32 @@ impl Weel {
                         return Err(Error::Signal(Signal::Skip))
                     }
                     
-                    ConnectionWrapper::activity_handle(&connection_wrapper, weel_position.handler_passthrough.clone(), parameters.as_ref().unwrap());
+                    ConnectionWrapper::activity_handle(&connection_wrapper, weel_position.handler_passthrough.as_ref().map(|x| x.as_str()), parameters.as_ref().unwrap());
+                    weel_position.handler_passthrough = connection_wrapper.lock().unwrap().handler_passthrough.clone();
+                    if let Some(position) = &weel_position.handler_passthrough {
+                        let connection_wrapper = ConnectionWrapper::new(
+                        self.clone(),
+            Some(position.to_owned()),
+            Some(thread_info.blocking_queue.clone()),
+                        );
+                        let mut content = HashMap::new();
+                        content.insert("wait".to_owned(), serde_json::to_string(&weel_position)?);
+                        connection_wrapper.inform_position_change(Some(content));
+
+                        'inner: loop {
+                            let state_stopping_or_finished = matches!(
+                                *self.state.lock().unwrap(),
+                                State::Stopping | State::Stopped | State::Finishing
+                            );
+                            if !state_stopping_or_finished && !thread_info.no_longer_necessary {
+                                // TODO: issue this will block the whole thread -> We need to have no mutexed locked at this point or the whole instance will block!
+                                drop(thread_info);
+                                drop(thread_info_map);
+                                let wait_result = thread_info.blocking_queue.dequeue();
+                            }
+                        }
+                    }
                 }
-
-
-                Ok(())
             },
         }
     }
@@ -566,7 +589,9 @@ impl Weel {
     /**
      * Will execute the provided ruby code using the eval_helper and the evaluation backend
      * 
-     * If the read_only flag is set, then the changes to dataelements and endpoints are not applied to the instance and vice versa
+     * The EvaluationResult will contain the complete data and endpoints after the code is executed (cody might change them even in readonly mode)
+     * 
+     * The read_only flag governs whether changes to dataelements and endpoints are applied to the instance (read_only=false) or not (read_only=true)
      */
     fn execute_code(
         self: Arc<Self>,
