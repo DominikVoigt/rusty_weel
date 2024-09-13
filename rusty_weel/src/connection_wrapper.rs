@@ -209,10 +209,10 @@ impl ConnectionWrapper {
     /**
      * Resolves the endpoints to their actual URLs
      */
-    pub fn prepare(&mut self, endpoints: &Vec<String>, parameters: &HTTPParams) -> HTTPParams {
-        if endpoints.len() > 0 {
+    pub fn prepare(&mut self, endpoint_urls: HashMap<String, String>, endpoint_names: &Vec<&str>, parameters: &HTTPParams) -> HTTPParams {
+        if endpoint_names.len() > 0 {
             let weel = self.weel();
-            self.resolve_endpoints(endpoints, &weel);
+            self.resolve_endpoints(endpoint_urls, endpoint_names);
 
             match weel.static_data.attributes.get("twin_engine") {
                 Some(twin_engine_url) => {
@@ -231,17 +231,17 @@ impl ConnectionWrapper {
                 }
             }
         }
+        // I believe we do not need to modify arguments here -> procs
         parameters.clone()
     }
 
     /**
      * Resolves the endpoint names in endpoints to the actual endpoint URLs
      */
-    fn resolve_endpoints(&mut self, endpoints: &Vec<String>, weel: &Arc<Weel>) {
-        let weel_endpoint_urls = weel.dynamic_data.lock().unwrap(); 
-        self.handler_endpoints = endpoints
+    fn resolve_endpoints(&mut self, endpoint_urls: HashMap<String, String>, endpoint_names: &Vec<&str>) {
+        self.handler_endpoints = endpoint_names
             .iter()
-            .map(|ep| weel_endpoint_urls.endpoints.get(ep))
+            .map(|ep| endpoint_urls.get(*ep))
             .filter_map(|item| match item {
                 Some(item) => Some(item.clone()),
                 None => None,
@@ -293,7 +293,7 @@ impl ConnectionWrapper {
 
     pub fn activity_handle(
         selfy: &Arc<Mutex<Self>>,
-        passthrough: &str,
+        passthrough: Option<String>,
         parameters: &HTTPParams,
     ) -> Result<()> {
         let mut this = selfy.lock()?;
@@ -309,7 +309,7 @@ impl ConnectionWrapper {
             let mut redis: MutexGuard<'_, RedisHelper> = weel.redis_notifications_client.lock()?;
             let mut content = this.construct_basic_content()?;
             content.insert("label".to_owned(), this.label.clone());
-            content.insert("passthrough".to_owned(), passthrough.to_owned());
+            content.insert("passthrough".to_owned(), passthrough.clone().unwrap_or("".to_owned()));
             // parameters do not look exactly like in the original (string representation looks different):
             content.insert("parameters".to_owned(), parameters.clone().try_into()?);
             redis.notify(
@@ -318,13 +318,14 @@ impl ConnectionWrapper {
                 weel.static_data.get_instance_meta_data(),
             )?
         }
-        if passthrough.is_empty() {
-            Self::curl(this, selfy, parameters, weel)?;
-        } else {
-            let mut content = this.construct_basic_content()?;
-            content.insert("label".to_owned(), this.label.clone());
-            content.remove("endpoint");
-            weel.register_callback(selfy.clone(), passthrough, content)?;
+        match passthrough {
+            Some(passthrough) => {
+                let mut content = this.construct_basic_content()?;
+                content.insert("label".to_owned(), this.label.clone());
+                content.remove("endpoint");
+                weel.register_callback(selfy.clone(), &passthrough, content)?;
+            },
+            None => Self::curl(this, selfy, parameters, weel)?,
         }
         Ok(())
     }
