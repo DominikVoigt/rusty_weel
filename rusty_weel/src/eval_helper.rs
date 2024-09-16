@@ -308,7 +308,7 @@ mod test {
             &dynamic_data,
             &static_data,
             "data.name = 'Tom'",
-            Some(&status),
+            Some(status.to_dto()),
             None,
             serde_json::Value::Null,
             None,

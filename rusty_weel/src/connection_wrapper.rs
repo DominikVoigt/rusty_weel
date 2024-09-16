@@ -171,9 +171,10 @@ impl ConnectionWrapper {
 
     pub fn inform_manipulate_change(&self, evaluation_result: eval_helper::EvaluationResult) -> Result<()> {
         let content = self.construct_basic_content()?;
-        if let Some(changed_status) = evaluation_result.changed_state {
-            let content = content.clone();
-            // What about status.id and status.message? I thought they are symbols?
+        if let Some(changed_status) = evaluation_result.changed_status {
+            let mut content = content.clone();
+            content.insert("id".to_owned(), changed_status.id.to_string());
+            content.insert("message".to_owned(), changed_status.message);
             self.inform("status/change", Some(content))?;       
         }
         if let Some(changed_data) = evaluation_result.changed_data {
@@ -183,6 +184,7 @@ impl ConnectionWrapper {
             content.insert("changed".to_owned(), serde_json::to_string(&changed_data)?);
             // TODO: de = dataelements.slice(*changed_dataelements).transform_values { |v| enc = CPEE::EvalRuby::Translation::detect_encoding(v); (enc == 'OTHER' ? v : (v.encode('UTF-8',enc) rescue CPEE::EvalRuby::Translation::convert_to_base64(v))) }
             // value => de
+            content.insert("changed".to_owned(), serde_json::to_string(&changed_data)?);
             self.inform("dataelements/change", Some(content))?;       
         }
         if let Some(changed_endpoints) = evaluation_result.changed_endpoints {
@@ -291,6 +293,9 @@ impl ConnectionWrapper {
         }
     }
 
+    /**
+     * Executes the actual service call
+     */
     pub fn activity_handle(
         selfy: &Arc<Mutex<Self>>,
         passthrough: Option<&str>,
