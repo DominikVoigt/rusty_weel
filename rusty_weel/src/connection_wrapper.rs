@@ -26,8 +26,9 @@ pub struct ConnectionWrapper {
     pub handler_continue: Option<Arc<crate::data_types::BlockingQueue<Signal>>>,
     // The identifier of the callback the connection wrapper is waiting for (if none, it is not waiting for it)
     pub handler_passthrough: Option<String>,
-    handler_return_value: Option<String>,
-    handler_return_options: Option<HashMap<String, String>>,
+    pub handler_return_status: Option<u16>,
+    pub handler_return_value: Option<String>,
+    pub handler_return_options: Option<HashMap<String, String>>,
     // We keep them as arrays to be flexible but will only contain one element for now
     // Contains the actual endpoint URL
     handler_endpoints: Vec<String>,
@@ -60,6 +61,7 @@ impl ConnectionWrapper {
             handler_position,
             handler_continue,
             handler_passthrough: None,
+            handler_return_status: None,
             handler_return_value: None,
             handler_return_options: None,
             handler_endpoints: Vec::new(),
@@ -272,15 +274,7 @@ impl ConnectionWrapper {
             }
         )
     }
-
-    pub fn activity_result_options(&self) -> Option<HashMap<String, String>> {
-        self.handler_return_options.clone()
-    }
-
-    pub fn activity_result_value(&self) -> Option<String> {
-        self.handler_return_value.clone()
-    }
-
+    
     pub fn activity_passthrough_value(&self) -> Option<String> {
         self.handler_passthrough.clone()
     }
@@ -451,6 +445,7 @@ impl ConnectionWrapper {
         if status < 200 || status >= 300 {
             response_headers.insert("CPEE_SALVAGE".to_owned(), "true".to_owned());
             this.handle_callback(
+                status,
                 &body,
                 response_headers
             )?
@@ -463,7 +458,7 @@ impl ConnectionWrapper {
             if callback_header_set {
                 if !body.len() > 0 {
                     response_headers.insert("CPEE_UPDATE".to_owned(), "true".to_owned());
-                    this.handle_callback(&body, response_headers)?
+                    this.handle_callback(status, &body, response_headers)?
                 } else {
                     // In this case we have an asynchroneous task
                     let mut content = HashMap::new();
@@ -515,7 +510,7 @@ impl ConnectionWrapper {
                     }
                 }
             } else {
-                this.handle_callback(&body, response_headers)?
+                this.handle_callback(status, &body, response_headers)?
             }
         }
         Ok(())
@@ -529,6 +524,7 @@ impl ConnectionWrapper {
      */
     pub fn handle_callback(
         &mut self,
+        status: u16,
         body: &[u8],
         options: HashMap<String, String>, // Headers
     ) -> Result<()> {
@@ -584,8 +580,10 @@ impl ConnectionWrapper {
                 weel.static_data.get_instance_meta_data(),
             )?;
         } else {
+            self.handler_return_status = Some(status);
             self.handler_return_value = Some(recv);
             self.handler_return_options = Some(options.clone());
+
         }
 
         if contains_non_empty(&options, "CPEE_STATUS") {

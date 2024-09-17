@@ -210,7 +210,8 @@ impl RedisHelper {
                             callback_keys.get(&topic.type_)
                                          .expect("Cannot happen as we check containment previously and hold mutex throughout")
                                          .lock()?
-                                         .handle_callback(params, headers)?;
+                                         // TODO: Maybe add status to message too?
+                                         .handle_callback(0, params, headers)?;
                         }
                     }
                     "callback-end:*" => {
