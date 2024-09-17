@@ -54,6 +54,9 @@ impl RedisHelper {
         self.last
     }
 
+    /**
+     * Sends a message to the redis DB
+     */
     pub fn notify(
         &mut self,
         what: &str,
