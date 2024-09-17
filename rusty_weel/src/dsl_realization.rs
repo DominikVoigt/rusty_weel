@@ -44,6 +44,7 @@ pub struct Weel {
     // Invariant: When a thread is spawned within any weel method, thread information for this thread has to be created
     // Use ref cell here to allow immutable borrows -> Allows to independently borrow distinct elements
     pub thread_information: Mutex<HashMap<ThreadId, RefCell<ThreadInfo>>>,
+    pub stop_signal_receiver: Receiver<()>,
 }
 
 impl DSL for Weel {
@@ -211,7 +212,7 @@ impl Weel {
         *state = State::Stopped;
     }
 
-    pub fn stop(&self, stop_signal_receiver: &mut Receiver<()>) -> Result<()> {
+    pub fn stop(&self) -> Result<()> {
         {
             let mut state = self.state.lock().expect("Could not lock state mutex");
             match *state {
@@ -220,7 +221,7 @@ impl Weel {
                     // TODO: Where will this be set to stopped?
                     *state = State::Stopping;
                     // Wait for instance to stop
-                    let rec_result = stop_signal_receiver.recv();
+                    let rec_result = self.stop_signal_receiver.recv();
                     if matches!(rec_result, Err(_)) {
                         log::error!("Error receiving termination signal for model thread. Sender must have been dropped.")
                     }

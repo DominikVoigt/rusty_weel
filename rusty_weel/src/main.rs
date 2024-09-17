@@ -29,6 +29,7 @@ fn main() {
         Ok(redis) => redis,
         Err(err) => {log::error!("Error during startup when connecting to redis: {:?}", err); panic!("Error during startup")},
     };
+    let (stopped_signal_sender, stopped_signal_receiver) = mpsc::channel::<()>();
     let weel = Weel {
         redis_notifications_client: Mutex::new(redis_helper),
         static_data,
@@ -41,6 +42,7 @@ fn main() {
         positions: Mutex::new(Vec::new()),
         search_positions: todo!(),
         thread_information: todo!(),
+        stop_signal_receiver
     };
     
     // create thread for callback subscriptions with redis
@@ -51,8 +53,7 @@ fn main() {
     let weel = Arc::new(weel);
     let weel_clone = weel.clone();
     
-    let (stopped_signal_sender, stopped_signal_receiver) = mpsc::channel::<()>();
-    setup_signal_handler(&weel, stopped_signal_receiver);
+    setup_signal_handler(&weel);
     let local_weel = Arc::clone(&weel);
     let weel = move || {
         weel_clone.clone()
@@ -154,12 +155,12 @@ fn set_panic_hook() -> () {
     }));
 }
 
-fn setup_signal_handler(weel: &Arc<Weel>, mut stop_signal_receiver: Receiver<()>) {
+fn setup_signal_handler(weel: &Arc<Weel>) {
     let weel = Arc::clone(weel);
     
     if let Err(err) = ctrlc::set_handler(move || {
        log::info!("Received SIGINT/SIGTERM/SIGHUP. Set state to stopping...");
-       let res = weel.stop(&mut stop_signal_receiver);
+       let res = weel.stop();
        match res {
         Ok(_) => (),
         Err(err) => {
