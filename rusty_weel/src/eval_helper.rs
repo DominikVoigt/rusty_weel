@@ -32,6 +32,7 @@ pub fn evaluate_expression(
     call_result: Option<String>,
     call_headers: Option<String>
 ) -> Result<EvaluationResult> {
+    // This url has to be the full path to the exec-full endpoint
     let mut client = Client::new(&static_context.eval_backend_url, http_helper::Method::PUT)?;
     {
         // Construct multipart request
@@ -66,8 +67,8 @@ pub fn evaluate_expression(
     let mut result = client.execute()?;
     let status = result.status_code;
     // Error in the provided code
-    if status == 555 {
-    } else if status < 100 || status >= 300 {
+    if status < 200 || status >= 300 {
+        
     }
     println!("{:?}", result.headers);
     // Get the expressions parameter from the parsed response
@@ -176,7 +177,6 @@ pub struct EvaluationResult {
     pub changed_data: Option<HashMap<String, String>>,
     pub changed_endpoints: Option<HashMap<String, String>>,
     pub changed_status: Option<StatusDTO>,
-    pub local: Option<HashMap<String, String>>,
     // Used for Signalling in code: e.g.Signal::Again or Signal::Error
     pub signal: Option<Signal>,
     // Message attached: e.g. Error message

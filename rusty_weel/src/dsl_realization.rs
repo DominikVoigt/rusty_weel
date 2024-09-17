@@ -432,16 +432,17 @@ impl Weel {
         }
 
         let connection_wrapper =
-            ConnectionWrapper::new(self.clone(), Some(position.to_owned()), None);            
+            ConnectionWrapper::new(self.clone(), Some(position.to_owned()), None);
         let connection_wrapper_mutex = Arc::new(Mutex::new(connection_wrapper));
 
+        let mut connection_wrapper = connection_wrapper_mutex.lock().unwrap();
+        let state = self.state.lock().unwrap();
+        let invalid_state = match *state {
+            State::Running => false,
+            _ => true,
+        };
+
         let result: Result<()> = 'raise: {
-            let mut connection_wrapper = connection_wrapper_mutex.lock().unwrap();
-            let state = self.state.lock().unwrap();
-            let invalid_state = match *state {
-                State::Running => false,
-                _ => true,
-            };
             let current_thread = thread::current().id();
             let thread_info_map = self.thread_information.lock().unwrap();
             // Unwrap as we have precondition that thread info is available on spawning
@@ -483,7 +484,7 @@ impl Weel {
                 connection_wrapper.handler_activity_uuid.clone(),
                 false,
             )?;
-            
+
             match activity_type {
                 ActivityType::Manipulate => {
                     let state_stopping_or_finishing = matches!(
@@ -547,14 +548,15 @@ impl Weel {
                             parameters.as_ref().unwrap(),
                         );
 
+                        drop(thread_info);
+                        drop(thread_info_map);
+
                         let state_stopping_or_finishing = matches!(
                             *self.state.lock().unwrap(),
                             State::Stopping | State::Finishing
                         );
-                        // TODO: Maybe drop the thread info here too? This call will bolock all
-                        if !self
-                            .vote_sync_before(&connection_wrapper, None)?
-                        {
+                        // TODO: Maybe drop the thread info here too? This call will block all
+                        if !self.vote_sync_before(&connection_wrapper, None)? {
                             break 'raise Err(Signal::Stop.into());
                         } else if state_stopping_or_finishing {
                             break 'raise Err(Signal::Skip.into());
@@ -638,7 +640,8 @@ impl Weel {
                                 .map(|res| matches!(res, Signal::Again))
                                 .unwrap_or(false)
                                 && connection_wrapper
-                                    .handler_return_value.clone()
+                                    .handler_return_value
+                                    .clone()
                                     .map(|x| x.is_empty())
                                     .unwrap_or(true)
                             {
@@ -659,8 +662,11 @@ impl Weel {
                                 if rescue_code.is_some() {
                                     rescue_code
                                 } else {
-                                    // We return actual errors 
-                                    break 'raise Err(Error::GeneralError(format!("Service returned status code {:?}", connection_wrapper.handler_return_status)));
+                                    // We return actual errors
+                                    break 'raise Err(Error::GeneralError(format!(
+                                        "Service returned status code {:?}",
+                                        connection_wrapper.handler_return_status
+                                    )));
                                 }
                             } else {
                                 finalize_code
@@ -781,7 +787,7 @@ impl Weel {
             )?;
             Ok(result)
         } else {
-            let mut dynamic_data = dynamic_data;
+            let mut dynamic_data: DynamicData = dynamic_data;
             // Lock down all evaluation calls to prevent race condition
             let eval_lock = EVALUATION_LOCK.lock().unwrap();
             let result = eval_helper::evaluate_expression(

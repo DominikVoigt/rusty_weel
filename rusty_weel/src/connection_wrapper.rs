@@ -186,17 +186,12 @@ impl ConnectionWrapper {
             // TODO For us, we need the direct pairs of changed data: (name, new value)
             // In the ManipulateStructure implementation, the values where changed directly via the instance_eval => Changed data/endpoints just contained the names
             content.insert("changed".to_owned(), serde_json::to_string(&changed_data)?);
-            // TODO: de = dataelements.slice(*changed_dataelements).transform_values { |v| enc = CPEE::EvalRuby::Translation::detect_encoding(v); (enc == 'OTHER' ? v : (v.encode('UTF-8',enc) rescue CPEE::EvalRuby::Translation::convert_to_base64(v))) }
-            // value => de
-            content.insert("changed".to_owned(), serde_json::to_string(&changed_data)?);
             self.inform("dataelements/change", Some(content))?;       
         }
         if let Some(changed_endpoints) = evaluation_result.changed_endpoints {
             let mut content = content.clone();
             content.insert("changed".to_owned(), serde_json::to_string(&changed_endpoints)?);
-            // TODO: de = dataelements.slice(*changed_dataelements).transform_values { |v| enc = CPEE::EvalRuby::Translation::detect_encoding(v); (enc == 'OTHER' ? v : (v.encode('UTF-8',enc) rescue CPEE::EvalRuby::Translation::convert_to_base64(v))) }
-            // value => de
-            self.inform("dataelements/change", Some(content))?;       
+            self.inform("endpoints/change", Some(content))?;       
         }
 
         todo!()
