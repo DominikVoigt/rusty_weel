@@ -19,13 +19,12 @@ use crate::{
     dsl_realization::{generate_random_key, Error, Result, Signal, Weel}, eval_helper, redis_helper::RedisHelper,
 };
 
-// Expected to be guarded with mutex to sensure that method invocations do not deadlock
-// Deadlocks can still occur since weel is not mutex locked
 pub struct ConnectionWrapper {
     weel: Weak<Weel>,
     handler_position: Option<String>,
-    handler_continue: Option<Arc<crate::data_types::BlockingQueue<Signal>>>,
-    // See proto_curl in connection.rb
+    // The queue the calling thread is blocking on. -> Uses handle_callback to signal thread to continue running
+    pub handler_continue: Option<Arc<crate::data_types::BlockingQueue<Signal>>>,
+    // The identifier of the callback the connection wrapper is waiting for (if none, it is not waiting for it)
     pub handler_passthrough: Option<String>,
     handler_return_value: Option<String>,
     handler_return_options: Option<HashMap<String, String>>,
@@ -34,6 +33,7 @@ pub struct ConnectionWrapper {
     handler_endpoints: Vec<String>,
     // Original endpoint without the twintranslate
     handler_endpoint_origin: Vec<String>,
+    // Unique identifier (randomly created)
     pub handler_activity_uuid: String,
     label: String,
     annotations: Option<String>,
@@ -49,7 +49,9 @@ const SLEEP_DURATION: u64 = 2;
 impl ConnectionWrapper {
     pub fn new(
         weel: Arc<Weel>,
+        // Corresponds to the label of the activity the handler is initialized for
         handler_position: Option<String>,
+
         handler_continue: Option<Arc<BlockingQueue<Signal>>>,
     ) -> Self {
         let weel = Arc::downgrade(&weel);
@@ -287,9 +289,14 @@ impl ConnectionWrapper {
         self.label = label.to_owned();
     }
 
-    pub fn activity_stop(&self) {
+    /**
+     * Will cancel an activity via the redis_helper thread
+     */
+    pub fn activity_stop(&self) -> Result<()>{
         if let Some(passthrough) = &self.handler_passthrough {
-            self.weel().cancel_callback(passthrough);
+            self.weel().cancel_callback(passthrough)
+        } else {
+            Ok(())
         }
     }
 
@@ -453,12 +460,12 @@ impl ConnectionWrapper {
                 None => false,
             };
 
-            // In this case we have an asynchroneous task
             if callback_header_set {
                 if !body.len() > 0 {
                     response_headers.insert("CPEE_UPDATE".to_owned(), "true".to_owned());
                     this.handle_callback(&body, response_headers)?
                 } else {
+                    // In this case we have an asynchroneous task
                     let mut content = HashMap::new();
                     {
                         content.insert(
