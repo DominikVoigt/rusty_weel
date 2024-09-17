@@ -177,7 +177,10 @@ pub struct EvaluationResult {
     pub changed_endpoints: Option<HashMap<String, String>>,
     pub changed_status: Option<StatusDTO>,
     pub local: Option<HashMap<String, String>>,
+    // Used for Signalling in code: e.g.Signal::Again or Signal::Error
     pub signal: Option<Signal>,
+    // Message attached: e.g. Error message
+    pub signal_text: Option<String>,
 }
 
 #[derive(Debug)]
