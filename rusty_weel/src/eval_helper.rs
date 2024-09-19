@@ -6,13 +6,13 @@ use std::{
 
 use http_helper::{Client, Parameter};
 use log;
-use mime::{Mime, APPLICATION_JSON, APPLICATION_OCTET_STREAM, APPLICATION_WWW_FORM_URLENCODED};
+use mime::{APPLICATION_JSON, APPLICATION_OCTET_STREAM};
 use reqwest::{header::CONTENT_TYPE, Method};
 use serde_json::Value;
 use tempfile::tempfile;
 
 use crate::{
-    data_types::{DynamicData, StaticData, Status, StatusDTO},
+    data_types::{DynamicData, StaticData, StatusDTO},
     dsl_realization::{Error, Result, Signal},
 };
 
@@ -27,7 +27,7 @@ pub fn evaluate_expression(
     static_context: &StaticData,
     expression: &str,
     weel_status: Option<StatusDTO>,
-    local: Option<String>,
+    thread_local: String,
     additional: Value,
     call_result: Option<String>,
     call_headers: Option<String>
@@ -41,10 +41,8 @@ pub fn evaluate_expression(
         
         client.add_complex_parameter("dataelements", APPLICATION_JSON, dynamic_context.data.as_bytes())?;
         
-        if let Some(local) = local {
-            client.add_complex_parameter("local", APPLICATION_JSON, local.as_bytes())?;
-        }
-
+        client.add_complex_parameter("local", APPLICATION_JSON, thread_local.as_bytes())?;
+        
         let endpoints = serde_json::to_string(&dynamic_context.endpoints)?;
         client.add_complex_parameter("endpoints", APPLICATION_JSON, endpoints.as_bytes())?;
         
@@ -78,8 +76,8 @@ pub fn evaluate_expression(
     let mut changed_status: Option<StatusDTO> = None;
     let mut data: Option<String> = None;
     let mut endpoints: Option<HashMap<String, String>> = None;
-    let mut local: Option<HashMap<String, String>> = None;
     let mut signal: Option<Signal> = None;
+    let mut signal_text: Option<String> = None;
     
     /*
      * Retrieve the result of the expression
@@ -127,8 +125,8 @@ pub fn evaluate_expression(
                     "signal" => {
                         signal = Some(serde_json::from_str(&content)?);
                     }
-                    "local" => {
-                        local = Some(serde_json::from_str(&content)?);
+                    "signal_text" => {
+                        signal_text = Some(serde_json::from_str(&content)?);
                     }
                     x => {
                         log::info!("Eval endpoint send unexpected part: {x}");
@@ -150,8 +148,9 @@ pub fn evaluate_expression(
                 changed_status,
                 data,
                 endpoints,
-                local,
-                signal
+                thread_local,
+                signal,
+                signal_text,
             }),
             None => Err(Error::EvalError(EvalError::GeneralEvalError(
                 "Response does not contain the evaluation results".to_owned(),
@@ -177,6 +176,8 @@ pub struct EvaluationResult {
     pub changed_data: Option<HashMap<String, String>>,
     pub changed_endpoints: Option<HashMap<String, String>>,
     pub changed_status: Option<StatusDTO>,
+    // Snapshot of thread local information (local field) at the time of calling
+    pub thread_local: String,
     // Used for Signalling in code: e.g.Signal::Again or Signal::Error
     pub signal: Option<Signal>,
     // Message attached: e.g. Error message
@@ -312,7 +313,7 @@ mod test {
             &static_data,
             "data.name = 'Tom'",
             Some(status.to_dto()),
-            None,
+            "test_local_data".to_owned(),
             serde_json::Value::Null,
             None,
             None

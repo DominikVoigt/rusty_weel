@@ -1,6 +1,6 @@
 use derive_more::From;
 use serde::{Deserialize, Serialize};
-use std::any::TypeId;
+use std::any::{Any, TypeId};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
@@ -413,6 +413,11 @@ impl Weel {
     /**
      * Executes the activity, handles errors
      *   - handles search mode: skips activities if in search mode
+     *
+     * Locks:
+     *  - state (shortly)
+     *  - `thread_information`
+     *  - `ThreadInfo` of the current thread (within the thread_information)
      */
     fn weel_activity(
         self: Arc<Self>,
@@ -431,22 +436,24 @@ impl Weel {
             return Ok(());
         }
 
-        let connection_wrapper =
-            ConnectionWrapper::new(self.clone(), Some(position.to_owned()), None);
-        let connection_wrapper_mutex = Arc::new(Mutex::new(connection_wrapper));
-
-        let mut connection_wrapper = connection_wrapper_mutex.lock().unwrap();
-        let state = self.state.lock().unwrap();
-        let invalid_state = match *state {
+        let invalid_state = match *self.state.lock().unwrap() {
             State::Running => false,
             _ => true,
         };
 
+        let connection_wrapper =
+            ConnectionWrapper::new(self.clone(), Some(position.to_owned()), None);
+        let connection_wrapper_mutex = Arc::new(Mutex::new(connection_wrapper));
+        /*
+         * We use a block computation here to mimick the exception handling -> If an exception in the original ruby code is raised, we return it here
+         */
         let result: Result<()> = 'raise: {
             let current_thread = thread::current().id();
             let thread_info_map = self.thread_information.lock().unwrap();
             // Unwrap as we have precondition that thread info is available on spawning
             let mut thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
+
+            let mut connection_wrapper = connection_wrapper_mutex.lock().unwrap();
             {
                 // Skip execution if the branch was set to no longer necessary or the instance is supposed to stop
                 let no_longer_necessary = thread_info.no_longer_necessary;
@@ -484,6 +491,9 @@ impl Weel {
                 connection_wrapper.handler_activity_uuid.clone(),
                 false,
             )?;
+            // Drop the thread_info here already as for a manipulate we do not need it at all and a call we need to acquire the lock every 'again loop anyway
+            drop(thread_info);
+            drop(thread_info_map);
 
             match activity_type {
                 ActivityType::Manipulate => {
@@ -518,8 +528,6 @@ impl Weel {
                         .inform_position_change(Some(ipc))?;
                 }
                 ActivityType::Call => {
-                    drop(thread_info);
-                    drop(thread_info_map);
                     drop(connection_wrapper);
                     'again: loop {
                         // Reacquire thread information mutex every loop again as we might need to drop it during wait
@@ -551,6 +559,8 @@ impl Weel {
                             break 'raise Err(Signal::Skip.into());
                         }
 
+                        // Will be locked in the activity_handle again
+                        drop(connection_wrapper);
                         // This executes the actual call
                         ConnectionWrapper::activity_handle(
                             &connection_wrapper_mutex,
@@ -558,7 +568,7 @@ impl Weel {
                                 .handler_passthrough
                                 .as_ref()
                                 .map(|x| x.as_str()),
-                            parameters.as_ref().unwrap(),
+                            parameters,
                         )?;
                         weel_position.handler_passthrough =
                             connection_wrapper.handler_passthrough.clone();
@@ -588,14 +598,16 @@ impl Weel {
                             );
                             let connection_wrapper = connection_wrapper_mutex.lock().unwrap();
 
-                            let thread_sleep =
+                            let should_block =
                                 !state_stopping_or_finishing && !thread_info.no_longer_necessary;
                             let mut wait_result = None;
                             let thread_queue = thread_info.blocking_queue.clone();
+                            // We need to release the locks on the thread_info_map to allow other parallel branches to execute
                             drop(thread_info);
                             drop(thread_info_map);
+                            // We need to release the connection_wrapper lock here to allow callbacks from redis to lock the wrapper
                             drop(connection_wrapper);
-                            if thread_sleep {
+                            if should_block {
                                 // TODO: issue this will block the whole thread -> We need to have no mutexed locked at this point or the whole instance will block!
                                 wait_result = Some(thread_queue.dequeue());
                             };
@@ -652,10 +664,19 @@ impl Weel {
                                     rescue_code
                                 } else {
                                     // We return actual errors
-                                    break 'raise Err(Error::GeneralError(format!(
-                                        "Service returned status code {:?}",
-                                        connection_wrapper.handler_return_status
-                                    )));
+                                    match connection_wrapper.handler_return_status {
+                                        Some(status) => {
+                                            break 'raise Err(Error::GeneralError(format!(
+                                                "Service returned status code {:?}",
+                                                connection_wrapper.handler_return_status
+                                            )))
+                                        }
+                                        None => {
+                                            break 'raise Err(Error::GeneralError(
+                                                "Asynchroneous service call failed".to_owned(),
+                                            ));
+                                        }
+                                    }
                                 }
                             } else {
                                 finalize_code
@@ -749,9 +770,15 @@ impl Weel {
     /**
      * Will execute the provided ruby code using the eval_helper and the evaluation backend
      *
-     * The EvaluationResult will contain the complete data and endpoints after the code is executed (cody might change them even in readonly mode)
+     * The EvaluationResult will contain the complete data and endpoints after the code is executed
+     * (changes by the code will be reflected in the EvaluationResult even in readonly mode)
      *
      * The read_only flag governs whether changes to dataelements and endpoints are applied to the instance (read_only=false) or not (read_only=true)
+     *
+     * Locks:
+     *  - dynamic_data (shortly)
+     *  - status (shortly)
+     *  - EVALUATION_LOCK (for read_only = false)
      */
     pub fn execute_code(
         self: &Arc<Self>,
@@ -769,14 +796,13 @@ impl Weel {
                 &self.static_data,
                 code,
                 Some(status),
-                Some(local),
+                local,
                 connection_wrapper.additional(),
                 None,
                 None,
             )?;
             Ok(result)
         } else {
-            let mut dynamic_data: DynamicData = dynamic_data;
             // Lock down all evaluation calls to prevent race condition
             let eval_lock = EVALUATION_LOCK.lock().unwrap();
             let result = eval_helper::evaluate_expression(
@@ -784,12 +810,13 @@ impl Weel {
                 &self.static_data,
                 code,
                 Some(status),
-                Some(local),
+                local,
                 connection_wrapper.additional(),
                 None,
                 None,
             )?;
             // Apply changes to instance
+            let mut dynamic_data = self.dynamic_data.lock().unwrap();
             dynamic_data.data = result.data.clone();
             dynamic_data.endpoints = result.endpoints.clone();
             if let Some(new_status) = &result.changed_status {
@@ -868,6 +895,13 @@ impl Weel {
         }
     }
 
+    /*
+     * Locks:
+     *  - `thread_information`
+     *  - `ThreadInfo` of the current thread (within the thread_information)
+     *  - `ThreadInfo` of the parent thread (within the thread_information)
+     *  - positions, search_positions of the instance
+     */
     fn weel_progress(
         self: &Arc<Self>,
         position: String,

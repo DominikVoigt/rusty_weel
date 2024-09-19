@@ -68,30 +68,9 @@ fn main() {
                 label: "Book Airline 1",
                 method: Method::POST,
                 arguments: Some(vec![
-                    new_key_value_pair("from", "data.from"),
-                    new_key_value_pair("to", "data.to"),
-                    new_key_value_pair("persons", "data.persons"),
-                ]),
-            },
-            Option::None,
-            Option::None,
-            Some(indoc! {r###"
-                data.airlone = result.value(\'id')
-                data.costs += result.value('costs').to_f
-                status.update 1, 'Hotel'
-            "###}),
-            Option::None,
-        )?;
-        weel().call(
-            "a1",
-            "bookAir",
-            HTTPParams {
-                label: "Book Airline 1",
-                method: Method::POST,
-                arguments: Some(vec![
-                    new_key_value_pair("from", "data.from"),
-                    new_key_value_pair("to", "data.to"),
-                    new_key_value_pair("persons", "data.persons"),
+                    new_key_value_pair("from", "data.from", true),
+                    new_key_value_pair("to", "data.to", true),
+                    new_key_value_pair("persons", "data.persons", true),
                 ]),
             },
             Option::None,
@@ -177,42 +156,8 @@ fn setup_signal_handler(weel: &Arc<Weel>) {
 /**
  * Creates a new Key value pair by evaluating the key and value expressions (tries to resolve them in rust if they are simple data accessors)
  */
-pub fn new_key_value_pair(key_expression: &'static str, value: &'static str) -> KeyValuePair {
+pub fn new_key_value_pair(key_expression: &'static str, value: &'static str, expression_value: bool) -> KeyValuePair {
     let key = key_expression;
     let value = Some(value.to_owned());
-    KeyValuePair { key, value }
-}
-
-pub fn new_key_value_pair_ex(
-    key_expression: &'static str,
-    value_expression: &'static str,
-    static_data: &StaticData,
-    dynamic_data: &DynamicData,
-) -> KeyValuePair {
-    // TODO: Should we lock `dynamic data` here as mutex or just pass copy? -> Do we want to modify it here?
-    let key = eval_helper::evaluate_expression(
-        dynamic_data,
-        static_data,
-        key_expression,
-        None,
-        None,
-        serde_json::Value::Null,
-        None,
-        None
-    ).unwrap().expression_result; // Cannot change the data as such we can just extract the expression
-
-    // TODO: Should we lock `dynamic data` here as mutex or just pass copy? -> Do we want to modify it here?
-    let value = eval_helper::evaluate_expression(
-        dynamic_data,
-        static_data,
-        key_expression,
-        None,
-        None,
-        serde_json::Value::Null,
-        None,
-        None
-    ).unwrap().expression_result; // Cannot change the data as such we can just extract the expression
-    // TODO: Decide on whether we make the key modifiable (as an expression or just a static string, depending on it we need to change the type from &str to String)
-    todo!()
-    // KeyValuePair { key, value: Some(value) }
+    KeyValuePair { key, value, expression_value }
 }

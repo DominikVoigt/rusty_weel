@@ -16,7 +16,7 @@ use urlencoding::encode;
 
 use crate::{
     data_types::{BlockingQueue, HTTPParams, InstanceMetaData},
-    dsl_realization::{generate_random_key, Error, Result, Signal, Weel}, eval_helper, redis_helper::RedisHelper,
+    dsl_realization::{generate_random_key, Error, Result, Signal, Weel}, eval_helper::{self, EvaluationResult}, redis_helper::RedisHelper,
 };
 
 pub struct ConnectionWrapper {
@@ -208,7 +208,9 @@ impl ConnectionWrapper {
     }
 
     /**
-     * Resolves the endpoints to their actual URLs
+     * Handles all preparations to execute the activity:
+     * - Executes the prepare code
+     * - Resolves the endpoints to their actual URLs
      */
     pub fn prepare(&mut self, prepare_code: Option<&str>, thread_local: String, endpoint_names: &Vec<&str>, parameters: HTTPParams) -> Result<HTTPParams> {
         let weel = self.weel();
@@ -311,11 +313,14 @@ impl ConnectionWrapper {
 
     /**
      * Executes the actual service call
+     * Locks the connection wrapper for the duration of the call
+     * Locks:
+     *  - connection_wrapper (provided as selfy)
      */
     pub fn activity_handle(
         selfy: &Arc<Mutex<Self>>,
         passthrough: Option<&str>,
-        parameters: &HTTPParams,
+        parameters: HTTPParams,
     ) -> Result<()> {
         let mut this = selfy.lock()?;
         let weel = this.weel();
@@ -346,7 +351,11 @@ impl ConnectionWrapper {
                 content.remove("endpoint");
                 weel.register_callback(selfy.clone(), passthrough, content)?;
             },
-            None => Self::curl(this, selfy, parameters, weel)?,
+            None => {
+                // Drop to allow relocking in the method
+                drop(this);
+                Self::curl(selfy, &parameters, weel)?
+            },
         }
         Ok(())
     }
@@ -359,13 +368,15 @@ impl ConnectionWrapper {
      *          -> TODO: Our implementation sends this as multipart, is this fine?
      * - Expects prepare to be called before
      * - We explicitly expect the Arc<Mutex> here since we need to add a reference to the callbacks (by cloning the Arc)
+     * Locks:
+     *  - connection_wrapper (provided as selfy)
      */
     pub fn curl(
-        mut this: MutexGuard<ConnectionWrapper>,
         selfy: &Arc<Mutex<Self>>,
         parameters: &HTTPParams,
         weel: Arc<Weel>,
     ) -> Result<()> {
+        let mut this = selfy.lock().unwrap();
         let callback_id = generate_random_key();
         this.handler_passthrough = Some(callback_id.clone());
 
@@ -460,7 +471,7 @@ impl ConnectionWrapper {
         if status < 200 || status >= 300 {
             response_headers.insert("CPEE_SALVAGE".to_owned(), "true".to_owned());
             this.handle_callback(
-                status,
+                Some(status),
                 &body,
                 response_headers
             )?
@@ -473,7 +484,7 @@ impl ConnectionWrapper {
             if callback_header_set {
                 if !body.len() > 0 {
                     response_headers.insert("CPEE_UPDATE".to_owned(), "true".to_owned());
-                    this.handle_callback(status, &body, response_headers)?
+                    this.handle_callback(Some(status), &body, response_headers)?
                 } else {
                     // In this case we have an asynchroneous task
                     let mut content = HashMap::new();
@@ -525,7 +536,7 @@ impl ConnectionWrapper {
                     }
                 }
             } else {
-                this.handle_callback(status, &body, response_headers)?
+                this.handle_callback(Some(status), &body, response_headers)?
             }
         }
         Ok(())
@@ -536,10 +547,11 @@ impl ConnectionWrapper {
      * This is called for any response comming back from the service.
      * In case of a synchroneous call, it is called directly (within the curl method)
      * In case of an asynchroneous call, it is called from the callback thread (started when the instance is spun up via the `establish_callback_subscriptions` in the redis_helper)
+     * Redis callbacks have no response code -> Optional
      */
     pub fn handle_callback(
         &mut self,
-        status: u16,
+        status: Option<u16>,
         body: &[u8],
         options: HashMap<String, String>, // Headers
     ) -> Result<()> {
@@ -595,7 +607,7 @@ impl ConnectionWrapper {
                 weel.static_data.get_instance_meta_data(),
             )?;
         } else {
-            self.handler_return_status = Some(status);
+            self.handler_return_status = status;
             self.handler_return_value = Some(recv);
             self.handler_return_options = Some(options.clone());
 
@@ -839,7 +851,23 @@ impl ConnectionWrapper {
     }
 }
 
-
 fn contains_non_empty(options: &HashMap<String, String>, key: &str) -> bool {
     options.get(key).map(|e| !e.is_empty()).unwrap_or(false)
+}
+
+impl Into<LocalData> for EvaluationResult {
+    fn into(self) -> LocalData {
+        LocalData { data: self.data, endpoints: self.endpoints, thread_local: self.thread_local }
+    }
+}
+
+/*
+ * Contains either:
+ *  - Snapshot of the weel instance dynamic data and the thread_local information
+ *  - Modified version of the snapshot after execution of some provided code (see prepare function in the conection wrapper)
+ */
+pub struct LocalData {
+    pub data: String,
+    pub endpoints: HashMap<String, String>,
+    pub thread_local: String
 }
