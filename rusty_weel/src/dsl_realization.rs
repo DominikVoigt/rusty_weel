@@ -530,24 +530,13 @@ impl Weel {
                             thread_info_map.get(&current_thread).unwrap().borrow_mut();
                         // TODO: In manipulate we directly "abort" and do not run code, here we run code and then check for abort, is this correct?
                         let mut connection_wrapper = connection_wrapper_mutex.lock().unwrap();
-                        let endpoint_urls: HashMap<String, String> = match prepare_code {
-                            Some(code) => {
-                                let result = self.clone().execute_code(
-                                    true,
-                                    code,
-                                    thread_info.local.clone(),
-                                    &connection_wrapper_mutex.lock().unwrap(),
-                                )?;
-                                result.endpoints
-                            }
-                            None => self.dynamic_data.lock().unwrap().endpoints.clone(),
-                        };
-                        connection_wrapper.prepare(
-                            endpoint_urls,
+                        let parameters = connection_wrapper.prepare(
+                            prepare_code,
+                            thread_info.local.clone(),
                             &vec![endpoint_name.unwrap()],
-                            parameters.as_ref().unwrap(),
-                        );
-
+                            parameters.expect("The activity type call requires parameters to be provided"),
+                        )?;
+                        // Drop info before we enter blocking vote_sync_before
                         drop(thread_info);
                         drop(thread_info_map);
 
@@ -764,7 +753,7 @@ impl Weel {
      *
      * The read_only flag governs whether changes to dataelements and endpoints are applied to the instance (read_only=false) or not (read_only=true)
      */
-    fn execute_code(
+    pub fn execute_code(
         self: &Arc<Self>,
         read_only: bool,
         code: &str,

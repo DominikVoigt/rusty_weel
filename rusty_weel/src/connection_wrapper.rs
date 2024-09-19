@@ -210,10 +210,29 @@ impl ConnectionWrapper {
     /**
      * Resolves the endpoints to their actual URLs
      */
-    pub fn prepare(&mut self, endpoint_urls: HashMap<String, String>, endpoint_names: &Vec<&str>, parameters: &HTTPParams) -> HTTPParams {
+    pub fn prepare(&mut self, prepare_code: Option<&str>, thread_local: String, endpoint_names: &Vec<&str>, parameters: HTTPParams) -> Result<HTTPParams> {
+        let weel = self.weel();
+        // Execute the prepare code and use the modified context for the rest of this metod (prepare_result)
+        let prepare_result = match prepare_code {
+            Some(code) => {
+                let result = weel.execute_code(
+                    true,
+                    code,
+                    thread_local,
+                    self,
+                )?;
+                result.into()
+            }
+            None => {
+                let dynamic_data = weel.dynamic_data.lock().unwrap();
+                LocalData { data: dynamic_data.data.clone(), endpoints: dynamic_data.endpoints.clone(), thread_local }
+            },
+        };
+
+        // Resolve the endpoint name to the actual correct endpoint (incl. twin_translate)
         if endpoint_names.len() > 0 {
             let weel = self.weel();
-            self.resolve_endpoints(endpoint_urls, endpoint_names);
+            self.resolve_endpoints(prepare_result.endpoints, endpoint_names);
 
             match weel.static_data.attributes.get("twin_engine") {
                 Some(twin_engine_url) => {
@@ -230,10 +249,11 @@ impl ConnectionWrapper {
                 None => {
                     // Do nothing with the endpoints
                 }
-            }
-        }
-        // I believe we do not need to modify arguments here -> procs
-        parameters.clone()
+            };
+        };
+
+        // TODO: Evaluate key value pairs that have the flag set (TODO: Add endpoint for eval only)
+        todo!()
     }
 
     /**
@@ -255,7 +275,7 @@ impl ConnectionWrapper {
         let data = &weel.static_data;
         json!(
             {
-                "attributes": weel.static_data.attributes,
+                "attributes": data.attributes,
                 "cpee": {
                     "base": data.base_url,
                     "instance": data.instance_id,
