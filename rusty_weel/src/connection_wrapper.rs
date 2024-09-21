@@ -16,7 +16,9 @@ use urlencoding::encode;
 
 use crate::{
     data_types::{BlockingQueue, HTTPParams, InstanceMetaData},
-    dsl_realization::{generate_random_key, Error, Result, Signal, Weel}, eval_helper::{self, EvaluationResult}, redis_helper::RedisHelper,
+    dsl_realization::{generate_random_key, Error, Result, Signal, Weel},
+    eval_helper::{self, EvaluationResult},
+    redis_helper::RedisHelper,
 };
 
 pub struct ConnectionWrapper {
@@ -148,7 +150,6 @@ impl ConnectionWrapper {
         self.inform("activity/manipulating", Some(content))
     }
 
-
     pub fn inform_activity_done(&self) -> Result<()> {
         let content = self.construct_basic_content()?;
         self.inform("activity/done", Some(content))?;
@@ -159,45 +160,66 @@ impl ConnectionWrapper {
         let mut content = match crate::proc::get_cpu_times() {
             Ok(x) => x,
             Err(err) => match err {
-                crate::proc::Error::ParseFloatError(_) => return Err(Error::GeneralError("Error parsing floats when calculating CPU Times".to_owned())),
+                crate::proc::Error::ParseFloatError(_) => {
+                    return Err(Error::GeneralError(
+                        "Error parsing floats when calculating CPU Times".to_owned(),
+                    ))
+                }
                 crate::proc::Error::IOError(err) => return Err(Error::IOError(err)),
                 crate::proc::Error::Utf8Error(err) => return Err(Error::StrUTF8Error(err)),
             },
         };
-        content.insert("mb".to_owned(), match crate::proc::get_prop_set_size() {
-            Ok(x) => x,
-            Err(err) => return Err(Error::GeneralError(format!("An error occured when calculating the memory usage: {:?}", err))),
-        });
-        
+        content.insert(
+            "mb".to_owned(),
+            match crate::proc::get_prop_set_size() {
+                Ok(x) => x,
+                Err(err) => {
+                    return Err(Error::GeneralError(format!(
+                        "An error occured when calculating the memory usage: {:?}",
+                        err
+                    )))
+                }
+            },
+        );
+
         self.inform("status/resource_utilization", Some(content))?;
         Ok(())
     }
 
-    pub fn inform_manipulate_change(&self, evaluation_result: eval_helper::EvaluationResult) -> Result<()> {
+    pub fn inform_manipulate_change(
+        &self,
+        evaluation_result: eval_helper::EvaluationResult,
+    ) -> Result<()> {
         let content = self.construct_basic_content()?;
         if let Some(changed_status) = evaluation_result.changed_status {
             let mut content = content.clone();
             content.insert("id".to_owned(), changed_status.id.to_string());
             content.insert("message".to_owned(), changed_status.message);
-            self.inform("status/change", Some(content))?;       
+            self.inform("status/change", Some(content))?;
         }
         if let Some(changed_data) = evaluation_result.changed_data {
             let mut content = content.clone();
             // TODO For us, we need the direct pairs of changed data: (name, new value)
             // In the ManipulateStructure implementation, the values where changed directly via the instance_eval => Changed data/endpoints just contained the names
             content.insert("changed".to_owned(), serde_json::to_string(&changed_data)?);
-            self.inform("dataelements/change", Some(content))?;       
+            self.inform("dataelements/change", Some(content))?;
         }
         if let Some(changed_endpoints) = evaluation_result.changed_endpoints {
             let mut content = content.clone();
-            content.insert("changed".to_owned(), serde_json::to_string(&changed_endpoints)?);
-            self.inform("endpoints/change", Some(content))?;       
+            content.insert(
+                "changed".to_owned(),
+                serde_json::to_string(&changed_endpoints)?,
+            );
+            self.inform("endpoints/change", Some(content))?;
         }
 
         todo!()
-        
     }
 
+    /*
+     * Locks:
+     *  - Locks the redis_notification_client (shortly)
+     */
     fn inform(&self, what: &str, content: Option<HashMap<String, String>>) -> Result<()> {
         let weel = self.weel();
         weel.redis_notifications_client
@@ -211,29 +233,38 @@ impl ConnectionWrapper {
      * Handles all preparations to execute the activity:
      * - Executes the prepare code
      * - Resolves the endpoints to their actual URLs
+     *
+     * Locks:
+     *  - dynamic data of the weel instance (shortly)
+     *  - what the `execute_code()` call locks
+     *  -  
      */
-    pub fn prepare(&mut self, prepare_code: Option<&str>, thread_local: String, endpoint_names: &Vec<&str>, parameters: HTTPParams) -> Result<HTTPParams> {
+    pub fn prepare(
+        &mut self,
+        prepare_code: Option<&str>,
+        thread_local: String,
+        endpoint_names: &Vec<&str>,
+        parameters: &HTTPParams,
+    ) -> Result<HTTPParams> {
         let weel = self.weel();
         // Execute the prepare code and use the modified context for the rest of this metod (prepare_result)
         let prepare_result = match prepare_code {
             Some(code) => {
-                let result = weel.execute_code(
-                    true,
-                    code,
-                    thread_local,
-                    self,
-                )?;
+                let result = weel.execute_code(true, code, thread_local, self)?;
                 result.into()
             }
             None => {
                 let dynamic_data = weel.dynamic_data.lock().unwrap();
-                LocalData { data: dynamic_data.data.clone(), endpoints: dynamic_data.endpoints.clone(), thread_local }
-            },
+                LocalData {
+                    data: dynamic_data.data.clone(),
+                    endpoints: dynamic_data.endpoints.clone(),
+                    thread_local,
+                }
+            }
         };
 
         // Resolve the endpoint name to the actual correct endpoint (incl. twin_translate)
         if endpoint_names.len() > 0 {
-            let weel = self.weel();
             self.resolve_endpoints(prepare_result.endpoints, endpoint_names);
 
             match weel.static_data.attributes.get("twin_engine") {
@@ -261,7 +292,11 @@ impl ConnectionWrapper {
     /**
      * Resolves the endpoint names in endpoints to the actual endpoint URLs
      */
-    fn resolve_endpoints(&mut self, endpoint_urls: HashMap<String, String>, endpoint_names: &Vec<&str>) {
+    fn resolve_endpoints(
+        &mut self,
+        endpoint_urls: HashMap<String, String>,
+        endpoint_names: &Vec<&str>,
+    ) {
         self.handler_endpoints = endpoint_names
             .iter()
             .map(|ep| endpoint_urls.get(*ep))
@@ -291,7 +326,7 @@ impl ConnectionWrapper {
             }
         )
     }
-    
+
     pub fn activity_passthrough_value(&self) -> Option<String> {
         self.handler_passthrough.clone()
     }
@@ -303,7 +338,7 @@ impl ConnectionWrapper {
     /**
      * Will cancel an activity via the redis_helper thread
      */
-    pub fn activity_stop(&self) -> Result<()>{
+    pub fn activity_stop(&self) -> Result<()> {
         if let Some(passthrough) = &self.handler_passthrough {
             self.weel().cancel_callback(passthrough)
         } else {
@@ -316,6 +351,7 @@ impl ConnectionWrapper {
      * Locks the connection wrapper for the duration of the call
      * Locks:
      *  - connection_wrapper (provided as selfy)
+     *  - locks the redis_notification client (shortly)
      */
     pub fn activity_handle(
         selfy: &Arc<Mutex<Self>>,
@@ -332,13 +368,15 @@ impl ConnectionWrapper {
         // We do not model annotations anyway -> Can skip this from the original code
         {
             this.inform_resource_utilization()?;
-            let mut redis: MutexGuard<'_, RedisHelper> = weel.redis_notifications_client.lock()?;
             let mut content = this.construct_basic_content()?;
             content.insert("label".to_owned(), this.label.clone());
-            content.insert("passthrough".to_owned(), passthrough.unwrap_or("").to_owned());
+            content.insert(
+                "passthrough".to_owned(),
+                passthrough.unwrap_or("").to_owned(),
+            );
             // parameters do not look exactly like in the original (string representation looks different):
             content.insert("parameters".to_owned(), parameters.clone().try_into()?);
-            redis.notify(
+            weel.redis_notifications_client.lock()?.notify(
                 "activity/calling",
                 Some(content),
                 weel.static_data.get_instance_meta_data(),
@@ -350,12 +388,12 @@ impl ConnectionWrapper {
                 content.insert("label".to_owned(), this.label.clone());
                 content.remove("endpoint");
                 weel.register_callback(selfy.clone(), passthrough, content)?;
-            },
+            }
             None => {
                 // Drop to allow relocking in the method
                 drop(this);
                 Self::curl(selfy, &parameters, weel)?
-            },
+            }
         }
         Ok(())
     }
@@ -371,11 +409,7 @@ impl ConnectionWrapper {
      * Locks:
      *  - connection_wrapper (provided as selfy)
      */
-    pub fn curl(
-        selfy: &Arc<Mutex<Self>>,
-        parameters: &HTTPParams,
-        weel: Arc<Weel>,
-    ) -> Result<()> {
+    pub fn curl(selfy: &Arc<Mutex<Self>>, parameters: &HTTPParams, weel: Arc<Weel>) -> Result<()> {
         let mut this = selfy.lock().unwrap();
         let callback_id = generate_random_key();
         this.handler_passthrough = Some(callback_id.clone());
@@ -470,11 +504,7 @@ impl ConnectionWrapper {
         // If status not okay:
         if status < 200 || status >= 300 {
             response_headers.insert("CPEE_SALVAGE".to_owned(), "true".to_owned());
-            this.handle_callback(
-                Some(status),
-                &body,
-                response_headers
-            )?
+            this.handle_callback(Some(status), &body, response_headers)?
         } else {
             let callback_header_set = match response_headers.get("CPEE_CALLBACK") {
                 Some(header) => header == "true",
@@ -511,7 +541,10 @@ impl ConnectionWrapper {
 
                     if instantiation_header_set {
                         // TODO What about value_helper
-                        content.insert("received".to_owned(), response_headers.get("CPEE_INSTANTIATION").unwrap().clone());
+                        content.insert(
+                            "received".to_owned(),
+                            response_headers.get("CPEE_INSTANTIATION").unwrap().clone(),
+                        );
                         weel.redis_notifications_client.lock().unwrap().notify(
                             "task/instantiation",
                             Some(content.clone()),
@@ -556,7 +589,8 @@ impl ConnectionWrapper {
         options: HashMap<String, String>, // Headers
     ) -> Result<()> {
         let weel = self.weel();
-        let recv = eval_helper::structurize_result(&weel.static_data.eval_backend_url, &options, body)?;
+        let recv =
+            eval_helper::structurize_result(&weel.static_data.eval_backend_url, &options, body)?;
         let mut redis = weel.redis_notifications_client.lock()?;
         let content = self.construct_basic_content()?;
         {
@@ -576,7 +610,10 @@ impl ConnectionWrapper {
 
         if contains_non_empty(&options, "CPEE_INSTANTIATION") {
             let mut content = content.clone();
-            content.insert("received".to_owned(), options.get("CPEE_INSTANTIATION").unwrap().clone());
+            content.insert(
+                "received".to_owned(),
+                options.get("CPEE_INSTANTIATION").unwrap().clone(),
+            );
 
             redis.notify(
                 "activity/receiving",
@@ -610,7 +647,6 @@ impl ConnectionWrapper {
             self.handler_return_status = status;
             self.handler_return_value = Some(recv);
             self.handler_return_options = Some(options.clone());
-
         }
 
         if contains_non_empty(&options, "CPEE_STATUS") {
@@ -620,7 +656,7 @@ impl ConnectionWrapper {
         }
         if contains_non_empty(&options, "CPEE_UPDATE") {
             match &self.handler_continue {
-                Some(x) => x.enqueue(Signal::Again),
+                Some(x) => x.enqueue(Signal::UpdateAgain),
                 None => log::error!("Received CPEE_UPDATE but handler_continue is empty?"),
             }
         } else {
@@ -641,7 +677,9 @@ impl ConnectionWrapper {
             } else {
                 match &self.handler_continue {
                     Some(x) => x.enqueue(Signal::None),
-                    None => log::error!("Received neither salvage or stop but handler_continue is empty?"),
+                    None => log::error!(
+                        "Received neither salvage or stop but handler_continue is empty?"
+                    ),
                 }
             }
         }
@@ -732,7 +770,7 @@ impl ConnectionWrapper {
             }
         }
     }
-    
+
     fn handle_twin_translate(
         twin_translate_url: &String,
         headers: &mut HeaderMap,
@@ -753,7 +791,7 @@ impl ConnectionWrapper {
                 },
                 None => "instantiation",
             };
-    
+
             // Assumption about "gtresult.first.value.read": first is the array method to get the first element
             let body = match content.pop().unwrap() {
                 Parameter::SimpleParameter { value, .. } => value.clone(),
@@ -767,7 +805,7 @@ impl ConnectionWrapper {
                     body
                 }
             };
-    
+
             // TODO: Very unsure about the semantics of the original code and the usage
             let mut array = json!(body);
             assert!(array.is_array());
@@ -787,7 +825,8 @@ impl ConnectionWrapper {
                             {
                                 for (a_name, a_value) in arguments.iter_mut() {
                                     if a_value.is_string() {
-                                        let header_name = a_value.as_str().unwrap().replace("-", "_");
+                                        let header_name =
+                                            a_value.as_str().unwrap().replace("-", "_");
                                         if let Some(header) = result_headers.get(&header_name) {
                                             *a_value = Value::from_str(header)?;
                                         }
@@ -808,12 +847,13 @@ impl ConnectionWrapper {
                                             }
                                         }
                                     }
-    
+
                                     for (h_name, h_value) in headers.iter_mut() {
                                         if h_name.as_str() == a_name {
                                             if a_value.is_string() {
-                                                *h_value =
-                                                    HeaderValue::from_str(a_value.as_str().unwrap())?;
+                                                *h_value = HeaderValue::from_str(
+                                                    a_value.as_str().unwrap(),
+                                                )?;
                                             } else if a_value.is_object() {
                                                 let mut current: HashMap<String, String> =
                                                     match serde_json::from_str(h_value.to_str()?) {
@@ -845,7 +885,7 @@ impl ConnectionWrapper {
             }
         })
     }
-    
+
     pub fn activity_no_longer_necessary(&self) -> bool {
         true
     }
@@ -857,7 +897,11 @@ fn contains_non_empty(options: &HashMap<String, String>, key: &str) -> bool {
 
 impl Into<LocalData> for EvaluationResult {
     fn into(self) -> LocalData {
-        LocalData { data: self.data, endpoints: self.endpoints, thread_local: self.thread_local }
+        LocalData {
+            data: self.data,
+            endpoints: self.endpoints,
+            thread_local: self.thread_local,
+        }
     }
 }
 
@@ -869,5 +913,5 @@ impl Into<LocalData> for EvaluationResult {
 pub struct LocalData {
     pub data: String,
     pub endpoints: HashMap<String, String>,
-    pub thread_local: String
+    pub thread_local: String,
 }
