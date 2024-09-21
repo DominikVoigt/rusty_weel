@@ -257,6 +257,9 @@ impl Weel {
      * Allows veto-voting on arbitrary topics and will return true if no veto was cast (otherwise false)
      *
      * Vote of controller
+     *
+     * Locks:
+     *  - open_votes
      */
     pub fn vote(&self, vote_topic: &str, mut content: HashMap<String, String>) -> Result<bool> {
         let static_data = &self.static_data;
@@ -431,19 +434,15 @@ impl Weel {
         endpoint_name: Option<&str>,
     ) -> Result<()> {
         let position = self.position_test(label)?;
-        let search_mode = self.in_search_mode(Some(label));
-        if search_mode {
+        let in_search_mode = self.in_search_mode(Some(label));
+        if in_search_mode {
             return Ok(());
         }
-
-        let invalid_state = match *self.state.lock().unwrap() {
-            State::Running => false,
-            _ => true,
-        };
-
         let connection_wrapper =
             ConnectionWrapper::new(self.clone(), Some(position.to_owned()), None);
         let connection_wrapper_mutex = Arc::new(Mutex::new(connection_wrapper));
+
+        let mut weel_position = None;
         /*
          * We use a block computation here to mimick the exception handling -> If an exception in the original ruby code is raised, we return it here
          */
@@ -453,26 +452,24 @@ impl Weel {
             // Unwrap as we have precondition that thread info is available on spawning
             let mut thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
 
-            let mut connection_wrapper = connection_wrapper_mutex.lock().unwrap();
-            {
-                // Skip execution if the branch was set to no longer necessary or the instance is supposed to stop
-                let no_longer_necessary = thread_info.no_longer_necessary;
-
-                if no_longer_necessary {
-                    break 'raise Err(Signal::NoLongerNecessary.into());
-                }
-                if invalid_state {
-                    // Consistent with further below
-                    break 'raise Err(Signal::Skip.into());
-                }
+            // Check early return
+            let in_invalid_state = match *self.state.lock().unwrap() {
+                State::Running => false,
+                _ => true,
+            };
+            if in_invalid_state || thread_info.no_longer_necessary {
+                return Ok(());
             }
+
             thread_info.blocking_queue = Arc::new(BlockingQueue::new());
+            let mut connection_wrapper = connection_wrapper_mutex.lock().unwrap();
             connection_wrapper.handler_continue = Some(thread_info.blocking_queue.clone());
+
             let parent = thread_info.parent.clone();
-            let branch_traces_id = thread_info.branch_traces_id.clone();
-            let local = thread_info.local.clone();
-            if parent.is_some() && branch_traces_id.is_some() {
-                let branch_trace_id = branch_traces_id.as_ref().unwrap();
+
+            // Register position/label of this thread in the branch traces of the parent thread
+            if parent.is_some() && thread_info.branch_traces_id.is_some() {
+                let branch_trace_id = thread_info.branch_traces_id.as_ref().unwrap();
                 let mut parent_thread_info =
                     thread_info_map.get(&parent.unwrap()).unwrap().borrow_mut();
                 let traces = parent_thread_info.branch_traces.get_mut(branch_trace_id);
@@ -486,15 +483,16 @@ impl Weel {
                 }
             };
 
-            let mut weel_position = self.weel_progress(
+            weel_position = Some(self.weel_progress(
                 position.to_owned(),
                 connection_wrapper.handler_activity_uuid.clone(),
                 false,
-            )?;
+            )?);
+            // Local information should not change outside of this thread TODO: add this to actual thread_local_storage
+            let local = thread_info.local.clone();
             // Drop the thread_info here already as for a manipulate we do not need it at all and a call we need to acquire the lock every 'again loop anyway
             drop(thread_info);
             drop(thread_info_map);
-
             match activity_type {
                 ActivityType::Manipulate => {
                     let state_stopping_or_finishing = matches!(
@@ -502,15 +500,15 @@ impl Weel {
                         State::Stopping | State::Finishing
                     );
                     if !self.vote_sync_before(&connection_wrapper, None)? {
-                        break 'raise Err(Signal::Stop.into());
+                        break 'raise Err(Error::Signal(Signal::Stop, None));
                     } else if state_stopping_or_finishing {
-                        break 'raise Err(Signal::Skip.into());
+                        break 'raise Err(Error::Signal(Signal::Skip, None));
                     }
                     match finalize_code {
                         Some(finalize_code) => {
                             connection_wrapper.activity_manipulate_handle(label);
                             connection_wrapper.inform_activity_manipulate()?;
-                            let result = self.clone().execute_code(
+                            let result = self.execute_code(
                                 false,
                                 finalize_code,
                                 local,
@@ -521,9 +519,12 @@ impl Weel {
                         None => (),
                     };
                     connection_wrapper.inform_activity_done()?;
-                    weel_position.detail = Mark::After;
+                    weel_position.as_mut().unwrap().detail = Mark::After;
                     let mut ipc = HashMap::new();
-                    ipc.insert("after".to_owned(), serde_json::to_string(&weel_position)?);
+                    ipc.insert(
+                        "after".to_owned(),
+                        serde_json::to_string(weel_position.as_ref().unwrap())?,
+                    );
                     ConnectionWrapper::new(self.clone(), None, None)
                         .inform_position_change(Some(ipc))?;
                 }
@@ -542,21 +543,23 @@ impl Weel {
                             prepare_code,
                             thread_info.local.clone(),
                             &vec![endpoint_name.unwrap()],
-                            parameters.expect("The activity type call requires parameters to be provided"),
+                            parameters.as_ref().expect(
+                                "The activity type call requires parameters to be provided",
+                            ),
                         )?;
-                        // Drop info before we enter blocking vote_sync_before
-                        drop(thread_info);
-                        drop(thread_info_map);
 
                         let state_stopping_or_finishing = matches!(
                             *self.state.lock().unwrap(),
                             State::Stopping | State::Finishing
                         );
-                        // TODO: Maybe drop the thread info here too? This call will block all
+
+                        // Drop info before we enter blocking vote_sync_before
+                        drop(thread_info);
+                        drop(thread_info_map);
                         if !self.vote_sync_before(&connection_wrapper, None)? {
-                            break 'raise Err(Signal::Stop.into());
+                            break 'raise Err(Error::Signal(Signal::Stop, None));
                         } else if state_stopping_or_finishing {
-                            break 'raise Err(Signal::Skip.into());
+                            break 'raise Err(Error::Signal(Signal::Skip, None));
                         }
 
                         // Will be locked in the activity_handle again
@@ -565,26 +568,31 @@ impl Weel {
                         ConnectionWrapper::activity_handle(
                             &connection_wrapper_mutex,
                             weel_position
+                                .as_ref()
+                                .unwrap()
                                 .handler_passthrough
                                 .as_ref()
                                 .map(|x| x.as_str()),
                             parameters,
                         )?;
-                        weel_position.handler_passthrough =
+                        let connection_wrapper = connection_wrapper_mutex.lock().unwrap();
+                        weel_position.as_mut().unwrap().handler_passthrough =
                             connection_wrapper.handler_passthrough.clone();
-                        if let Some(position) = &weel_position.handler_passthrough {
+                        if let Some(position) = &weel_position.as_ref().unwrap().handler_passthrough
+                        {
                             let connection_wrapper = ConnectionWrapper::new(
                                 self.clone(),
-                                Some(position.to_owned()),
-                                Some(thread_info.blocking_queue.clone()),
+                                // Do not need this data for the inform:
+                                None,
+                                None,
                             );
                             let mut content = HashMap::new();
-                            content
-                                .insert("wait".to_owned(), serde_json::to_string(&weel_position)?);
+                            content.insert(
+                                "wait".to_owned(),
+                                serde_json::to_string(weel_position.as_ref().unwrap())?,
+                            );
                             connection_wrapper.inform_position_change(Some(content))?;
                         };
-                        drop(thread_info);
-                        drop(thread_info_map);
                         drop(connection_wrapper);
                         'inner: loop {
                             let current_thread = thread::current().id();
@@ -601,14 +609,19 @@ impl Weel {
                             let should_block =
                                 !state_stopping_or_finishing && !thread_info.no_longer_necessary;
                             let mut wait_result = None;
+
+                            // Get reference on the queue to allow us to unlock the rest of the thread info
+                            // TODO: Maybe put the blocking queue info into real thread local storage
                             let thread_queue = thread_info.blocking_queue.clone();
-                            // We need to release the locks on the thread_info_map to allow other parallel branches to execute
+
+                            // We need to release the locks on the thread_info_map to allow other parallel branches to execute while we wait for the callback (can take long for async case)
                             drop(thread_info);
                             drop(thread_info_map);
                             // We need to release the connection_wrapper lock here to allow callbacks from redis to lock the wrapper
                             drop(connection_wrapper);
+
                             if should_block {
-                                // TODO: issue this will block the whole thread -> We need to have no mutexed locked at this point or the whole instance will block!
+                                // TODO: issue this will block the whole thread -> We need to have no instance level mutexed locked at this point or the whole instance will block!
                                 wait_result = Some(thread_queue.dequeue());
                             };
 
@@ -623,43 +636,44 @@ impl Weel {
                             if thread_info.no_longer_necessary {
                                 // TODO: Definition of this method is basically empty?
                                 connection_wrapper.activity_no_longer_necessary();
-                                break 'raise Err(Signal::NoLongerNecessary.into());
+                                break 'raise Err(Error::Signal(Signal::NoLongerNecessary, None));
                             }
+                            // Store local for code execution -> allows us to unlock the thread_local_map here
+                            let local = thread_info.local.clone();
+                            drop(thread_info);
+                            drop(thread_info_map);
+
                             let state_stopping_or_finishing = matches!(
                                 *self.state.lock().unwrap(),
                                 State::Stopping | State::Stopped | State::Finishing
                             );
                             if state_stopping_or_finishing {
                                 connection_wrapper.activity_stop()?;
-                                weel_position.handler_passthrough =
+                                weel_position.as_mut().unwrap().handler_passthrough =
                                     connection_wrapper.activity_passthrough_value();
-                                break 'raise Err(Signal::Proceed.into());
+                                break 'raise Err(Error::Signal(Signal::Proceed, None));
                             };
 
-                            if wait_result
+                            let signaled_update_again = wait_result
                                 .as_ref()
-                                .map(|res| matches!(res, Signal::Again))
-                                .unwrap_or(false)
-                                && connection_wrapper
-                                    .handler_return_value
-                                    .clone()
-                                    .map(|x| x.is_empty())
-                                    .unwrap_or(true)
-                            {
+                                .map(|res| matches!(res, Signal::UpdateAgain))
+                                .unwrap_or(false);
+                            let return_value_empty = connection_wrapper
+                                .handler_return_value
+                                .clone()
+                                .map(|x| x.is_empty())
+                                .unwrap_or(true);
+                            if signaled_update_again && return_value_empty {
                                 continue;
                             }
 
-                            let code = if wait_result
-                                .as_ref()
-                                .map(|res| matches!(res, Signal::Again))
-                                .unwrap_or(false)
-                            {
-                                update_code
-                            } else if wait_result
+                            let signaled_salvage = wait_result
                                 .as_ref()
                                 .map(|res| matches!(res, Signal::Salvage))
-                                .unwrap_or(false)
-                            {
+                                .unwrap_or(false);
+                            let code = if signaled_update_again {
+                                update_code
+                            } else if signaled_salvage {
                                 if rescue_code.is_some() {
                                     rescue_code
                                 } else {
@@ -685,36 +699,42 @@ impl Weel {
                             connection_wrapper.inform_activity_manipulate()?;
                             if let Some(code) = code {
                                 // TODO: I do not get this line in the original with the catch Signal::Again and the the Signal::Proceed
-                                let evaluation_result = self.execute_code(
-                                    false,
-                                    code,
-                                    thread_info.local.clone(),
-                                    &connection_wrapper,
-                                )?;
+                                let evaluation_result =
+                                    self.execute_code(false, code, local, &connection_wrapper)?;
                                 // TODO: We need to handle a signal -> Signal Again, Signal Error
                                 connection_wrapper.inform_manipulate_change(evaluation_result)?;
-                                // TODO: What would this ma.nil? result in rust?
-                                let cond = false;
-                                if cond {
-                                    continue 'again; // ->jumps to next execution of outer loop
+
+                                if let Some(signal) = evaluation_result.signal {
+                                    match signal {
+                                        Signal::Again => {
+                                            // If code threw a Signal::Again -> Rerun outer loop
+                                            continue 'again;
+                                        }
+                                        // If any other Signal was raised -> Error handling
+                                        x => {
+                                            break 'raise Err(Error::Signal(
+                                                x,
+                                                evaluation_result.signal_text,
+                                            ))
+                                        }
+                                    }
                                 }
-                                if wait_result
-                                    .as_ref()
-                                    .map(|res: &Signal| !matches!(res, Signal::Again))
-                                    .unwrap_or(true)
-                                {
-                                    break 'inner;
-                                }
+                            }
+                            if !signaled_update_again {
+                                // If wait result was not UpdateAgain -> Break out, otherwise continue inner loop
+                                break 'inner;
                             }
                         }
                         let connection_wrapper = connection_wrapper_mutex.lock().unwrap();
                         if connection_wrapper.activity_passthrough_value().is_none() {
                             connection_wrapper.inform_activity_done()?;
-                            weel_position.handler_passthrough = None;
-                            weel_position.detail = Mark::After;
+                            weel_position.as_mut().unwrap().handler_passthrough = None;
+                            weel_position.as_mut().unwrap().detail = Mark::After;
                             let mut content = HashMap::new();
-                            content
-                                .insert("after".to_owned(), serde_json::to_string(&weel_position)?);
+                            content.insert(
+                                "after".to_owned(),
+                                serde_json::to_string(weel_position.as_ref().unwrap())?,
+                            );
                             ConnectionWrapper::new(self.clone(), None, None)
                                 .inform_position_change(Some(content))?;
                         }
@@ -722,15 +742,15 @@ impl Weel {
                 }
             };
             // -> Feels very wrong, to do this but in this case the code treats this as an error, so will we
-            return Err(Signal::Proceed.into());
+            return Err(Error::Signal(Signal::Proceed.into(), None));
         };
 
         let connection_wrapper = connection_wrapper_mutex.lock().unwrap();
 
         if let Err(error) = result {
             match error {
-                Error::Signal(signal) => match signal {
-                    Signal::Proceed => {
+                Error::Signal(signal, msg) => match signal {
+                    Signal::Proceed | Signal::SkipManipulate => {
                         let state_stopping_or_finishing = matches!(
                             *self.state.lock().unwrap(),
                             State::Stopping | State::Finishing
@@ -738,7 +758,9 @@ impl Weel {
 
                         if !state_stopping_or_finishing
                             && !self.vote_sync_after(&connection_wrapper)?
-                        {}
+                        {
+                            weel_position.unwrap();
+                        }
                     }
                     Signal::NoLongerNecessary => todo!(),
                     Signal::Stop => todo!(),
@@ -750,7 +772,7 @@ impl Weel {
                 },
                 err => {
                     log::error!("Encountered error: {:?}", err);
-                    match ConnectionWrapper::new(self.clone(), Some(position.to_owned()), None)
+                    match ConnectionWrapper::new(self.clone(), None, None)
                         .inform_connectionwrapper_error(err)
                     {
                         Ok(_) => {}
@@ -781,7 +803,7 @@ impl Weel {
      *  - EVALUATION_LOCK (for read_only = false)
      */
     pub fn execute_code(
-        self: &Arc<Self>,
+        self: &Self,
         read_only: bool,
         code: &str,
         local: String,
@@ -819,6 +841,7 @@ impl Weel {
             let mut dynamic_data = self.dynamic_data.lock().unwrap();
             dynamic_data.data = result.data.clone();
             dynamic_data.endpoints = result.endpoints.clone();
+            drop(dynamic_data);
             if let Some(new_status) = &result.changed_status {
                 // TODO: We probably reuse the existing blocking queue instead of adding a new one right?
                 let mut current_status = self.status.lock().unwrap();
@@ -1041,7 +1064,7 @@ pub enum Error {
     HttpHelperError(http_helper::Error),
     PoisonError(),
     FromStrError(mime::FromStrError),
-    Signal(Signal),
+    Signal(Signal, Option<String>),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -1053,6 +1076,8 @@ pub enum Signal {
     Skip,
     None,
     NoLongerNecessary,
+    UpdateAgain,
+    SkipManipulate,
 }
 
 pub enum ActivityType {
@@ -1109,7 +1134,7 @@ impl Error {
             Error::HttpHelperError(_) => todo!(),
             Error::PoisonError() => todo!(),
             Error::FromStrError(_) => todo!(),
-            Error::Signal(_) => todo!(),
+            Error::Signal(_, _) => todo!(),
         }
     }
 }
