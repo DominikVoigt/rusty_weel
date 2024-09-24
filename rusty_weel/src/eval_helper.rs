@@ -30,45 +30,67 @@ pub fn evaluate_expression(
     local: Option<String>,
     additional: Value,
     call_result: Option<String>,
-    call_headers: Option<String>
+    call_headers: Option<String>,
+    location: &str,
 ) -> Result<EvaluationResult> {
     let mut client = Client::new(&static_context.eval_backend_url, http_helper::Method::PUT)?;
     {
         // Construct multipart request
         //let expression = encode(expression);
-        client.add_parameter(Parameter::SimpleParameter { name: "code".to_owned(), value: expression.to_owned(), param_type: http_helper::ParameterType::Body });
-        
-        client.add_complex_parameter("dataelements", APPLICATION_JSON, dynamic_context.data.as_bytes())?;
-        
+        client.add_parameter(Parameter::SimpleParameter {
+            name: "code".to_owned(),
+            value: expression.to_owned(),
+            param_type: http_helper::ParameterType::Body,
+        });
+
+        client.add_complex_parameter(
+            "dataelements",
+            APPLICATION_JSON,
+            dynamic_context.data.as_bytes(),
+        )?;
+
         if let Some(local) = local {
             client.add_complex_parameter("local", APPLICATION_JSON, local.as_bytes())?;
         }
 
         let endpoints = serde_json::to_string(&dynamic_context.endpoints)?;
         client.add_complex_parameter("endpoints", APPLICATION_JSON, endpoints.as_bytes())?;
-        
-        let additional = if additional.is_null() {"{}".to_owned()} else {serde_json::to_string(&additional)?}; 
+
+        let additional = if additional.is_null() {
+            "{}".to_owned()
+        } else {
+            serde_json::to_string(&additional)?
+        };
         client.add_complex_parameter("additional", APPLICATION_JSON, additional.as_bytes())?;
-        
+
         if let Some(status) = weel_status {
-            client.add_complex_parameter("status", APPLICATION_JSON, serde_json::to_string(&status)?.as_bytes())?;
+            client.add_complex_parameter(
+                "status",
+                APPLICATION_JSON,
+                serde_json::to_string(&status)?.as_bytes(),
+            )?;
         }
-        
+
         if let Some(call_result) = call_result {
-            client.add_complex_parameter("call_result", APPLICATION_JSON, call_result.as_bytes())?;
+            client.add_complex_parameter(
+                "call_result",
+                APPLICATION_JSON,
+                call_result.as_bytes(),
+            )?;
         }
 
         if let Some(call_headers) = call_headers {
-            client.add_complex_parameter("call_headers", APPLICATION_JSON, call_headers.as_bytes())?;
+            client.add_complex_parameter(
+                "call_headers",
+                APPLICATION_JSON,
+                call_headers.as_bytes(),
+            )?;
         }
     }
-    
+
     let mut result = client.execute()?;
     let status = result.status_code;
     // Error in the provided code
-    if status == 555 {
-    } else if status < 100 || status >= 300 {
-    }
     println!("{:?}", result.headers);
     // Get the expressions parameter from the parsed response
     let mut expression_result: Option<String> = None;
@@ -79,7 +101,8 @@ pub fn evaluate_expression(
     let mut endpoints: Option<HashMap<String, String>> = None;
     let mut local: Option<HashMap<String, String>> = None;
     let mut signal: Option<Signal> = None;
-    
+    let mut signal_text: Option<String> = None;
+
     /*
      * Retrieve the result of the expression
      * Also retrieves the data endpoints state and local data if there is some
@@ -101,7 +124,7 @@ pub fn evaluate_expression(
             } => {
                 let mut content = String::new();
                 content_handle.read_to_string(&mut content)?;
-                
+
                 match name.as_str() {
                     "result" => {
                         expression_result = Some(content);
@@ -126,6 +149,9 @@ pub fn evaluate_expression(
                     "signal" => {
                         signal = Some(serde_json::from_str(&content)?);
                     }
+                    "signal_text" => {
+                        signal_text = Some(content);
+                    }
                     "local" => {
                         local = Some(serde_json::from_str(&content)?);
                     }
@@ -138,28 +164,53 @@ pub fn evaluate_expression(
             }
         };
     }
-    if data.is_some() && endpoints.is_some() {
-        let data = data.unwrap();
-        let endpoints = endpoints.unwrap();
-        match expression_result {
-            Some(expression_result) => Ok(EvaluationResult {
-                expression_result,
-                changed_data,
-                changed_endpoints,
-                changed_status,
-                data,
-                endpoints,
-                local,
-                signal
-            }),
-            None => Err(Error::EvalError(EvalError::GeneralEvalError(
-                "Response does not contain the evaluation results".to_owned(),
-            ))),
+    if status < 100 || status >= 300 {
+        let signal_text = match signal_text {
+            Some(text) => text,
+            None => "".to_owned(),
+        };
+        if let Some(signal) = signal.as_ref() {
+            match signal {
+                Signal::Again | Signal::Stop => Err(Error::Signal(signal.clone())),
+                Signal::Error => Err(Error::EvalError(EvalError::RuntimeError(
+                    signal_text.to_owned(),
+                ))),
+                Signal::SyntaxError => Err(Error::EvalError(EvalError::SyntaxError(
+                    signal_text.to_owned(),
+                ))),
+                x => {
+                    log::error!("Got signaled: {:?} with text: {}", x, signal_text);
+                    panic!("Got signaled something unexpected by eval")
+                }
+            }
+        } else {
+            panic!("Status code not OK(2xx) variant but also no signal provided")
         }
     } else {
-        Err(Error::EvalError(EvalError::GeneralEvalError(
-            "Response does not data or endpoints the evaluation results".to_owned(),
-        )))
+        if data.is_some() && endpoints.is_some() {
+            let data = data.unwrap();
+            let endpoints = endpoints.unwrap();
+            match expression_result {
+                Some(expression_result) => Ok(EvaluationResult {
+                    expression_result,
+                    changed_data,
+                    changed_endpoints,
+                    changed_status,
+                    data,
+                    endpoints,
+                    local,
+                    signal,
+                    signal_text,
+                }),
+                None => Err(Error::EvalError(EvalError::GeneralEvalError(
+                    "Response does not contain the evaluation results".to_owned(),
+                ))),
+            }
+        } else {
+            Err(Error::EvalError(EvalError::GeneralEvalError(
+                "Response does not data or endpoints the evaluation results".to_owned(),
+            )))
+        }
     }
 }
 
@@ -186,7 +237,8 @@ pub struct EvaluationResult {
 #[derive(Debug)]
 pub enum EvalError {
     GeneralEvalError(String),
-    SyntaxError,
+    SyntaxError(String),
+    RuntimeError(String),
 }
 
 impl Display for EvalError {
@@ -196,7 +248,8 @@ impl Display for EvalError {
             "Error occured when evaluating an expression in an external language: {:?}",
             match self {
                 EvalError::GeneralEvalError(err) => format!("general error: {}", err),
-                EvalError::SyntaxError => "Syntax error".to_owned(),
+                EvalError::SyntaxError(err) => "Syntax error".to_owned(),
+                EvalError::RuntimeError(_) => todo!(),
             }
         )
     }
@@ -272,7 +325,7 @@ mod test {
     use http_helper::Parameter;
     use reqwest::Method;
 
-    use crate::data_types::{DynamicData, Status, StaticData};
+    use crate::data_types::{DynamicData, StaticData, Status};
 
     use super::{evaluate_expression, structurize_result};
 
@@ -315,7 +368,8 @@ mod test {
             None,
             serde_json::Value::Null,
             None,
-            None
+            None,
+            ""
         )
         .unwrap();
         println!("Result: {:?}", result)
