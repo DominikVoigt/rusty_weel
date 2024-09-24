@@ -163,53 +163,58 @@ pub fn evaluate_expression(
             }
         };
     }
-    if status < 100 || status >= 300 {
-        let signal_text = match signal_text {
-            Some(text) => text,
-            None => "".to_owned(),
-        };
-        if let Some(signal) = signal.as_ref() {
-            match signal {
-                Signal::Again | Signal::Stop => Err(Error::Signal(signal.clone())),
-                Signal::Error => Err(Error::EvalError(EvalError::RuntimeError(
-                    signal_text.to_owned(),
-                ))),
-                Signal::SyntaxError => Err(Error::EvalError(EvalError::SyntaxError(
-                    signal_text.to_owned(),
-                ))),
-                x => {
-                    log::error!("Got signaled: {:?} with text: {}", x, signal_text);
-                    panic!("Got signaled something unexpected by eval")
-                }
-            }
-        } else {
-            panic!("Status code not OK(2xx) variant but also no signal provided")
-        }
-    } else {
-        if data.is_some() && endpoints.is_some() {
-            let data = data.unwrap();
-            let endpoints = endpoints.unwrap();
-            match expression_result {
-                Some(expression_result) => Ok(EvaluationResult {
+    if data.is_some() && endpoints.is_some() {
+        let data = data.unwrap();
+        let endpoints = endpoints.unwrap();
+        
+        match expression_result {
+            Some(expression_result) => {
+                let eval_result = EvaluationResult {
                     expression_result,
                     changed_data,
                     changed_endpoints,
                     changed_status,
                     data,
                     endpoints,
-                    local,
+                    thread_local,
                     signal,
                     signal_text,
-                }),
-                None => Err(Error::EvalError(EvalError::GeneralEvalError(
-                    "Response does not contain the evaluation results".to_owned(),
-                ))),
-            }
-        } else {
-            Err(Error::EvalError(EvalError::GeneralEvalError(
-                "Response does not data or endpoints the evaluation results".to_owned(),
-            )))
+                };
+                if status < 100 || status >= 300 {
+                    let signal_text = match signal_text {
+                        Some(text) => text,
+                        None => "".to_owned(),
+                    };
+                    if let Some(signal) = signal.as_ref() {
+                        // TODO: Handle Signal again
+                        match signal {
+                            Signal::Again | Signal::Stop => Err(Error::EvalError(EvalError::Signal(signal.clone(), eval_result))),
+                            Signal::Error => Err(Error::EvalError(EvalError::RuntimeError(
+                                signal_text.to_owned(),
+                            ))),
+                            Signal::SyntaxError => Err(Error::EvalError(EvalError::SyntaxError(
+                                signal_text.to_owned(),
+                            ))),
+                            x => {
+                                log::error!("Got signaled: {:?} with text: {}", x, signal_text);
+                                panic!("Got signaled something unexpected by eval");
+                            }
+                        }
+                    } else {
+                        panic!("Status code not OK(2xx) variant but also no signal provided")
+                    }
+                } else {
+                    Ok(eval_result)
+                }
+            },
+            None => Err(Error::EvalError(EvalError::GeneralEvalError(
+                "Response does not contain the evaluation results".to_owned(),
+            ))),
         }
+    } else {
+        Err(Error::EvalError(EvalError::GeneralEvalError(
+            "Response does not data or endpoints the evaluation results".to_owned(),
+        )))
     }
 }
 
@@ -239,6 +244,7 @@ pub enum EvalError {
     GeneralEvalError(String),
     SyntaxError(String),
     RuntimeError(String),
+    Signal(Signal, EvaluationResult),
 }
 
 impl Display for EvalError {
@@ -250,6 +256,7 @@ impl Display for EvalError {
                 EvalError::GeneralEvalError(err) => format!("general error: {}", err),
                 EvalError::SyntaxError(err) => "Syntax error".to_owned(),
                 EvalError::RuntimeError(_) => todo!(),
+                EvalError::Signal(signal, evaluation_result) => todo!(),
             }
         )
     }
@@ -369,7 +376,7 @@ mod test {
             serde_json::Value::Null,
             None,
             None,
-            ""
+            "",
         )
         .unwrap();
         println!("Result: {:?}", result)
