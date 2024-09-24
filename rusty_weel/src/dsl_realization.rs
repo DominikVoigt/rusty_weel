@@ -868,16 +868,20 @@ impl Weel {
                 };
                 if parent_info.branch_wait_count_cancel == parent_info.branch_wait_count && state_not_stopping_or_finishing {
                     drop(thread_info);
+                    // Will iteratively mark all children as no longer necessary
                     for child_id in parent_info.branches {
                         match thread_info_map.get(&child_id) {
                             Some(thread_info) => {
                                 let mut thread_info = thread_info.borrow_mut();
                                 if !thread_info.branch_wait_count_cancel_active {
                                     thread_info.no_longer_necessary = true;
+                                    // Should be fine w.r.t. mutable borrows, since this will continue recusively down the hieararchy
                                     recursive_continue(thread_info_map, thread_info)
                                 }
                             },
-                            None => todo!(),
+                            None => {
+                                log::info!("Child Thread of Thread {:?} with id: {:?} does not have any thread info", parent_id, child_id)
+                            },
                         }
                     }
                 } 
