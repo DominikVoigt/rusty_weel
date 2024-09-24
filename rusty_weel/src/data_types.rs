@@ -208,7 +208,19 @@ pub struct ThreadInfo {
     pub branch_traces_id: Option<String>,
     pub branch_traces: HashMap<String, Vec<String>>,
     pub branch_position: Option<Position>,
-    pub local: String
+    pub branch_wait_count_cancel_condition: CancelCondition,
+    pub branch_wait_count_cancel_active: bool,
+    pub branch_wait_count_cancel: i32,
+    pub branch_wait_count: i32,
+    pub local: String,
+    // Thread IDs of all spawned children
+    pub branches: Vec<ThreadId>
+}
+
+#[derive(PartialEq, Eq)]
+pub enum CancelCondition {
+    First,
+    Last
 }
 
 /**

@@ -27,7 +27,7 @@ pub fn evaluate_expression(
     static_context: &StaticData,
     expression: &str,
     weel_status: Option<StatusDTO>,
-    thread_local: String,
+    thread_local: &str,
     additional: Value,
     call_result: Option<String>,
     call_headers: Option<String>,
@@ -50,9 +50,7 @@ pub fn evaluate_expression(
             dynamic_context.data.as_bytes(),
         )?;
 
-        if let Some(local) = local {
-            client.add_complex_parameter("local", APPLICATION_JSON, local.as_bytes())?;
-        }
+        client.add_complex_parameter("local", APPLICATION_JSON, thread_local.as_bytes())?;
 
         let endpoints = serde_json::to_string(&dynamic_context.endpoints)?;
         client.add_complex_parameter("endpoints", APPLICATION_JSON, endpoints.as_bytes())?;
@@ -102,6 +100,7 @@ pub fn evaluate_expression(
     let mut endpoints: Option<HashMap<String, String>> = None;
     let mut signal: Option<Signal> = None;
     let mut signal_text: Option<String> = None;
+    let mut local: Option<String> = None;
     /*
      * Retrieve the result of the expression
      * Also retrieves the data endpoints state and local data if there is some
@@ -152,7 +151,7 @@ pub fn evaluate_expression(
                         signal_text = Some(content);
                     }
                     "local" => {
-                        local = Some(serde_json::from_str(&content)?);
+                        local = Some(content);
                     }
                     x => {
                         log::info!("Eval endpoint send unexpected part: {x}");
@@ -166,7 +165,7 @@ pub fn evaluate_expression(
     if data.is_some() && endpoints.is_some() {
         let data = data.unwrap();
         let endpoints = endpoints.unwrap();
-        
+
         match expression_result {
             Some(expression_result) => {
                 let eval_result = EvaluationResult {
@@ -176,9 +175,6 @@ pub fn evaluate_expression(
                     changed_status,
                     data,
                     endpoints,
-                    thread_local,
-                    signal,
-                    signal_text,
                 };
                 if status < 100 || status >= 300 {
                     let signal_text = match signal_text {
@@ -188,13 +184,19 @@ pub fn evaluate_expression(
                     if let Some(signal) = signal.as_ref() {
                         // TODO: Handle Signal again
                         match signal {
-                            Signal::Again | Signal::Stop => Err(Error::EvalError(EvalError::Signal(signal.clone(), eval_result))),
+                            // Actual signals are handed over as Signals (different from Error::Signal as the eval result will be required here)
+                            Signal::Again | Signal::Stop => Err(Error::EvalError(
+                                EvalError::Signal(signal.clone(), eval_result),
+                            )),
                             Signal::Error => Err(Error::EvalError(EvalError::RuntimeError(
-                                signal_text.to_owned(),
+                                format!("{} {}", location, signal_text),
                             ))),
-                            Signal::SyntaxError => Err(Error::EvalError(EvalError::SyntaxError(
-                                signal_text.to_owned(),
-                            ))),
+                            // The code related error signals are converted to actual errors and handled separately
+                            Signal::SyntaxError => {
+                                let message = todo!();
+                                let line = todo!();
+                                Err(Error::EvalError(EvalError::SyntaxError(message, line,location.to_owned())))
+                            },
                             x => {
                                 log::error!("Got signaled: {:?} with text: {}", x, signal_text);
                                 panic!("Got signaled something unexpected by eval");
@@ -206,7 +208,7 @@ pub fn evaluate_expression(
                 } else {
                     Ok(eval_result)
                 }
-            },
+            }
             None => Err(Error::EvalError(EvalError::GeneralEvalError(
                 "Response does not contain the evaluation results".to_owned(),
             ))),
@@ -231,18 +233,13 @@ pub struct EvaluationResult {
     pub changed_data: Option<HashMap<String, String>>,
     pub changed_endpoints: Option<HashMap<String, String>>,
     pub changed_status: Option<StatusDTO>,
-    // Snapshot of thread local information (local field) at the time of calling
-    pub thread_local: String,
-    // Used for Signalling in code: e.g.Signal::Again or Signal::Error
-    pub signal: Option<Signal>,
-    // Message attached: e.g. Error message
-    pub signal_text: Option<String>,
 }
 
 #[derive(Debug)]
 pub enum EvalError {
     GeneralEvalError(String),
-    SyntaxError(String),
+    // message, line, location
+    SyntaxError(String, String, String),
     RuntimeError(String),
     Signal(Signal, EvaluationResult),
 }
@@ -254,9 +251,11 @@ impl Display for EvalError {
             "Error occured when evaluating an expression in an external language: {:?}",
             match self {
                 EvalError::GeneralEvalError(err) => format!("general error: {}", err),
-                EvalError::SyntaxError(err) => "Syntax error".to_owned(),
-                EvalError::RuntimeError(_) => todo!(),
-                EvalError::Signal(signal, evaluation_result) => todo!(),
+                EvalError::SyntaxError(message, line, location) =>
+                    format!("Syntax error: {message} in line {line} at {location}"),
+                EvalError::RuntimeError(err) => format!("Runtime error: {err}"),
+                EvalError::Signal(signal, evaluation_result) =>
+                    format!("Signal error: {:?}", signal),
             }
         )
     }
@@ -372,7 +371,7 @@ mod test {
             &static_data,
             "data.name = 'Tom'",
             Some(status.to_dto()),
-            "test_local_data".to_owned(),
+            "test_local_data",
             serde_json::Value::Null,
             None,
             None,

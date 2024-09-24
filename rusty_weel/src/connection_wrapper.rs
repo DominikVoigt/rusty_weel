@@ -18,7 +18,6 @@ use crate::{
     data_types::{BlockingQueue, HTTPParams, InstanceMetaData},
     dsl_realization::{generate_random_key, Error, Result, Signal, Weel},
     eval_helper::{self, EvaluationResult},
-    redis_helper::RedisHelper,
 };
 
 pub struct ConnectionWrapper {
@@ -156,6 +155,14 @@ impl ConnectionWrapper {
         self.inform_resource_utilization()
     }
 
+    pub fn inform_activity_failed(&self, message: String, line: String, location: String) -> Result<()> {
+        let mut content: HashMap<String, String> = self.construct_basic_content()?;
+        content.insert("message".to_owned(), message);
+        content.insert("line".to_owned(), line);
+        content.insert("location".to_owned(), location);
+        self.inform("activity/failed", Some(content))
+    }
+
     fn inform_resource_utilization(&self) -> Result<()> {
         let mut content = match crate::proc::get_cpu_times() {
             Ok(x) => x,
@@ -250,7 +257,7 @@ impl ConnectionWrapper {
         // Execute the prepare code and use the modified context for the rest of this metod (prepare_result)
         let prepare_result = match prepare_code {
             Some(code) => {
-                let result = weel.execute_code(true, code, thread_local, self)?;
+                let result = weel.execute_code(true, code, &thread_local, self, "prepare")?;
                 result.into()
             }
             None => {

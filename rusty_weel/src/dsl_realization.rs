@@ -1,11 +1,11 @@
 use derive_more::From;
 use serde::{Deserialize, Serialize};
 use std::any::{Any, TypeId};
-use std::cell::RefCell;
+use std::cell::{RefCell, RefMut};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::sync::mpsc::{Receiver, Sender};
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread::{self, ThreadId};
 use std::time::SystemTime;
 
@@ -14,15 +14,16 @@ use rand::Rng;
 use reqwest::header::ToStrError;
 use rusty_weel_macro::get_str_from_value;
 
-use crate::connection_wrapper::{self, ConnectionWrapper};
+use crate::connection_wrapper::ConnectionWrapper;
 use crate::data_types::{
-    BlockingQueue, DynamicData, HTTPParams, State, StaticData, Status, ThreadInfo,
+    BlockingQueue, CancelCondition, DynamicData, HTTPParams, State, StaticData, Status, ThreadInfo
 };
 use crate::dsl::DSL;
-use crate::eval_helper::{self, EvalError, EvaluationResult};
+use crate::eval_helper::{self, EvalError};
 use crate::redis_helper::{RedisHelper, Topic};
 
 static EVALUATION_LOCK: Mutex<()> = Mutex::new(());
+
 
 pub struct Weel {
     pub static_data: StaticData,
@@ -157,7 +158,7 @@ impl Weel {
      * To pass it to execution thread we need Send + Sync
      */
     pub fn start(
-        &self,
+        self: Arc<Self>,
         model: impl FnOnce() -> Result<()> + Send + 'static,
         stop_signal_sender: Sender<()>,
     ) {
@@ -192,7 +193,7 @@ impl Weel {
                                         }
                                     }
                                 }
-                                Err(err) => handle_error(err),
+                                Err(err) => self.handle_error(err),
                             }
                         }
                         Err(err) => handle_join_error(err),
@@ -201,7 +202,7 @@ impl Weel {
                     self.abort_start();
                 };
             }
-            Err(err) => handle_error(err),
+            Err(err) => self.handle_error(err),
         }
     }
 
@@ -511,11 +512,12 @@ impl Weel {
                             let result = match self.clone().execute_code(
                                 false,
                                 finalize_code,
-                                local,
+                                &local,
                                 &connection_wrapper,
                                 &format!("Activity {}", position),
                             ) {
                                 Ok(res) => res,
+                                // For manipulate, we just pass all signals/errors downward
                                 Err(err) => break 'raise Err(err),
                             };
                             connection_wrapper.inform_manipulate_change(result)?;
@@ -543,14 +545,30 @@ impl Weel {
                             thread_info_map.get(&current_thread).unwrap().borrow_mut();
                         // TODO: In manipulate we directly "abort" and do not run code, here we run code and then check for abort, is this correct?
                         let mut connection_wrapper = connection_wrapper_mutex.lock().unwrap();
-                        let parameters = connection_wrapper.prepare(
+                        let parameters = match connection_wrapper.prepare(
                             prepare_code,
                             thread_info.local.clone(),
                             &vec![endpoint_name.unwrap()],
                             parameters.as_ref().expect(
                                 "The activity type call requires parameters to be provided",
                             ),
-                        )?;
+                        ) {
+                            // When error/signal returned, pass it downwards for handling, except for Signal::Again that has some direct effects
+                            Ok(res) => res,
+                            Err(err) => match err {
+                                Error::EvalError(eval_error) => match eval_error {
+                                    EvalError::Signal(signal, evaluation_result) => {
+                                        match signal {
+                                            // If signal again is raised by prepare code -> retry
+                                            Signal::Again => break 'again,
+                                            other => break 'raise Err(other.into()),
+                                        }
+                                    }
+                                    other => break 'raise Err(Error::EvalError(other)),
+                                },
+                                other_error => break 'raise Err(other_error),
+                            },
+                        };
 
                         let state_stopping_or_finishing = matches!(
                             *self.state.lock().unwrap(),
@@ -702,29 +720,35 @@ impl Weel {
                             connection_wrapper.inform_activity_manipulate()?;
                             if let Some(code) = code {
                                 // TODO: I do not get this line in the original with the catch Signal::Again and the the Signal::Proceed
-                                let signaled_again = false;
+                                let mut signaled_again = false;
                                 let result = match self.execute_code(
                                     false,
                                     code,
-                                    local,
+                                    &local,
                                     &connection_wrapper,
                                     &format!("Activity {} {}", position, code_type),
                                 ) // TODO: Even in signal case we need the eval result
                                 {
+                                    // When error/signal returned, pass it downwards for handling, except for Signal::Again that has some direct effects 
                                     Ok(res) => res,
                                     Err(err) => match err {
-                                        Error::Signal(signal) => {
-                                            match signal {
-                                                Signal::Again => {
-                                                    signaled_again = true;
+                                        Error::EvalError(eval_error) => {
+                                            match eval_error {
+                                                EvalError::Signal(signal, evaluation_result) => {
+                                                    match signal {
+                                                        Signal::Again => {
+                                                            signaled_again = true;
+                                                            evaluation_result
+                                                        },
+                                                        other => break 'raise Err(Error::Signal(other))
+                                                    }
                                                 },
-                                                x => {todo!()}
+                                                other_eval_error => break 'raise Err(Error::EvalError(other_eval_error)),
                                             }
                                         },
-                                        err => break 'raise Err(err)
+                                        other_error => break 'raise Err(other_error)
                                     }
                                 };
-                                 
                                 connection_wrapper.inform_manipulate_change(result)?;
 
                                 // TODO: What would this ma.nil? result in rust?
@@ -755,7 +779,7 @@ impl Weel {
         };
 
         let connection_wrapper = connection_wrapper_mutex.lock().unwrap();
-
+        let mut weel_position = weel_position.expect("Should always be set");
         if let Err(error) = result {
             match error {
                 Error::Signal(signal) => match signal {
@@ -800,33 +824,68 @@ impl Weel {
                     Signal::Skip => {
                         log::info!("Received skip signal. Do nothing")
                     }
-                    Signal::Salvage => {}
                     x => {
                         log::error!("Received unexpected signal: {:?}", x);
                     }
                 },
                 Error::EvalError(eval_error) => match eval_error {
-                    EvalError::GeneralEvalError(_) => todo!(),
-                    EvalError::SyntaxError(_) => todo!(),
-                    EvalError::Signal(_) => todo!(),
-                    EvalError::RuntimeError(_) => todo!(),
+                    EvalError::SyntaxError(message, line, location) => {
+                        connection_wrapper.inform_activity_failed(message, line, location);
+                        *self.state.lock().unwrap() = State::Stopping;
+                    }
+                    EvalError::Signal(signal, evaluation_result) => {
+                        log::error!("Handling EvalError::Signal in weel_activity, this should never happen! Should be \"raised\" as Error::Signal");
+                        panic!("Handling EvalError::Signal in weel_activity, this should never happen! Should be \"raised\" as Error::Signal");
+                    }
+                    // Runtime and general evaluation errors use the default error handling
+                    other => {
+                        self.handle_error(Error::EvalError(other));
+                    }
                 },
                 err => {
-                    log::error!("Encountered error: {:?}", err);
-                    match ConnectionWrapper::new(self.clone(), None, None)
-                        .inform_connectionwrapper_error(err)
-                    {
-                        Ok(_) => {}
-                        Err(err) => {
-                            log::error!(
-                                "Encountered error but informing CPEE of error failed: {:?}",
-                                err
-                            )
-                        }
-                    };
+                    self.handle_error(err);
                 }
             };
         };
+        {// Original ensure block
+            let current_thread = thread::current().id();
+            let thread_info_map = self.thread_information.lock().unwrap();
+            // Unwrap as we have precondition that thread info is available on spawning
+            let mut thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
+
+            if let Some(parent_id) = thread_info.parent {
+                let mut parent_info = thread_info_map.get(&parent_id).unwrap().borrow_mut();
+
+                if parent_info.branch_wait_count_cancel_condition == CancelCondition::First {
+                    if !thread_info.branch_wait_count_cancel_active && parent_info.branch_wait_count_cancel < parent_info.branch_wait_count {
+                        thread_info.branch_wait_count_cancel_active = true;
+                        parent_info.branch_wait_count_cancel = parent_info.branch_wait_count_cancel + 1;
+                    }
+                }
+                let state_not_stopping_or_finishing = match *self.state.lock().unwrap() {
+                    State::Stopping | State::Finishing => false,
+                    other => true,
+                };
+                if parent_info.branch_wait_count_cancel == parent_info.branch_wait_count && state_not_stopping_or_finishing {
+                    drop(thread_info);
+                    for child_id in parent_info.branches {
+                        match thread_info_map.get(&child_id) {
+                            Some(thread_info) => {
+                                let mut thread_info = thread_info.borrow_mut();
+                                if !thread_info.branch_wait_count_cancel_active {
+                                    thread_info.no_longer_necessary = true;
+                                    recursive_continue(thread_info_map, thread_info)
+                                }
+                            },
+                            None => todo!(),
+                        }
+                    }
+                } 
+            }
+            // TODO: Still unsure why we do this
+            thread_info.blocking_queue.clear();
+        }
+
         Ok(())
     }
 
@@ -834,7 +893,7 @@ impl Weel {
      * Will execute the provided ruby code using the eval_helper and the evaluation backend
      *
      * The EvaluationResult will contain the complete data and endpoints after the code is executed (cody might change them even in readonly mode)
-     * If the call failed, it will contain a signal and signal_text
+     * If the call failed or a signaling occurs in the ruby code (raised or thrown), will return EvalError (in case of Signalling: EvalError::Signal)
      *
      * The read_only flag governs whether changes to dataelements and endpoints are applied to the instance (read_only=false) or not (read_only=true)
      *
@@ -847,7 +906,7 @@ impl Weel {
         self: &Self,
         read_only: bool,
         code: &str,
-        local: String,
+        local: &str,
         connection_wrapper: &ConnectionWrapper,
         location: &str,
     ) -> Result<eval_helper::EvaluationResult> {
@@ -864,6 +923,7 @@ impl Weel {
                 connection_wrapper.additional(),
                 None,
                 None,
+                location,
             )?;
             Ok(result)
         } else {
@@ -980,7 +1040,7 @@ impl Weel {
         let thread_info_map = self.thread_information.lock().unwrap();
 
         let (parent_thread_id, weel_position) = {
-            // We need to limit the borrow of current_thread_info s.t. we can access the parents infor afterwards -> scope it
+            // We need to limit the borrow of current_thread_info s.t. we can access the parents info afterwards -> scope it
             let mut current_thread_info = match thread_info_map.get(&current_thread.id()) {
                 Some(x) => x.borrow_mut(),
                 None => {
@@ -1073,6 +1133,24 @@ impl Weel {
         ConnectionWrapper::new(self.clone(), None, None).inform_position_change(Some(ipc))?;
         Ok(weel_position)
     }
+
+    fn handle_error(self: Arc<Self>, err: Error) {
+        *self.state.lock().unwrap() = State::Stopping;
+        log::error!("Encountered error: {:?}", err);
+        match ConnectionWrapper::new(self.clone(), None, None).inform_connectionwrapper_error(err) {
+            Ok(_) => {}
+            Err(err) => {
+                log::error!(
+                    "Encountered error but informing CPEE of error failed: {:?}",
+                    err
+                )
+            }
+        };
+    }
+}
+
+fn recursive_continue(thread_info_map: MutexGuard<HashMap<ThreadId, RefCell<ThreadInfo>>>, thread_info: RefMut<ThreadInfo>) {
+    todo!()
 }
 
 fn handle_join_error(err: Box<dyn std::any::Any + Send>) {
@@ -1085,10 +1163,6 @@ fn handle_join_error(err: Box<dyn std::any::Any + Send>) {
             ),
         }
     };
-}
-
-fn handle_error(err: Error) {
-    todo!()
 }
 
 #[derive(Debug, From)]
@@ -1107,7 +1181,7 @@ pub enum Error {
     HttpHelperError(http_helper::Error),
     PoisonError(),
     FromStrError(mime::FromStrError),
-    Signal(Signal, EvaluationResult),
+    Signal(Signal),
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -1123,7 +1197,7 @@ pub enum Signal {
     StopSkipManipulate,
     SyntaxError,
     Error,
-    UpdateAgain
+    UpdateAgain,
 }
 
 pub enum ActivityType {
@@ -1180,7 +1254,7 @@ impl Error {
             Error::HttpHelperError(_) => todo!(),
             Error::PoisonError() => todo!(),
             Error::FromStrError(_) => todo!(),
-            Error::Signal(_, _) => todo!(),
+            Error::Signal(signal) => todo!(),
         }
     }
 }
