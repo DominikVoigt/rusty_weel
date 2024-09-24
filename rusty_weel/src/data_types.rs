@@ -49,6 +49,7 @@ impl TryInto<String> for HTTPParams {
 pub struct KeyValuePair {
     pub key: &'static str,
     pub value: Option<String>,
+    pub expression_value: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Copy)]
