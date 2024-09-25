@@ -1,7 +1,7 @@
 use derive_more::From;
 use serde::{Deserialize, Serialize};
 use std::any::{Any, TypeId};
-use std::cell::{RefCell, RefMut};
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::sync::mpsc::{Receiver, Sender};
@@ -443,7 +443,7 @@ impl Weel {
             ConnectionWrapper::new(self.clone(), Some(position.to_owned()), None);
         let connection_wrapper_mutex = Arc::new(Mutex::new(connection_wrapper));
 
-        let mut weel_position = None;
+        let mut weel_position;
         /*
          * We use a block computation here to mimick the exception handling -> If an exception in the original ruby code is raised, we return it here
          */
@@ -484,11 +484,11 @@ impl Weel {
                 }
             };
 
-            weel_position = Some(self.weel_progress(
+            weel_position = self.weel_progress(
                 position.to_owned(),
                 connection_wrapper.handler_activity_uuid.clone(),
                 false,
-            )?);
+            )?;
             // Local information should not change outside of this thread TODO: add this to actual thread_local_storage
             let local = thread_info.local.clone();
             // Drop the thread_info here already as for a manipulate we do not need it at all and a call we need to acquire the lock every 'again loop anyway
@@ -525,11 +525,11 @@ impl Weel {
                         None => (),
                     };
                     connection_wrapper.inform_activity_done()?;
-                    weel_position.as_mut().unwrap().detail = Mark::After;
+                    weel_position.detail = Mark::After;
                     let mut ipc = HashMap::new();
                     ipc.insert(
                         "after".to_owned(),
-                        serde_json::to_string(weel_position.as_ref().unwrap())?,
+                        serde_json::to_string(&weel_position)?,
                     );
                     ConnectionWrapper::new(self.clone(), None, None)
                         .inform_position_change(Some(ipc))?;
@@ -557,10 +557,10 @@ impl Weel {
                             Ok(res) => res,
                             Err(err) => match err {
                                 Error::EvalError(eval_error) => match eval_error {
-                                    EvalError::Signal(signal, evaluation_result) => {
+                                    EvalError::Signal(signal, _evaluation_result) => {
                                         match signal {
                                             // If signal again is raised by prepare code -> retry
-                                            Signal::Again => break 'again,
+                                            Signal::Again => continue 'again,
                                             other => break 'raise Err(other.into()),
                                         }
                                     }
@@ -590,17 +590,15 @@ impl Weel {
                         ConnectionWrapper::activity_handle(
                             &connection_wrapper_mutex,
                             weel_position
-                                .as_ref()
-                                .unwrap()
                                 .handler_passthrough
                                 .as_ref()
                                 .map(|x| x.as_str()),
                             parameters,
                         )?;
                         let connection_wrapper = connection_wrapper_mutex.lock().unwrap();
-                        weel_position.as_mut().unwrap().handler_passthrough =
+                        weel_position.handler_passthrough =
                             connection_wrapper.handler_passthrough.clone();
-                        if let Some(position) = &weel_position.as_ref().unwrap().handler_passthrough
+                        if let Some(_) = &weel_position.handler_passthrough
                         {
                             let connection_wrapper = ConnectionWrapper::new(
                                 self.clone(),
@@ -611,7 +609,7 @@ impl Weel {
                             let mut content = HashMap::new();
                             content.insert(
                                 "wait".to_owned(),
-                                serde_json::to_string(weel_position.as_ref().unwrap())?,
+                                serde_json::to_string(&weel_position)?,
                             );
                             connection_wrapper.inform_position_change(Some(content))?;
                         };
@@ -671,7 +669,7 @@ impl Weel {
                             );
                             if state_stopping_or_finishing {
                                 connection_wrapper.activity_stop()?;
-                                weel_position.as_mut().unwrap().handler_passthrough =
+                                weel_position.handler_passthrough =
                                     connection_wrapper.activity_passthrough_value();
                                 break 'raise Err(Signal::Proceed.into());
                             };
@@ -689,7 +687,7 @@ impl Weel {
                                 continue;
                             }
 
-                            let mut code_type = "";
+                            let code_type;
                             let signaled_update_again = wait_result
                                 .as_ref()
                                 .map(|res| matches!(res, Signal::UpdateAgain))
@@ -716,7 +714,6 @@ impl Weel {
                                 finalize_code
                             };
 
-                            let signaled_again = false;
                             connection_wrapper.inform_activity_manipulate()?;
                             if let Some(code) = code {
                                 // TODO: I do not get this line in the original with the catch Signal::Again and the the Signal::Proceed
@@ -751,6 +748,9 @@ impl Weel {
                                 };
                                 connection_wrapper.inform_manipulate_change(result)?;
 
+                                if signaled_again {
+                                    continue 'again;
+                                }
                                 // TODO: What would this ma.nil? result in rust?
                             }
                             if !signaled_update_again {
@@ -761,12 +761,12 @@ impl Weel {
                         let connection_wrapper = connection_wrapper_mutex.lock().unwrap();
                         if connection_wrapper.activity_passthrough_value().is_none() {
                             connection_wrapper.inform_activity_done()?;
-                            weel_position.as_mut().unwrap().handler_passthrough = None;
-                            weel_position.as_mut().unwrap().detail = Mark::After;
+                            weel_position.handler_passthrough = None;
+                            weel_position.detail = Mark::After;
                             let mut content = HashMap::new();
                             content.insert(
                                 "after".to_owned(),
-                                serde_json::to_string(weel_position.as_ref().unwrap())?,
+                                serde_json::to_string(&weel_position)?,
                             );
                             ConnectionWrapper::new(self.clone(), None, None)
                                 .inform_position_change(Some(content))?;
@@ -779,7 +779,6 @@ impl Weel {
         };
 
         let connection_wrapper = connection_wrapper_mutex.lock().unwrap();
-        let mut weel_position = weel_position.expect("Should always be set");
         if let Err(error) = result {
             match error {
                 Error::Signal(signal) => match signal {
@@ -797,7 +796,7 @@ impl Weel {
                         }
                     }
                     Signal::NoLongerNecessary => {
-                        connection_wrapper.inform_activity_done();
+                        connection_wrapper.inform_activity_done()?;
                         self.positions
                             .lock()
                             .unwrap()
@@ -830,7 +829,7 @@ impl Weel {
                 },
                 Error::EvalError(eval_error) => match eval_error {
                     EvalError::SyntaxError(message) => {
-                        connection_wrapper.inform_activity_failed(Error::EvalError(EvalError::SyntaxError(message)));
+                        connection_wrapper.inform_activity_failed(Error::EvalError(EvalError::SyntaxError(message)))?;
                         *self.state.lock().unwrap() = State::Stopping;
                     }
                     EvalError::Signal(_signal, _evaluation_result) => {
@@ -864,19 +863,19 @@ impl Weel {
                 }
                 let state_not_stopping_or_finishing = match *self.state.lock().unwrap() {
                     State::Stopping | State::Finishing => false,
-                    other => true,
+                    _other => true,
                 };
                 if parent_info.branch_wait_count_cancel == parent_info.branch_wait_count && state_not_stopping_or_finishing {
-                    drop(thread_info);
                     // Will iteratively mark all children as no longer necessary
-                    for child_id in parent_info.branches {
-                        match thread_info_map.get(&child_id) {
+                    for child_id in &parent_info.branches {
+                        match thread_info_map.get(child_id) {
                             Some(thread_info) => {
                                 let mut thread_info = thread_info.borrow_mut();
                                 if !thread_info.branch_wait_count_cancel_active {
                                     thread_info.no_longer_necessary = true;
+                                    drop(thread_info);
                                     // Should be fine w.r.t. mutable borrows, since this will continue recusively down the hieararchy
-                                    recursive_continue(thread_info_map, thread_info)
+                                    recursive_continue(&thread_info_map, &current_thread)
                                 }
                             },
                             None => {
@@ -886,8 +885,6 @@ impl Weel {
                     }
                 } 
             }
-            // TODO: Still unsure why we do this
-            thread_info.blocking_queue.clear();
         }
 
         Ok(())
@@ -1153,8 +1150,16 @@ impl Weel {
     }
 }
 
-fn recursive_continue(thread_info_map: MutexGuard<HashMap<ThreadId, RefCell<ThreadInfo>>>, thread_info: RefMut<ThreadInfo>) {
-    todo!()
+fn recursive_continue(thread_info_map: &MutexGuard<HashMap<ThreadId, RefCell<ThreadInfo>>>, thread_id: &ThreadId) {
+    let thread_info = thread_info_map.get(thread_id).unwrap().borrow();
+    thread_info.blocking_queue.enqueue(Signal::None);
+    if let Some(branch_event_thread) = &thread_info.branch_event {
+        // TODO: Unsure whether we can borrow here -> Where relative to this thread will this branch event exist?
+        thread_info_map.get(branch_event_thread).unwrap().borrow().blocking_queue.enqueue(Signal::None);
+    }
+    for child_id in &thread_info.branches {        
+        recursive_continue(thread_info_map, child_id);
+    }
 }
 
 fn handle_join_error(err: Box<dyn std::any::Any + Send>) {
@@ -1258,13 +1263,13 @@ impl Error {
             Error::HttpHelperError(_) => todo!(),
             Error::PoisonError() => todo!(),
             Error::FromStrError(_) => todo!(),
-            Error::Signal(signal) => todo!(),
+            Error::Signal(_) => todo!(),
         }
     }
 }
 
 impl<T> From<PoisonError<T>> for Error {
-    fn from(value: PoisonError<T>) -> Self {
+    fn from(_: PoisonError<T>) -> Self {
         Error::PoisonError()
     }
 }

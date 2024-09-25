@@ -212,6 +212,7 @@ pub struct ThreadInfo {
     pub branch_wait_count_cancel_active: bool,
     pub branch_wait_count_cancel: i32,
     pub branch_wait_count: i32,
+    pub branch_event: Option<ThreadId>,
     pub local: String,
     // Thread IDs of all spawned children
     pub branches: Vec<ThreadId>
