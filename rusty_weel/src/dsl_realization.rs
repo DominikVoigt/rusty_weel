@@ -829,11 +829,11 @@ impl Weel {
                     }
                 },
                 Error::EvalError(eval_error) => match eval_error {
-                    EvalError::SyntaxError(message, line, location) => {
-                        connection_wrapper.inform_activity_failed(message, line, location);
+                    EvalError::SyntaxError(message) => {
+                        connection_wrapper.inform_activity_failed(Error::EvalError(EvalError::SyntaxError(message)));
                         *self.state.lock().unwrap() = State::Stopping;
                     }
-                    EvalError::Signal(signal, evaluation_result) => {
+                    EvalError::Signal(_signal, _evaluation_result) => {
                         log::error!("Handling EvalError::Signal in weel_activity, this should never happen! Should be \"raised\" as Error::Signal");
                         panic!("Handling EvalError::Signal in weel_activity, this should never happen! Should be \"raised\" as Error::Signal");
                     }
@@ -1138,7 +1138,7 @@ impl Weel {
         Ok(weel_position)
     }
 
-    fn handle_error(self: Arc<Self>, err: Error) {
+    fn handle_error(self: &Arc<Self>, err: Error) {
         *self.state.lock().unwrap() = State::Stopping;
         log::error!("Encountered error: {:?}", err);
         match ConnectionWrapper::new(self.clone(), None, None).inform_connectionwrapper_error(err) {

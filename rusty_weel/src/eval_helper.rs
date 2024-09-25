@@ -150,9 +150,6 @@ pub fn evaluate_expression(
                     "signal_text" => {
                         signal_text = Some(content);
                     }
-                    "local" => {
-                        local = Some(content);
-                    }
                     x => {
                         log::info!("Eval endpoint send unexpected part: {x}");
                         log::info!("Content: {}", content);
@@ -193,9 +190,7 @@ pub fn evaluate_expression(
                             ))),
                             // The code related error signals are converted to actual errors and handled separately
                             Signal::SyntaxError => {
-                                let message = todo!();
-                                let line = todo!();
-                                Err(Error::EvalError(EvalError::SyntaxError(message, line,location.to_owned())))
+                                Err(Error::EvalError(EvalError::SyntaxError(signal_text)))
                             },
                             x => {
                                 log::error!("Got signaled: {:?} with text: {}", x, signal_text);
@@ -238,8 +233,7 @@ pub struct EvaluationResult {
 #[derive(Debug)]
 pub enum EvalError {
     GeneralEvalError(String),
-    // message, line, location
-    SyntaxError(String, String, String),
+    SyntaxError(String),
     RuntimeError(String),
     Signal(Signal, EvaluationResult),
 }
@@ -251,10 +245,10 @@ impl Display for EvalError {
             "Error occured when evaluating an expression in an external language: {:?}",
             match self {
                 EvalError::GeneralEvalError(err) => format!("general error: {}", err),
-                EvalError::SyntaxError(message, line, location) =>
-                    format!("Syntax error: {message} in line {line} at {location}"),
+                EvalError::SyntaxError(message) =>
+                    format!("Syntax error: {message}"),
                 EvalError::RuntimeError(err) => format!("Runtime error: {err}"),
-                EvalError::Signal(signal, evaluation_result) =>
+                EvalError::Signal(signal, _) =>
                     format!("Signal error: {:?}", signal),
             }
         )

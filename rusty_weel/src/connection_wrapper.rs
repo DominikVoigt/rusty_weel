@@ -1,4 +1,5 @@
 use http_helper::{header_map_to_hash_map, Parameter};
+use regex::Regex;
 use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue},
     Method,
@@ -17,7 +18,7 @@ use urlencoding::encode;
 use crate::{
     data_types::{BlockingQueue, HTTPParams, InstanceMetaData},
     dsl_realization::{generate_random_key, Error, Result, Signal, Weel},
-    eval_helper::{self, EvaluationResult},
+    eval_helper::{self, EvalError, EvaluationResult},
 };
 
 pub struct ConnectionWrapper {
@@ -39,6 +40,7 @@ pub struct ConnectionWrapper {
     pub handler_activity_uuid: String,
     label: String,
     annotations: Option<String>,
+    error_regex: Regex,
 }
 
 // Determines whether recurring calls are too close together (in seconds)
@@ -70,6 +72,7 @@ impl ConnectionWrapper {
             label: "".to_owned(),
             handler_endpoint_origin: Vec::new(),
             annotations: None,
+            error_regex: Regex::new(r#"(.*?)(, Line |:)(\d+):\s(.*)"#).unwrap(),
         }
     }
 
@@ -123,18 +126,16 @@ impl ConnectionWrapper {
         self.inform("state/change", Some(content))
     }
 
-    pub fn inform_syntax_error(&self, err: Error, code: Option<&str>) -> Result<()> {
+    pub fn inform_syntax_error(&self, err: Error, _code: Option<&str>) -> Result<()> {
         let mut content = HashMap::new();
-        // TODO: mess = err.backtrace ? err.backtrace[0].gsub(/([\w -_]+):(\d+):in.*/,'\\1, Line \2: ') : ''
-        content.insert("message".to_owned(), err.as_str().to_owned());
+        self.add_error_information(&mut content, err);
 
         self.inform("description/error", Some(content))
     }
 
     pub fn inform_connectionwrapper_error(&self, err: Error) -> Result<()> {
         let mut content = HashMap::new();
-        // TODO: mess = err.backtrace ? err.backtrace[0].gsub(/([\w -_]+):(\d+):in.*/,'\\1, Line \2: ') : ''
-        content.insert("message".to_owned(), err.as_str().to_owned());
+        self.add_error_information(&mut content, err);
 
         self.inform("executionhandler/error", Some(content))
     }
@@ -155,11 +156,12 @@ impl ConnectionWrapper {
         self.inform_resource_utilization()
     }
 
-    pub fn inform_activity_failed(&self, message: String, line: String, location: String) -> Result<()> {
+    pub fn inform_activity_failed(
+        &self,
+        err: Error
+    ) -> Result<()> {
         let mut content: HashMap<String, String> = self.construct_basic_content()?;
-        content.insert("message".to_owned(), message);
-        content.insert("line".to_owned(), line);
-        content.insert("location".to_owned(), location);
+        self.add_error_information(&mut content, err);
         self.inform("activity/failed", Some(content))
     }
 
@@ -236,6 +238,7 @@ impl ConnectionWrapper {
         Ok(())
     }
 
+
     /**
      * Handles all preparations to execute the activity:
      * - Executes the prepare code
@@ -264,8 +267,7 @@ impl ConnectionWrapper {
                 let dynamic_data = weel.dynamic_data.lock().unwrap();
                 LocalData {
                     data: dynamic_data.data.clone(),
-                    endpoints: dynamic_data.endpoints.clone(),
-                    thread_local,
+                    endpoints: dynamic_data.endpoints.clone()
                 }
             }
         };
@@ -312,26 +314,6 @@ impl ConnectionWrapper {
                 None => None,
             })
             .collect();
-    }
-
-    pub fn additional(&self) -> Value {
-        let weel = self.weel();
-        let data = &weel.static_data;
-        json!(
-            {
-                "attributes": data.attributes,
-                "cpee": {
-                    "base": data.base_url,
-                    "instance": data.instance_id,
-                    "instance_url": data.instance_url(),
-                    "instance_uuid": data.uuid()
-                },
-                "task": {
-                    "label": self.label,
-                    "id": self.handler_position
-                }
-            }
-        )
     }
 
     pub fn activity_passthrough_value(&self) -> Option<String> {
@@ -582,6 +564,121 @@ impl ConnectionWrapper {
         Ok(())
     }
 
+    fn handle_twin_translate(
+        twin_translate_url: &String,
+        headers: &mut HeaderMap,
+        this: &mut std::sync::MutexGuard<ConnectionWrapper>,
+    ) -> Result<()> {
+        let client = http_helper::Client::new(&twin_translate_url, Method::GET)?;
+        let result = client.execute()?;
+        let status = result.status_code;
+        let result_headers = result.headers;
+        let mut content = result.content;
+        Ok(if status >= 200 && status < 300 {
+            let translation_type = match headers.get("CPEE-TWIN-TASKTYPE") {
+                Some(transl_type) => match transl_type.to_str()? {
+                    "i" => "instantiation",
+                    "ir" => "ipc-receive",
+                    "is" => "ipc-send",
+                    _ => "instantiation",
+                },
+                None => "instantiation",
+            };
+
+            // Assumption about "gtresult.first.value.read": first is the array method to get the first element
+            let body = match content.pop().unwrap() {
+                Parameter::SimpleParameter { value, .. } => value.clone(),
+                Parameter::ComplexParameter {
+                    mut content_handle, ..
+                } => {
+                    let mut body = String::new();
+                    content_handle.rewind()?;
+                    content_handle.read_to_string(&mut body)?;
+                    content_handle.rewind()?;
+                    body
+                }
+            };
+
+            // TODO: Very unsure about the semantics of the original code and the usage
+            let mut array = json!(body);
+            assert!(array.is_array());
+            if let Some(array) = array.as_array_mut() {
+                for element in array.iter_mut() {
+                    if let Some(type_) = element.get("type").map(|e| e.as_str()).flatten() {
+                        if type_ == translation_type {
+                            if let Some(endpoint) =
+                                element.get("endpoint").map(|e| e.as_str()).flatten()
+                            {
+                                this.handler_endpoints = vec![endpoint.to_owned()];
+                            }
+                            if let Some(arguments) = element
+                                .get_mut("arguments")
+                                .map(|e| e.as_object_mut())
+                                .flatten()
+                            {
+                                for (a_name, a_value) in arguments.iter_mut() {
+                                    if a_value.is_string() {
+                                        let header_name =
+                                            a_value.as_str().unwrap().replace("-", "_");
+                                        if let Some(header) = result_headers.get(&header_name) {
+                                            *a_value = Value::from_str(header)?;
+                                        }
+                                    } else if a_value.is_object() {
+                                        let a_value_clone = a_value.clone();
+                                        let a_value_map = a_value_clone.as_object().unwrap();
+                                        let a_value = a_value.as_object_mut().unwrap();
+                                        for (key, value) in a_value_map {
+                                            if value.is_string() {
+                                                let header_name =
+                                                    value.as_str().unwrap().replace("-", "_");
+                                                if let Some(header) = headers.get(header_name) {
+                                                    a_value.insert(
+                                                        key.clone(),
+                                                        serde_json::from_str(header.to_str()?)?,
+                                                    );
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    for (h_name, h_value) in headers.iter_mut() {
+                                        if h_name.as_str() == a_name {
+                                            if a_value.is_string() {
+                                                *h_value = HeaderValue::from_str(
+                                                    a_value.as_str().unwrap(),
+                                                )?;
+                                            } else if a_value.is_object() {
+                                                let mut current: HashMap<String, String> =
+                                                    match serde_json::from_str(h_value.to_str()?) {
+                                                        Ok(val) => val,
+                                                        Err(_err) => {
+                                                            // Ignore parsing error like in original code for now
+                                                            HashMap::new()
+                                                        }
+                                                    };
+                                                let iter = a_value.as_object().unwrap().iter().map(
+                                                    |(key, value)| {
+                                                        (key.clone(), value.as_str().map(|e| e.to_owned()).unwrap_or_else(|| {
+                                                            log::error!("Could not convert value to string");
+                                                            "".to_owned()
+                                                        }))
+                                                    }
+                                                );
+                                                current.extend(iter);
+                                                let header = serde_json::to_string(&current)?;
+                                                *h_value = HeaderValue::from_str(&header)?;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        })
+    }
+
     /**
      * Handles a returning callback
      * This is called for any response comming back from the service.
@@ -778,123 +875,83 @@ impl ConnectionWrapper {
         }
     }
 
-    fn handle_twin_translate(
-        twin_translate_url: &String,
-        headers: &mut HeaderMap,
-        this: &mut std::sync::MutexGuard<ConnectionWrapper>,
-    ) -> Result<()> {
-        let client = http_helper::Client::new(&twin_translate_url, Method::GET)?;
-        let result = client.execute()?;
-        let status = result.status_code;
-        let result_headers = result.headers;
-        let mut content = result.content;
-        Ok(if status >= 200 && status < 300 {
-            let translation_type = match headers.get("CPEE-TWIN-TASKTYPE") {
-                Some(transl_type) => match transl_type.to_str()? {
-                    "i" => "instantiation",
-                    "ir" => "ipc-receive",
-                    "is" => "ipc-send",
-                    _ => "instantiation",
-                },
-                None => "instantiation",
-            };
-
-            // Assumption about "gtresult.first.value.read": first is the array method to get the first element
-            let body = match content.pop().unwrap() {
-                Parameter::SimpleParameter { value, .. } => value.clone(),
-                Parameter::ComplexParameter {
-                    mut content_handle, ..
-                } => {
-                    let mut body = String::new();
-                    content_handle.rewind()?;
-                    content_handle.read_to_string(&mut body)?;
-                    content_handle.rewind()?;
-                    body
-                }
-            };
-
-            // TODO: Very unsure about the semantics of the original code and the usage
-            let mut array = json!(body);
-            assert!(array.is_array());
-            if let Some(array) = array.as_array_mut() {
-                for element in array.iter_mut() {
-                    if let Some(type_) = element.get("type").map(|e| e.as_str()).flatten() {
-                        if type_ == translation_type {
-                            if let Some(endpoint) =
-                                element.get("endpoint").map(|e| e.as_str()).flatten()
-                            {
-                                this.handler_endpoints = vec![endpoint.to_owned()];
-                            }
-                            if let Some(arguments) = element
-                                .get_mut("arguments")
-                                .map(|e| e.as_object_mut())
-                                .flatten()
-                            {
-                                for (a_name, a_value) in arguments.iter_mut() {
-                                    if a_value.is_string() {
-                                        let header_name =
-                                            a_value.as_str().unwrap().replace("-", "_");
-                                        if let Some(header) = result_headers.get(&header_name) {
-                                            *a_value = Value::from_str(header)?;
-                                        }
-                                    } else if a_value.is_object() {
-                                        let a_value_clone = a_value.clone();
-                                        let a_value_map = a_value_clone.as_object().unwrap();
-                                        let a_value = a_value.as_object_mut().unwrap();
-                                        for (key, value) in a_value_map {
-                                            if value.is_string() {
-                                                let header_name =
-                                                    value.as_str().unwrap().replace("-", "_");
-                                                if let Some(header) = headers.get(header_name) {
-                                                    a_value.insert(
-                                                        key.clone(),
-                                                        serde_json::from_str(header.to_str()?)?,
-                                                    );
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    for (h_name, h_value) in headers.iter_mut() {
-                                        if h_name.as_str() == a_name {
-                                            if a_value.is_string() {
-                                                *h_value = HeaderValue::from_str(
-                                                    a_value.as_str().unwrap(),
-                                                )?;
-                                            } else if a_value.is_object() {
-                                                let mut current: HashMap<String, String> =
-                                                    match serde_json::from_str(h_value.to_str()?) {
-                                                        Ok(val) => val,
-                                                        Err(_err) => {
-                                                            // Ignore parsing error like in original code for now
-                                                            HashMap::new()
-                                                        }
-                                                    };
-                                                let iter = a_value.as_object().unwrap().iter().map(
-                                                    |(key, value)| {
-                                                        (key.clone(), value.as_str().map(|e| e.to_owned()).unwrap_or_else(|| {
-                                                            log::error!("Could not convert value to string");
-                                                            "".to_owned()
-                                                        }))
-                                                    }
-                                                );
-                                                current.extend(iter);
-                                                let header = serde_json::to_string(&current)?;
-                                                *h_value = HeaderValue::from_str(&header)?;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        })
-    }
+    
 
     pub fn activity_no_longer_necessary(&self) -> bool {
         true
+    }
+    
+    fn add_error_information(&self, content: &mut HashMap<String, String>, err: Error) {
+        match self.extract_info_from_message(err) {
+            Ok((message, line, location)) => {
+                content.insert("line".to_owned(), line);
+                content.insert("location".to_owned(), location);
+                content.insert("message".to_owned(), message);
+            },
+            Err(message) => {
+                content.insert("message".to_owned(), message);
+            },
+        }
+    }
+
+    fn extract_info_from_message(
+        &self,
+        err: Error,
+    ) -> std::result::Result<(String, String, String), String> {
+        match err {
+            Error::GeneralError(message) => self.try_extract(&message),
+            Error::EvalError(eval_error) => match eval_error {
+                eval_helper::EvalError::GeneralEvalError(message) => self.try_extract(&message),
+                eval_helper::EvalError::SyntaxError(message) => self.try_extract(&message),
+                eval_helper::EvalError::RuntimeError(message) => self.try_extract(&message),
+                eval_helper::EvalError::Signal(signal, evaluation_result) => {
+                    log::error!(
+                        "Trying to extract information from error: {:?}",
+                        EvalError::Signal(signal, evaluation_result)
+                    );
+                    Err("".to_owned())
+                }
+            },
+            other => {
+                log::error!("Trying to extract information from error: {:?}", other);
+                Err("".to_owned())
+            }
+        }
+    }
+
+    fn try_extract(&self, message: &str) -> std::result::Result<(String, String, String), String> {
+        match self.error_regex.captures(message) {
+            Some(capture) => { 
+                let message = capture.get(4).unwrap();
+                let line = capture.get(3).unwrap();
+                let location = capture.get(1).unwrap();
+                Ok((message.as_str().to_owned(), line.as_str().to_owned(), location.as_str().to_owned()))
+            },
+            None => {
+                log::info!("Capture of regex did not work for message: {message}");
+                Err(message.to_owned())
+            },
+        }
+    }
+
+    pub fn additional(&self) -> Value {
+        let weel = self.weel();
+        let data = &weel.static_data;
+        json!(
+            {
+                "attributes": data.attributes,
+                "cpee": {
+                    "base": data.base_url,
+                    "instance": data.instance_id,
+                    "instance_url": data.instance_url(),
+                    "instance_uuid": data.uuid()
+                },
+                "task": {
+                    "label": self.label,
+                    "id": self.handler_position
+                }
+            }
+        )
     }
 }
 
@@ -907,7 +964,6 @@ impl Into<LocalData> for EvaluationResult {
         LocalData {
             data: self.data,
             endpoints: self.endpoints,
-            thread_local: self.thread_local,
         }
     }
 }
@@ -920,5 +976,4 @@ impl Into<LocalData> for EvaluationResult {
 pub struct LocalData {
     pub data: String,
     pub endpoints: HashMap<String, String>,
-    pub thread_local: String,
 }
