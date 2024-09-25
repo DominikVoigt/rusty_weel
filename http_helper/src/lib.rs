@@ -563,7 +563,7 @@ fn parse_multipart(body: &[u8], boundary: &str) -> Result<Vec<Parameter>> {
 }
 
 #[cfg(test)]
-mod test {
+mod testing {
     use super::*;
     use std::io::{Read, Seek};
 

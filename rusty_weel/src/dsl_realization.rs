@@ -1287,6 +1287,8 @@ pub fn generate_random_key() -> String {
         .collect()
 }
 
+
+#[cfg(testing)]
 mod test {
     use super::*;
 
