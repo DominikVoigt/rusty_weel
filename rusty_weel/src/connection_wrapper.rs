@@ -1,4 +1,5 @@
 use http_helper::{header_map_to_hash_map, Parameter};
+use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use regex::Regex;
 use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue},
@@ -16,9 +17,9 @@ use std::{
 use urlencoding::encode;
 
 use crate::{
-    data_types::{BlockingQueue, HTTPParams, InstanceMetaData},
+    data_types::{BlockingQueue, DynamicData, HTTPParams, InstanceMetaData},
     dsl_realization::{generate_random_key, Error, Result, Signal, Weel},
-    eval_helper::{self, EvalError, EvaluationResult},
+    eval_helper::{self, evaluate_expression, EvalError, EvaluationResult},
 };
 
 pub struct ConnectionWrapper {
@@ -274,7 +275,7 @@ impl ConnectionWrapper {
 
         // Resolve the endpoint name to the actual correct endpoint (incl. twin_translate)
         if endpoint_names.len() > 0 {
-            self.resolve_endpoints(prepare_result.endpoints, endpoint_names);
+            self.resolve_endpoints(&prepare_result.endpoints, endpoint_names);
 
             match weel.static_data.attributes.get("twin_engine") {
                 Some(twin_engine_url) => {
@@ -293,7 +294,19 @@ impl ConnectionWrapper {
                 }
             };
         };
+        let dyn_data = DynamicData {
+            endpoints: prepare_result.endpoints,
+            data: prepare_result.data,
+        };
 
+        if let Some(arguments) = &parameters.arguments {
+            // Only translate arguments that are expressions and that have actual expressions in them (expression_value should imply value is not empty)
+            arguments.into_par_iter().filter(|argument| argument.expression_value && argument.value.is_some()).map(|argument| {
+                let value = argument.value.as_ref().unwrap();
+                
+                evaluate_expression(&dyn_data, &weel.static_data, value, None, &thread_local, self.additional(), None, None, "prepare")
+            });
+        }
         // TODO: Evaluate key value pairs that have the flag set (TODO: Add endpoint for eval only)
         todo!()
     }
@@ -303,7 +316,7 @@ impl ConnectionWrapper {
      */
     fn resolve_endpoints(
         &mut self,
-        endpoint_urls: HashMap<String, String>,
+        endpoint_urls: &HashMap<String, String>,
         endpoint_names: &Vec<&str>,
     ) {
         self.handler_endpoints = endpoint_names

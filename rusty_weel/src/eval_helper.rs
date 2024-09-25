@@ -100,7 +100,6 @@ pub fn evaluate_expression(
     let mut endpoints: Option<HashMap<String, String>> = None;
     let mut signal: Option<Signal> = None;
     let mut signal_text: Option<String> = None;
-    let mut local: Option<String> = None;
     /*
      * Retrieve the result of the expression
      * Also retrieves the data endpoints state and local data if there is some
