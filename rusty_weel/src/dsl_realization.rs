@@ -1286,3 +1286,26 @@ pub fn generate_random_key() -> String {
         .map(char::from)
         .collect()
 }
+
+mod test {
+    use super::*;
+
+    #[test]
+    fn test() {
+        let stat = StaticData {
+            instance_id: 1,
+            host: todo!(),
+            base_url: todo!(),
+            redis_url: None,
+            redis_path: Some(format!("unix:///home/mangler/run/flow/redis.sock")),
+            redis_db: 0,
+            redis_workers: 1,
+            global_executionhandlers: "rust".to_owned(),
+            executionhandlers: "rust".to_owned(),
+            executionhandler: "rust".to_owned(),
+            eval_language: "rust".to_owned(),
+            eval_backend_url: "http://localhost:9302".to_owned(),
+            attributes: todo!(),
+        }
+    }
+}

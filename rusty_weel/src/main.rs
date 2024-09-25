@@ -4,7 +4,7 @@ use std::sync::{mpsc, Arc, Mutex};
 
 use indoc::indoc;
 
-use std::panic;
+use std::{panic, thread};
 
 use rusty_weel::connection_wrapper::ConnectionWrapper;
 use rusty_weel::dsl::DSL;
@@ -44,7 +44,8 @@ fn main() {
         thread_information: todo!(),
         stop_signal_receiver
     };
-    
+    let current_thread = thread::current();
+    weel.thread_information.lock().unwrap().insert(current_thread, );
     // create thread for callback subscriptions with redis
     RedisHelper::establish_callback_subscriptions(
         &weel.static_data,
