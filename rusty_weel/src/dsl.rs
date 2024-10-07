@@ -21,7 +21,7 @@ pub trait DSL {
     /**
      * Implements script tasks that do not need to invoke functionalities
      */
-    fn manipulate(self: Arc<Self>, label: &str, name: Option<&str>, code: &str) -> Result<()>;
+    fn manipulate(self: Arc<Self>, label: &str, code: &str) -> Result<()>;
 
     fn loop_exec(
         &self,

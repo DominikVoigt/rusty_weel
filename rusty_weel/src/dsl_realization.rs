@@ -74,7 +74,7 @@ impl DSL for Weel {
         )
     }
 
-    fn manipulate(self: Arc<Self>, label: &str, name: Option<&str>, code: &str) -> Result<()> {
+    fn manipulate(self: Arc<Self>, label: &str, code: &str) -> Result<()> {
         self.weel_activity(
             label,
             ActivityType::Manipulate,

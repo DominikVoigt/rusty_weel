@@ -1,11 +1,11 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
-use std::sync::mpsc::Receiver;
+
 use std::sync::{mpsc, Arc, Mutex};
 
 use indoc::indoc;
 
-use std::{clone, panic, thread};
+use std::{panic, thread};
 
 use rusty_weel::connection_wrapper::ConnectionWrapper;
 use rusty_weel::dsl::DSL;
