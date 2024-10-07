@@ -128,7 +128,6 @@ impl RedisHelper {
         }
     }
 
-
     pub fn extract_handler(&mut self, instance_id: &str, key: &str) -> HashSet<String> {
         self.connection
             .smembers(format!("instance:{}/handlers/{})", instance_id, key))
@@ -277,6 +276,19 @@ impl RedisHelper {
         }
         Ok(())
     }
+
+    pub fn get_attributes(&mut self, instance_id: &str) -> Result<HashMap<String, String>> {
+        let attributes_key = format!("instance:{instance_id}/attributes");
+        let attribute_names: Vec<String> = self.connection.zrange(&attributes_key, 0, -1)?;
+        let mut attributes = HashMap::with_capacity(attribute_names.len());
+        for ele in attribute_names {
+            attributes.insert(
+                ele.clone(),
+                self.connection.get(format!("{attributes_key}/{ele}"))?,
+            );
+        }
+        Ok(attributes)
+    }
 }
 
 /**
@@ -381,9 +393,7 @@ fn construct_parameters(message: &serde_json::Value) -> Result<Vec<Parameter>> {
 
     for parameter in values {
         if parameter[0].is_null() || parameter[1][0].is_null() || parameter[1][1].is_null() {
-            log::error!(
-                "one of the values within the callback response content.values is null",
-            );
+            log::error!("one of the values within the callback response content.values is null",);
             // TODO: Determine whether we want to return here or skip parameter
             continue;
         }
@@ -403,7 +413,7 @@ fn construct_parameters(message: &serde_json::Value) -> Result<Vec<Parameter>> {
                 Err(err) => {
                     // TODO: Determine whether we want to return here or skip parameter
                     return Err(err.into());
-                },
+                }
             };
             let content_path = get_str_from_value!(parameter[1][2]);
             parameters.push(Parameter::ComplexParameter {
@@ -423,7 +433,6 @@ fn construct_parameters(message: &serde_json::Value) -> Result<Vec<Parameter>> {
     }
     Ok(parameters)
 }
-
 
 #[cfg(test)]
 mod test {
@@ -576,14 +585,21 @@ mod test {
             )?;
             Ok(())
         });
-        
-        let mut redis_sender =
-            RedisHelper::new(&get_unix_socket_configuration(), "test_connection").unwrap();
+
+        let conf = get_unix_socket_configuration();
+        let mut redis_sender = RedisHelper::new(&conf, "test_connection").unwrap();
 
         redis_sender.send(
             "event",
             "test_state/changed",
-            get_unix_socket_configuration().get_instance_meta_data(),
+            InstanceMetaData {
+                instance_url: conf.instance_url(),
+                instance_id: conf.instance_id,
+                cpee_base_url: conf.cpee_base_url,
+                instance_uuid: "test".to_owned(),
+                info: "test".to_owned(),
+                attributes: HashMap::new(),
+            },
             Some("test_payload"),
         )?;
         let result = rec_thread.join();
@@ -607,17 +623,16 @@ mod test {
         StaticData {
             instance_id: "test_id".to_owned(),
             host: "localhost".to_owned(),
-            base_url: "localhost/cpee".to_owned(),
+            cpee_base_url: "localhost/cpee".to_owned(),
             redis_url: None,
             redis_path: Some(format!("unix://{}", expanded_path)),
             redis_db: 0,
             redis_workers: 2,
-            global_executionhandlers: "".to_owned(),
             executionhandlers: "".to_owned(),
             executionhandler: "".to_owned(),
             eval_language: "".to_owned(),
-            eval_backend_url: "".to_owned(),
-            attributes,
+            eval_backend_exec_full: "".to_owned(),
+            eval_backend_structurize: "".to_owned(),
         }
     }
 
@@ -625,18 +640,17 @@ mod test {
         StaticData {
             instance_id: "test_id".to_owned(),
             host: "localhost".to_owned(),
-            base_url: "localhost/cpee".to_owned(),
+            cpee_base_url: "localhost/cpee".to_owned(),
             // Default port
             redis_url: Some("redis://localhost:6379".to_owned()),
             redis_path: None,
             redis_db: 0,
             redis_workers: 2,
-            global_executionhandlers: "".to_owned(),
             executionhandlers: "".to_owned(),
             executionhandler: "".to_owned(),
             eval_language: "".to_owned(),
-            eval_backend_url: "".to_owned(),
-            attributes: HashMap::new(),
+            eval_backend_exec_full: "".to_owned(),
+            eval_backend_structurize: "".to_owned(),
         }
     }
 }
