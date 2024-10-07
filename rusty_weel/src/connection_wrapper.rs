@@ -81,7 +81,7 @@ impl ConnectionWrapper {
      * If too many request are issued to an address by the same wrapper, will throttle these requests
      */
     pub fn loop_guard(&self, id: String) {
-        let attributes = &self.weel().static_data.attributes;
+        let attributes = &self.weel().attributes;
         let loop_guard_attribute = attributes.get("nednoamol");
         if loop_guard_attribute.is_some_and(|attrib| attrib == "true") {
             return;
@@ -232,7 +232,7 @@ impl ConnectionWrapper {
         weel.redis_notifications_client
             .lock()
             .expect("Could not acquire mutex")
-            .notify(what, content, weel.static_data.get_instance_meta_data())?;
+            .notify(what, content, weel.get_instance_meta_data())?;
         Ok(())
     }
 
@@ -273,7 +273,7 @@ impl ConnectionWrapper {
         if endpoint_names.len() > 0 {
             self.resolve_endpoints(&prepare_result.endpoints, endpoint_names);
 
-            match weel.static_data.attributes.get("twin_engine") {
+            match weel.attributes.get("twin_engine") {
                 Some(twin_engine_url) => {
                     if !twin_engine_url.is_empty() {
                         self.handler_endpoint_origin = self.handler_endpoints.clone();
@@ -428,7 +428,7 @@ impl ConnectionWrapper {
             weel.redis_notifications_client.lock()?.notify(
                 "activity/calling",
                 Some(content),
-                weel.static_data.get_instance_meta_data(),
+                weel.get_instance_meta_data(),
             )?
         }
         match passthrough {
@@ -465,7 +465,7 @@ impl ConnectionWrapper {
 
         // Generate headers
         let mut headers: HeaderMap =
-            this.construct_headers(weel.static_data.get_instance_meta_data(), &callback_id)?;
+            this.construct_headers(weel.get_instance_meta_data(), &callback_id)?;
 
         let mut status: u16;
         let mut response_headers: HashMap<String, String>;
@@ -537,7 +537,7 @@ impl ConnectionWrapper {
             body = response.body;
 
             if status == 561 {
-                match weel.static_data.attributes.get("twin_translate") {
+                match weel.attributes.get("twin_translate") {
                     Some(twin_translate) => {
                         Self::handle_twin_translate(twin_translate, &mut headers, &mut this)?;
                     }
@@ -597,7 +597,7 @@ impl ConnectionWrapper {
                         weel.redis_notifications_client.lock().unwrap().notify(
                             "task/instantiation",
                             Some(content.clone()),
-                            weel.static_data.get_instance_meta_data(),
+                            weel.get_instance_meta_data(),
                         )?;
                     }
 
@@ -613,7 +613,7 @@ impl ConnectionWrapper {
                         weel.redis_notifications_client.lock().unwrap().notify(
                             &what,
                             Some(content),
-                            weel.static_data.get_instance_meta_data(),
+                            weel.get_instance_meta_data(),
                         )?;
                     }
                 }
@@ -754,7 +754,7 @@ impl ConnectionWrapper {
     ) -> Result<()> {
         let weel = self.weel();
         let recv =
-            eval_helper::structurize_result(&weel.static_data.eval_backend_url, &options, body)?;
+            eval_helper::structurize_result(&weel.static_data.eval_backend_structurize, &options, body)?;
         let mut redis = weel.redis_notifications_client.lock()?;
         let content = self.construct_basic_content()?;
         {
@@ -768,7 +768,7 @@ impl ConnectionWrapper {
             redis.notify(
                 "activity/receiving",
                 Some(content),
-                weel.static_data.get_instance_meta_data(),
+                weel.get_instance_meta_data(),
             )?;
         }
 
@@ -782,7 +782,7 @@ impl ConnectionWrapper {
             redis.notify(
                 "activity/receiving",
                 Some(content),
-                weel.static_data.get_instance_meta_data(),
+                weel.get_instance_meta_data(),
             )?;
         }
 
@@ -805,7 +805,7 @@ impl ConnectionWrapper {
             redis.notify(
                 &format!("task/{event}"),
                 Some(content),
-                weel.static_data.get_instance_meta_data(),
+                weel.get_instance_meta_data(),
             )?;
         } else {
             self.handler_return_status = status;
@@ -1001,12 +1001,12 @@ impl ConnectionWrapper {
         let data = &weel.static_data;
         json!(
             {
-                "attributes": data.attributes,
+                "attributes": self.weel().attributes,
                 "cpee": {
-                    "base": data.base_url,
+                    "base": data.cpee_base_url,
                     "instance": data.instance_id,
                     "instance_url": data.instance_url(),
-                    "instance_uuid": data.uuid()
+                    "instance_uuid": self.weel().uuid()
                 },
                 "task": {
                     "label": self.label,

@@ -16,7 +16,7 @@ use rusty_weel_macro::get_str_from_value;
 
 use crate::connection_wrapper::ConnectionWrapper;
 use crate::data_types::{
-    BlockingQueue, CancelCondition, DynamicData, HTTPParams, State, StaticData, Status, ThreadInfo
+    BlockingQueue, CancelCondition, DynamicData, HTTPParams, InstanceMetaData, State, StaticData, Status, ThreadInfo
 };
 use crate::dsl::DSL;
 use crate::eval_helper::{self, EvalError};
@@ -27,6 +27,8 @@ static EVALUATION_LOCK: Mutex<()> = Mutex::new(());
 
 pub struct Weel {
     pub static_data: StaticData,
+    // Also static, but is persisted within redis and thus a separate struct
+    pub attributes: HashMap<String, String>,
     pub dynamic_data: Mutex<DynamicData>,
     pub state: Mutex<State>,
     pub status: Mutex<Status>,
@@ -247,7 +249,7 @@ impl Weel {
             redis.send(
                 "vote-response",
                 vote_id,
-                self.static_data.get_instance_meta_data(),
+                self.get_instance_meta_data(),
                 Some("true"),
             )?;
         }
@@ -286,7 +288,7 @@ impl Weel {
             content.insert(
                 "attributes".to_owned(),
                 // TODO: Check whether these are already "translated"
-                serde_json::to_string(&static_data.attributes)
+                serde_json::to_string(&self.attributes)
                     .expect("Could not serialize attributes"),
             );
             content.insert("subscription".to_owned(), client.clone());
@@ -296,7 +298,7 @@ impl Weel {
             redis_helper.send(
                 "vote",
                 vote_topic,
-                static_data.get_instance_meta_data(),
+                self.get_instance_meta_data(),
                 Some(content.as_str()),
             )?;
         }
@@ -388,7 +390,7 @@ impl Weel {
             .send(
                 "callback",
                 "activity/content",
-                self.static_data.get_instance_meta_data(),
+                self.get_instance_meta_data(),
                 Some(&content),
             )?;
         self.callback_keys
@@ -408,7 +410,7 @@ impl Weel {
             .send(
                 "callback-end",
                 key,
-                self.static_data.get_instance_meta_data(),
+                self.get_instance_meta_data(),
                 None,
             )?;
         Ok(())
@@ -1148,6 +1150,29 @@ impl Weel {
             }
         };
     }
+
+    pub fn get_instance_meta_data(&self) -> InstanceMetaData {
+        InstanceMetaData {
+            cpee_base_url: self.static_data.base_url().to_owned(),
+            instance_id: self.static_data.instance_id.clone(),
+            instance_url: self.static_data.instance_url(),
+            instance_uuid: self.uuid().to_owned(),
+            info: self.info().to_owned(),
+            attributes: self.attributes.clone(),
+        }
+    }
+
+    pub fn uuid(&self) -> &str {
+        self.attributes
+            .get("uuid")
+            .expect("Attributes do not contain uuid")
+    }
+
+    pub fn info(&self) -> &str {
+        self.attributes
+            .get("info")
+            .expect("Attributes do not contain info")
+    }
 }
 
 fn recursive_continue(thread_info_map: &MutexGuard<HashMap<ThreadId, RefCell<ThreadInfo>>>, thread_id: &ThreadId) {
@@ -1288,28 +1313,47 @@ pub fn generate_random_key() -> String {
 }
 
 
-#[cfg(testing)]
+#[cfg(test)]
 mod test {
+    use std::fs;
+
     use super::*;
 
     #[test]
-    fn test() {
+    fn create_static() { 
+        let file = fs::File::create_new("./static.yaml").unwrap();
         let stat = StaticData {
-            instance_id: 1,
-            host: todo!(),
-            base_url: todo!(),
-            redis_url: None,
-            redis_path: Some(format!("unix:///home/mangler/run/flow/redis.sock")),
-            redis_db: 0,
-            redis_workers: 1,
-            global_executionhandlers: "rust".to_owned(),
-            executionhandlers: "rust".to_owned(),
-            executionhandler: "rust".to_owned(),
-            eval_language: "rust".to_owned(),
-            eval_backend_url: "http://localhost:9302".to_owned(),
-            attributes: todo!(),
+            instance_id:                1.to_string(),
+            host:                       "localhost".to_owned(),
+            cpee_base_url:              "https://echo.bpm.in.tum.de/flow/engine".to_owned(),
+            redis_url:                  None,
+            redis_path:                 Some(format!("unix:///home/mangler/run/flow/redis.sock")),
+            redis_db:                   0,
+            redis_workers:              2,
+            executionhandlers:          "/home/mangler/run/flow/executionhandlers".to_owned(),
+            executionhandler:           "rust".to_owned(),
+            eval_language:              "rust".to_owned(),
+            eval_backend_exec_full:     "http://localhost:9302/exec_full".to_owned(),
+            eval_backend_structurize:   "http://localhost:9302/structurize".to_owned(),
         };
+        serde_yaml::to_writer(file, &stat).unwrap();
+    }
 
+    #[test]
+    fn create_dynamic() { 
+        let file = fs::File::create_new("./dynamic.yaml").unwrap();
+        let mut test_endpoints = HashMap::new();
+        test_endpoints.insert("bookair".to_owned(), "http://gruppe.wst.univie.ac.at/~mangler/services/airline.php".to_owned());
 
+        let mut test_data = HashMap::new();
+        test_data.insert("from".to_owned(),     "Vienna".to_owned());
+        test_data.insert("to".to_owned(),       "Prague".to_owned());
+        test_data.insert("persons".to_owned(),  "3".to_owned());
+        test_data.insert("costs".to_owned(),    "0".to_owned());
+        let dynamic = DynamicData {
+            endpoints: test_endpoints,
+            data: serde_yaml::to_string(&test_data).unwrap(),
+        };
+        serde_yaml::to_writer(file, &dynamic).unwrap();
     }
 }

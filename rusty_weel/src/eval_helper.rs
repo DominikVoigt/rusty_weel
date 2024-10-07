@@ -34,7 +34,7 @@ pub fn evaluate_expression(
     location: &str,
 ) -> Result<EvaluationResult> {
     // This url has to be the full path to the exec-full endpoint
-    let mut client = Client::new(&static_context.eval_backend_url, http_helper::Method::PUT)?;
+    let mut client = Client::new(&static_context.eval_backend_exec_full, http_helper::Method::PUT)?;
     {
         // Construct multipart request
         //let expression = encode(expression);
@@ -259,11 +259,11 @@ impl Display for EvalError {
  * Receives back an application/json
  */
 pub fn structurize_result(
-    eval_backend_url: &str,
+    eval_backend_structurize_url: &str,
     options: &HashMap<String, String>,
     body: &[u8],
 ) -> Result<String> {
-    let mut client = http_helper::Client::new(eval_backend_url, Method::PUT)?;
+    let mut client = http_helper::Client::new(eval_backend_structurize_url, Method::PUT)?;
     client.add_request_header(
         CONTENT_TYPE.as_str(),
         APPLICATION_OCTET_STREAM.essence_str(),
@@ -345,17 +345,16 @@ mod test {
         let static_data = StaticData {
             instance_id: "1".to_owned(),
             host: "".to_owned(),
-            base_url: "".to_owned(),
+            cpee_base_url: "".to_owned(),
             redis_url: None,
             redis_path: Some("".to_owned()),
             redis_db: 0,
             redis_workers: 1,
-            global_executionhandlers: "".to_owned(),
             executionhandlers: "".to_owned(),
             executionhandler: "".to_owned(),
             eval_language: "".to_owned(),
-            eval_backend_url: "http://localhost:8550/exec".to_owned(),
-            attributes: HashMap::new(),
+            eval_backend_exec_full: "http://localhost:8550/exec_full".to_owned(),
+            eval_backend_structurize: "http://localhost:8550/structurize".to_owned(),
         };
         let status = Status::new(0, "test".to_owned());
 

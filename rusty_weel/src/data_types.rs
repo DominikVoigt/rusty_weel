@@ -69,17 +69,16 @@ pub enum State {
 pub struct StaticData {
     pub instance_id: String,
     pub host: String,
-    pub base_url: String,
+    pub cpee_base_url: String,
     pub redis_url: Option<String>,
     pub redis_path: Option<String>,
     pub redis_db: i64,
     pub redis_workers: u32,
-    pub global_executionhandlers: String,
     pub executionhandlers: String,
     pub executionhandler: String,
     pub eval_language: String,
-    pub eval_backend_url: String,
-    pub attributes: HashMap<String, String>,
+    pub eval_backend_exec_full: String,
+    pub eval_backend_structurize: String,
 }
 
 /**
@@ -150,43 +149,20 @@ impl StaticData {
         config
     }
 
-    pub fn uuid(&self) -> &str {
-        self.attributes
-            .get("uuid")
-            .expect("Attributes do not contain uuid")
-    }
-
-    pub fn info(&self) -> &str {
-        self.attributes
-            .get("info")
-            .expect("Attributes do not contain info")
-    }
-
     pub fn host(&self) -> &str {
         self.host.as_str()
     }
 
     pub fn base_url(&self) -> &str {
-        self.base_url.as_str()
+        self.cpee_base_url.as_str()
     }
 
     pub fn instance_url(&self) -> String {
-        let mut path = PathBuf::from(self.base_url.as_str());
+        let mut path = PathBuf::from(self.cpee_base_url.as_str());
         path.push(self.instance_id.clone());
         path.to_str()
             .expect("Path to instance is not valid UTF-8")
             .to_owned()
-    }
-
-    pub fn get_instance_meta_data(&self) -> InstanceMetaData {
-        InstanceMetaData {
-            cpee_base_url: self.base_url().to_owned(),
-            instance_id: self.instance_id.clone(),
-            instance_url: self.instance_url(),
-            instance_uuid: self.uuid().to_owned(),
-            info: self.info().to_owned(),
-            attributes: self.attributes.clone(),
-        }
     }
 }
 
@@ -271,29 +247,25 @@ type float = f32;
 
 #[cfg(test)]
 mod testing {
-    use std::{collections::HashMap, fs};
+    use std::fs;
 
     use super::StaticData;
 
     fn create_dummy_static(path: &str) -> StaticData {
         //let config = fs::read_to_string(path).expect("Could not read configuration file!");
-        let mut attr = HashMap::new();
-        attr.insert("uuid".to_owned(), "test-uuid".to_owned());
-        attr.insert("modeltype".to_owned(), "CPEE".to_owned());
         let config: StaticData = StaticData {
             instance_id: "test_id".to_owned(),
             host: "test_id".to_owned(),
-            base_url: "test_id".to_owned(),
+            cpee_base_url: "test_id".to_owned(),
             redis_url: None,
             redis_path: Some("test_id".to_owned()),
             redis_db: 0,
             redis_workers: 2,
-            global_executionhandlers: "exhs".to_owned(),
             executionhandlers: "exh".to_owned(),
             executionhandler: "rust".to_owned(),
             eval_language: "ruby".to_owned(),
-            eval_backend_url: "ruby_backend_url".to_owned(),
-            attributes: attr,
+            eval_backend_exec_full: "ruby_backend_url".to_owned(),
+            eval_backend_structurize: "ruby_backend_url".to_owned(),
         };
         let file = fs::File::create_new(path).unwrap();
         serde_yaml::to_writer(file, &config).unwrap();
