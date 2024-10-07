@@ -9,9 +9,8 @@ use std::{panic, thread};
 use rusty_weel::connection_wrapper::ConnectionWrapper;
 use rusty_weel::dsl::DSL;
 // Needed for inject!
-use rusty_weel::data_types::{DynamicData, HTTPParams, KeyValuePair, State, StaticData, Status};
-use rusty_weel::dsl_realization::{Weel, Error, Result};
-use rusty_weel::eval_helper::{self, evaluate_expression};
+use rusty_weel::data_types::{BlockingQueue, DynamicData, HTTPParams, KeyValuePair, State, StaticData, Status, ThreadInfo};
+use rusty_weel::dsl_realization::{Weel, Result};
 use rusty_weel::redis_helper::RedisHelper;
 use rusty_weel_macro::inject;
 use reqwest::Method;
@@ -29,7 +28,7 @@ fn main() {
         Ok(redis) => redis,
         Err(err) => {log::error!("Error during startup when connecting to redis: {:?}", err); panic!("Error during startup")},
     };
-    let (stopped_signal_sender, stopped_signal_receiver) = mpsc::channel::<()>();
+    let (stop_signal_sender, stop_signal_receiver) = mpsc::channel::<()>();
     let weel = Weel {
         redis_notifications_client: Mutex::new(redis_helper),
         static_data,
@@ -42,7 +41,7 @@ fn main() {
         positions: Mutex::new(Vec::new()),
         search_positions: todo!(),
         thread_information: todo!(),
-        stop_signal_receiver
+        stop_signal_receiver: Mutex::new(stop_signal_receiver),
     };
     let current_thread = thread::current();
     weel.thread_information.lock().unwrap().insert(current_thread, );
@@ -123,7 +122,7 @@ fn main() {
 
 
     // Executes the code and blocks until it is finished
-    local_weel.start(model, stopped_signal_sender);
+    local_weel.start(model, stop_signal_sender);
 }
 
 fn set_panic_hook() -> () {

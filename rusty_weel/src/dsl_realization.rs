@@ -549,7 +549,7 @@ impl Weel {
                             prepare_code,
                             thread_info.local.clone(),
                             &vec![endpoint_name.unwrap()],
-                            parameters.as_ref().expect(
+                            parameters.clone().expect(
                                 "The activity type call requires parameters to be provided",
                             ),
                         ) {
@@ -1308,6 +1308,8 @@ mod test {
             eval_language: "rust".to_owned(),
             eval_backend_url: "http://localhost:9302".to_owned(),
             attributes: todo!(),
-        }
+        };
+
+
     }
 }

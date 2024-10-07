@@ -1,5 +1,5 @@
 use http_helper::{header_map_to_hash_map, Parameter};
-use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use regex::Regex;
 use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue},
@@ -10,14 +10,14 @@ use std::{
     collections::HashMap,
     io::{Read, Seek},
     str::FromStr,
-    sync::{Arc, Mutex, MutexGuard, Weak},
+    sync::{Arc, Mutex, Weak},
     thread::sleep,
     time::{Duration, SystemTime},
 };
 use urlencoding::encode;
 
 use crate::{
-    data_types::{BlockingQueue, DynamicData, HTTPParams, InstanceMetaData},
+    data_types::{BlockingQueue, DynamicData, HTTPParams, InstanceMetaData, KeyValuePair},
     dsl_realization::{generate_random_key, Error, Result, Signal, Weel},
     eval_helper::{self, evaluate_expression, EvalError, EvaluationResult},
 };
@@ -157,10 +157,7 @@ impl ConnectionWrapper {
         self.inform_resource_utilization()
     }
 
-    pub fn inform_activity_failed(
-        &self,
-        err: Error
-    ) -> Result<()> {
+    pub fn inform_activity_failed(&self, err: Error) -> Result<()> {
         let mut content: HashMap<String, String> = self.construct_basic_content()?;
         self.add_error_information(&mut content, err);
         self.inform("activity/failed", Some(content))
@@ -239,7 +236,6 @@ impl ConnectionWrapper {
         Ok(())
     }
 
-
     /**
      * Handles all preparations to execute the activity:
      * - Executes the prepare code
@@ -255,7 +251,7 @@ impl ConnectionWrapper {
         prepare_code: Option<&str>,
         thread_local: String,
         endpoint_names: &Vec<&str>,
-        parameters: &HTTPParams,
+        parameters: HTTPParams,
     ) -> Result<HTTPParams> {
         let weel = self.weel();
         // Execute the prepare code and use the modified context for the rest of this metod (prepare_result)
@@ -268,7 +264,7 @@ impl ConnectionWrapper {
                 let dynamic_data = weel.dynamic_data.lock().unwrap();
                 LocalData {
                     data: dynamic_data.data.clone(),
-                    endpoints: dynamic_data.endpoints.clone()
+                    endpoints: dynamic_data.endpoints.clone(),
                 }
             }
         };
@@ -299,16 +295,67 @@ impl ConnectionWrapper {
             data: prepare_result.data,
         };
 
-        if let Some(arguments) = &parameters.arguments {
+        if let Some(arguments) = parameters.arguments {
+            let error: Mutex<Option<Error>> = Mutex::new(None);
             // Only translate arguments that are expressions and that have actual expressions in them (expression_value should imply value is not empty)
-            arguments.into_par_iter().filter(|argument| argument.expression_value && argument.value.is_some()).map(|argument| {
-                let value = argument.value.as_ref().unwrap();
-                
-                evaluate_expression(&dyn_data, &weel.static_data, value, None, &thread_local, self.additional(), None, None, "prepare")
-            });
+            let mapped_arguments: Vec<KeyValuePair> = arguments
+                .into_par_iter()
+                .filter(|argument| argument.expression_value && argument.value.is_some())
+                .filter_map(|argument| {
+                    if argument.expression_value {
+                        if let Some(value) = argument.value.as_ref() {
+                            let eval_result = match evaluate_expression(
+                                &dyn_data,
+                                &weel.static_data,
+                                value,
+                                None,
+                                &thread_local,
+                                self.additional(),
+                                None,
+                                None,
+                                "prepare",
+                            ) {
+                                Ok(result) => Some(result),
+                                Err(err) => {
+                                    log::error!(
+                                        "Failure evaluating argument expressions in prepare due to: {:?}", err                                
+                                    );
+                                    *error.lock().unwrap() = Some(err);
+                                    None
+                                }
+                            };
+                            let evaluated_expression = eval_result.map(|eval_result| {
+                                eval_result.expression_result
+                            });
+                            Some(KeyValuePair {
+                                key: argument.key,
+                                value: evaluated_expression,
+                                expression_value: false,
+                            })
+                        } else { // Expression but empty -> Empty value
+                            Some(KeyValuePair {
+                                key: argument.key,
+                                value: None,
+                                expression_value: false,
+                            })
+                        }
+                    } else {
+                        Some(argument.clone())
+                    }
+                })
+                .collect();
+            let error = error.lock().unwrap().take();
+            if let Some(err) = error {
+                return Err(err);
+            }
+
+            Ok(HTTPParams {
+                arguments: Some(mapped_arguments),
+                ..parameters
+            })
+        } else {
+            Ok(parameters.clone())
         }
-        // TODO: Evaluate key value pairs that have the flag set (TODO: Add endpoint for eval only)
-        todo!()
     }
 
     /**
@@ -888,22 +935,20 @@ impl ConnectionWrapper {
         }
     }
 
-    
-
     pub fn activity_no_longer_necessary(&self) -> bool {
         true
     }
-    
+
     fn add_error_information(&self, content: &mut HashMap<String, String>, err: Error) {
         match self.extract_info_from_message(err) {
             Ok((message, line, location)) => {
                 content.insert("line".to_owned(), line);
                 content.insert("location".to_owned(), location);
                 content.insert("message".to_owned(), message);
-            },
+            }
             Err(message) => {
                 content.insert("message".to_owned(), message);
-            },
+            }
         }
     }
 
@@ -934,16 +979,20 @@ impl ConnectionWrapper {
 
     fn try_extract(&self, message: &str) -> std::result::Result<(String, String, String), String> {
         match self.error_regex.captures(message) {
-            Some(capture) => { 
+            Some(capture) => {
                 let message = capture.get(4).unwrap();
                 let line = capture.get(3).unwrap();
                 let location = capture.get(1).unwrap();
-                Ok((message.as_str().to_owned(), line.as_str().to_owned(), location.as_str().to_owned()))
-            },
+                Ok((
+                    message.as_str().to_owned(),
+                    line.as_str().to_owned(),
+                    location.as_str().to_owned(),
+                ))
+            }
             None => {
                 log::info!("Capture of regex did not work for message: {message}");
                 Err(message.to_owned())
-            },
+            }
         }
     }
 
