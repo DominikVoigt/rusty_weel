@@ -5,7 +5,7 @@ use std::sync::{mpsc, Arc, Mutex};
 
 use indoc::indoc;
 
-use std::{panic, thread};
+use std::{clone, panic, thread};
 
 use rusty_weel::connection_wrapper::ConnectionWrapper;
 use rusty_weel::dsl::DSL;
@@ -17,7 +17,12 @@ use rusty_weel_macro::inject;
 use reqwest::Method;
 
 fn main() {
-    let (stop_signal_sender, local_weel, weel) = startup();
+    let (stop_signal_sender, stop_signal_receiver) = mpsc::channel::<()>();
+    let local_weel = startup(stop_signal_receiver);
+    let weel_ref = local_weel.clone();
+    let weel = move || {
+        weel_ref.clone()
+    };
     
     let model = move || -> Result<()> {
         //inject!("/home/i17/git-repositories/ma-code/rusty-weel/resources/model_instance.eic");
@@ -86,7 +91,7 @@ fn main() {
     local_weel.start(model, stop_signal_sender);
 }
 
-fn startup() -> (mpsc::Sender<()>, Arc<Weel>, impl Fn() -> Arc<Weel>) {
+fn startup(stop_signal_receiver: mpsc::Receiver<()>) -> Arc<Weel> {
     simple_logger::init_with_level(log::Level::Info).unwrap();
 
     set_panic_hook();
@@ -99,7 +104,6 @@ fn startup() -> (mpsc::Sender<()>, Arc<Weel>, impl Fn() -> Arc<Weel>) {
         Ok(redis) => redis,
         Err(err) => {log::error!("Error during startup when connecting to redis: {:?}", err); panic!("Error during startup")},
     };
-    let (stop_signal_sender, stop_signal_receiver) = mpsc::channel::<()>();
     let attributes = match RedisHelper::new(&static_data, "attributes") {
         Ok(mut redis) => match redis.get_attributes(&static_data.instance_id) {
             Ok(attributes) => attributes,
@@ -150,14 +154,10 @@ fn startup() -> (mpsc::Sender<()>, Arc<Weel>, impl Fn() -> Arc<Weel>) {
         Arc::clone(&weel.callback_keys),
     );
     let weel = Arc::new(weel);
-    let weel_clone = weel.clone();
     
     setup_signal_handler(&weel);
     let local_weel = Arc::clone(&weel);
-    let weel = move || {
-        weel_clone.clone()
-    };
-    (stop_signal_sender, local_weel, weel)
+    local_weel
 }
 
 fn set_panic_hook() -> () {
