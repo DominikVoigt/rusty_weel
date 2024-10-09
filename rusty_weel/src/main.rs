@@ -25,6 +25,8 @@ fn main() {
     };
     
     let model = move || -> Result<()> {
+        let thread = thread::current();
+        println!("ThreadID in closure: {:?}", thread.id());
         //inject!("/home/i17/git-repositories/ma-code/rusty-weel/resources/model_instance.eic");
         // Inject start
         weel().call(
@@ -154,6 +156,7 @@ fn startup(stop_signal_receiver: mpsc::Receiver<()>) -> Arc<Weel> {
     }));
 
     let thread = thread::current();
+    println!("ThreadID in main method: {:?}", thread.id());
     println!("ThreadID in main method: {:?}", thread.id());
     // create thread for callback subscriptions with redis
     RedisHelper::establish_callback_subscriptions(
