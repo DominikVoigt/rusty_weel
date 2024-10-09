@@ -93,7 +93,7 @@ pub fn evaluate_expression(
     let mut result = client.execute()?;
     let status = result.status_code;
     // Error in the provided code
-    println!("{:?}", result.headers);
+    println!("Headers: {:?}", result.headers);
     // Get the expressions parameter from the parsed response
     let mut expression_result: Option<String> = None;
     let mut changed_data: Option<HashMap<String, String>> = None;
