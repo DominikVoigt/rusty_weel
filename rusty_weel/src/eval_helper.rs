@@ -33,6 +33,7 @@ pub fn evaluate_expression(
     call_headers: Option<String>,
     location: &str,
 ) -> Result<EvaluationResult> {
+    log::info!("Evaluating expression: {expression}");
     // This url has to be the full path to the exec-full endpoint
     let mut client = Client::new(
         &static_context.eval_backend_exec_full,
