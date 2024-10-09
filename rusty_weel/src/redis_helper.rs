@@ -155,7 +155,7 @@ impl RedisHelper {
             let connection_result = connect_to_redis(
                 static_data,
                 &format!(
-                    "Callback subscription Instance: {}",
+                    "Callback_Subscription_Instance:{}",
                     static_data.instance_id
                 ),
             );
@@ -310,6 +310,7 @@ fn connect_to_redis(
         .expect("Configuration contains neither a redis_url nor a redis_path")
         .clone();
     let mut connection = redis::Client::open(url)?.get_connection()?;
+    let connection_name = connection_name.replace(" ", "");
     match redis::cmd("CLIENT")
         .arg("SETNAME")
         .arg(connection_name)
