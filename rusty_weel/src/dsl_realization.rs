@@ -478,6 +478,11 @@ impl Weel {
                 }
             };
 
+            // Local information should not change outside of this thread TODO: add this to actual thread_local_storage
+            let local = thread_info.local.clone();
+            // Drop the thread_info here already as for a manipulate we do not need it at all and a call we need to acquire the lock every 'again loop anyway
+            drop(thread_info);
+            drop(thread_info_map);
             println!("Before progress");
             weel_position = self.weel_progress(
                 position.to_owned(),
@@ -485,11 +490,6 @@ impl Weel {
                 false,
             )?;
             println!("After progress");
-            // Local information should not change outside of this thread TODO: add this to actual thread_local_storage
-            let local = thread_info.local.clone();
-            // Drop the thread_info here already as for a manipulate we do not need it at all and a call we need to acquire the lock every 'again loop anyway
-            drop(thread_info);
-            drop(thread_info_map);
             match activity_type {
                 ActivityType::Manipulate => {
                     let state_stopping_or_finishing = matches!(
