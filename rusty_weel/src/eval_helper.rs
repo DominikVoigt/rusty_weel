@@ -161,7 +161,37 @@ pub fn evaluate_expression(
                 };
             }
         };
-    }
+    };
+
+    if status < 100 || status >= 300 {
+        let signal_text = match signal_text {
+            Some(text) => text,
+            None => "".to_owned(),
+        };
+        if let Some(signal) = signal.as_ref() {
+            // TODO: Handle Signal again
+            match signal {
+                // Actual signals are handed over as Signals (different from Error::Signal as the eval result will be required here)
+                Signal::Again | Signal::Stop => return Err(Error::EvalError(
+                     EvalError::Signal(signal.clone(), eval_result),
+                )),
+                Signal::Error => return Err(Error::EvalError(EvalError::RuntimeError(
+                    format!("{} {}", location, signal_text),
+                ))),
+                // The code related error signals are converted to actual errors and handled separately
+                Signal::SyntaxError => {
+                    return Err(Error::EvalError(EvalError::SyntaxError(signal_text)))
+                }
+                x => {
+                    log::error!("Got signaled: {:?} with text: {}", x, signal_text);
+                    panic!("Got signaled something unexpected by eval");
+                }
+            }
+        } else {
+            panic!("Status code not OK(2xx) variant but also no signal provided")
+        };
+    };
+
     if data.is_some() && endpoints.is_some() {
         let data = data.unwrap();
         let endpoints = endpoints.unwrap();
@@ -176,34 +206,7 @@ pub fn evaluate_expression(
                     data,
                     endpoints,
                 };
-                if status < 100 || status >= 300 {
-                    let signal_text = match signal_text {
-                        Some(text) => text,
-                        None => "".to_owned(),
-                    };
-                    if let Some(signal) = signal.as_ref() {
-                        // TODO: Handle Signal again
-                        match signal {
-                            // Actual signals are handed over as Signals (different from Error::Signal as the eval result will be required here)
-                            Signal::Again | Signal::Stop => Err(Error::EvalError(
-                                EvalError::Signal(signal.clone(), eval_result),
-                            )),
-                            Signal::Error => Err(Error::EvalError(EvalError::RuntimeError(
-                                format!("{} {}", location, signal_text),
-                            ))),
-                            // The code related error signals are converted to actual errors and handled separately
-                            Signal::SyntaxError => {
-                                Err(Error::EvalError(EvalError::SyntaxError(signal_text)))
-                            }
-                            x => {
-                                log::error!("Got signaled: {:?} with text: {}", x, signal_text);
-                                panic!("Got signaled something unexpected by eval");
-                            }
-                        }
-                    } else {
-                        panic!("Status code not OK(2xx) variant but also no signal provided")
-                    }
-                } else {
+                 else {
                     Ok(eval_result)
                 }
             }
