@@ -178,16 +178,18 @@ impl DynamicData {
 pub struct ThreadInfo {
     pub parent: Option<ThreadId>,
     pub in_search_mode: bool,
-    pub branch_search_now: bool,
+    pub switched_to_execution: bool,
     pub no_longer_necessary: bool,
     pub blocking_queue: Arc<BlockingQueue<Signal>>,
-    pub branch_traces_id: Option<String>,
+    pub branch_traces_id: i32,
     pub branch_traces: HashMap<String, Vec<String>>,
     pub branch_position: Option<Position>,
     pub branch_wait_count_cancel_condition: CancelCondition,
     pub branch_wait_count_cancel_active: bool,
+    // Counts the number of already canceled branches
     pub branch_wait_count_cancel: i32,
     pub branch_wait_count: i32,
+    // 
     pub branch_event: Option<ThreadId>,
     pub local: String,
     // Thread IDs of all spawned children

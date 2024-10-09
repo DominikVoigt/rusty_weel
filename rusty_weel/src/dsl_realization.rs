@@ -26,10 +26,10 @@ static EVALUATION_LOCK: Mutex<()> = Mutex::new(());
 
 
 pub struct Weel {
-    pub static_data: StaticData,
+    pub opts: StaticData,
     // Also static, but is persisted within redis and thus a separate struct
     pub attributes: HashMap<String, String>,
-    pub dynamic_data: Mutex<DynamicData>,
+    pub context: Mutex<DynamicData>,
     pub state: Mutex<State>,
     pub status: Mutex<Status>,
     pub positions: Mutex<Vec<Position>>,
@@ -265,7 +265,7 @@ impl Weel {
      *  - open_votes
      */
     pub fn vote(&self, vote_topic: &str, mut content: HashMap<String, String>) -> Result<bool> {
-        let static_data = &self.static_data;
+        let static_data = &self.opts;
         let (topic, name) = vote_topic
             .split_once("/")
             .expect("Vote topic did not contain / separator");
@@ -914,12 +914,12 @@ impl Weel {
         location: &str,
     ) -> Result<eval_helper::EvaluationResult> {
         // We clone the dynamic data and status dto here which is expensive but allows us to not block the whole weel until the eval call returns
-        let dynamic_data = self.dynamic_data.lock().unwrap().clone();
+        let dynamic_data = self.context.lock().unwrap().clone();
         let status = self.status.lock().unwrap().to_dto();
         if read_only {
             let result = eval_helper::evaluate_expression(
                 &dynamic_data,
-                &self.static_data,
+                &self.opts,
                 code,
                 Some(status),
                 local,
@@ -934,7 +934,7 @@ impl Weel {
             let eval_lock = EVALUATION_LOCK.lock().unwrap();
             let result = eval_helper::evaluate_expression(
                 &dynamic_data,
-                &self.static_data,
+                &self.opts,
                 code,
                 Some(status),
                 local,
@@ -944,7 +944,7 @@ impl Weel {
                 location,
             )?;
             // Apply changes to instance
-            let mut dynamic_data = self.dynamic_data.lock().unwrap();
+            let mut dynamic_data = self.context.lock().unwrap();
             dynamic_data.data = result.data.clone();
             dynamic_data.endpoints = result.endpoints.clone();
             drop(dynamic_data);
@@ -1000,13 +1000,13 @@ impl Weel {
             if found_position {
                 // We found the first position on this branch -> We do not need to search futher along this branch of execution
                 thread_info.in_search_mode = false;
-                thread_info.branch_search_now = true;
+                thread_info.switched_to_execution = true;
                 while let Some(parent) = thread_info.parent {
                     // Each parent thread has to have some thread information. In general all threads should, when they spawn via weel register and add their thread information
                     // Communicate to ancestor branches that in one of its childs a label was found and the search is done.
                     thread_info = thread_info_map.get(&parent).unwrap().borrow_mut();
                     thread_info.in_search_mode = false;
-                    thread_info.branch_search_now = true;
+                    thread_info.switched_to_execution = true;
                 }
                 // checked earlier for membership, thus we can simply unwrap:
                 self.search_positions
@@ -1067,8 +1067,8 @@ impl Weel {
             let mut search_positions = self.search_positions.lock().unwrap();
             let search_position = search_positions.remove(&position);
             let passthrough = search_position.map(|pos| pos.handler_passthrough).flatten();
-            let weel_position = if current_thread_info.branch_search_now {
-                current_thread_info.branch_search_now = false;
+            let weel_position = if current_thread_info.switched_to_execution {
+                current_thread_info.switched_to_execution = false;
                 Position::new(
                     position.clone(),
                     uuid,
@@ -1153,9 +1153,9 @@ impl Weel {
 
     pub fn get_instance_meta_data(&self) -> InstanceMetaData {
         InstanceMetaData {
-            cpee_base_url: self.static_data.base_url().to_owned(),
-            instance_id: self.static_data.instance_id.clone(),
-            instance_url: self.static_data.instance_url(),
+            cpee_base_url: self.opts.base_url().to_owned(),
+            instance_id: self.opts.instance_id.clone(),
+            instance_url: self.opts.instance_url(),
             instance_uuid: self.uuid().to_owned(),
             info: self.info().to_owned(),
             attributes: self.attributes.clone(),

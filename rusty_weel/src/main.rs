@@ -96,61 +96,65 @@ fn startup(stop_signal_receiver: mpsc::Receiver<()>) -> Arc<Weel> {
 
     set_panic_hook();
 
-    let static_data = StaticData::load("opts.yaml");
-    let dynamic_data = Mutex::new(DynamicData::load("context.yaml"));
+    let opts = StaticData::load("opts.yaml");
+    let context = Mutex::new(DynamicData::load("context.yaml"));
     let callback_keys: Arc<Mutex<HashMap<String, Arc<Mutex<ConnectionWrapper>>>>> =
         Arc::new(Mutex::new(HashMap::new()));
-    let redis_helper = match RedisHelper::new(&static_data, "notifications") {
+    let redis_helper = match RedisHelper::new(&opts, "notifications") {
         Ok(redis) => redis,
         Err(err) => {log::error!("Error during startup when connecting to redis: {:?}", err); panic!("Error during startup")},
     };
-    let attributes = match RedisHelper::new(&static_data, "attributes") {
-        Ok(mut redis) => match redis.get_attributes(&static_data.instance_id) {
+    let attributes = match RedisHelper::new(&opts, "attributes") {
+        Ok(mut redis) => match redis.get_attributes(&opts.instance_id) {
             Ok(attributes) => attributes,
             Err(err) => {log::error!("Error during startup when connecting to redis: {:?}", err); panic!("Error during startup")},
         },
         Err(err) => {log::error!("Error during startup when connecting to redis: {:?}", err); panic!("Error during startup")},
     };
+    let search_positions= get_search_positions(&context); 
+    let in_search_mode = !search_positions.is_empty();
+
     let weel = Weel {
         redis_notifications_client: Mutex::new(redis_helper),
-        static_data,
-        dynamic_data,
+        opts,
+        search_positions: Mutex::new(search_positions),
+        context,
         callback_keys,
         state: Mutex::new(State::Starting),
-        status: Mutex::new(Status::new(todo!(), todo!())),
+        status: Mutex::new(Status::new(0, "undefined".to_owned())),
         open_votes: Mutex::new(HashSet::new()),
         loop_guard: Mutex::new(HashMap::new()),
         positions: Mutex::new(Vec::new()),
-        search_positions: todo!(),
-        thread_information: todo!(),
+        thread_information: Mutex::new(HashMap::new()),
         stop_signal_receiver: Mutex::new(stop_signal_receiver),
-        attributes: todo!(),
+        attributes,
     };
     let current_thread = thread::current();
 
     // TODO: Think about the correct values. Some of them need to be determined dynamically I believe? E.g. search_mode and branch traces
     weel.thread_information.lock().unwrap().insert(current_thread.id(), RefCell::new(ThreadInfo {
         parent: None,
-        in_search_mode: todo!(),
-        branch_search_now: false,
+        in_search_mode: in_search_mode,
+        switched_to_execution: false,
         no_longer_necessary: false,
         blocking_queue: Arc::new(BlockingQueue::new()),
         // TODO: Unsure here
-        branch_traces_id: todo!(),
-        branch_traces: todo!(),
-        branch_position: todo!(),
+        branch_traces_id: 0,
+        branch_traces: HashMap::new(),
+        branch_position: None,
+        // This should not matter since we are not in a parallel yet
         branch_wait_count_cancel_condition: rusty_weel::data_types::CancelCondition::First,
         branch_wait_count_cancel_active: false,
-        branch_wait_count_cancel: -2,
-        branch_wait_count: -2,
-        branch_event: None,
+        branch_wait_count_cancel: 0,
+        branch_wait_count: 0,
+        branch_event: BlockingQueue::new(),
         // to here
         local: String::new(),
         branches: Vec::new(),
     }));
     // create thread for callback subscriptions with redis
     RedisHelper::establish_callback_subscriptions(
-        &weel.static_data,
+        &weel.opts,
         Arc::clone(&weel.callback_keys),
     );
     let weel = Arc::new(weel);
@@ -158,6 +162,14 @@ fn startup(stop_signal_receiver: mpsc::Receiver<()>) -> Arc<Weel> {
     setup_signal_handler(&weel);
     let local_weel = Arc::clone(&weel);
     local_weel
+}
+
+/**
+ * Will get the search positions out of the provided context file
+ */
+fn get_search_positions(context: &Mutex<DynamicData>) -> HashMap<String, rusty_weel::dsl_realization::Position> {
+    // TODO: implement this, for now we do not support it
+    return HashMap::new();
 }
 
 fn set_panic_hook() -> () {

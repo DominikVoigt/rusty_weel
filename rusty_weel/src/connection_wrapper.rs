@@ -261,7 +261,7 @@ impl ConnectionWrapper {
                 result.into()
             }
             None => {
-                let dynamic_data = weel.dynamic_data.lock().unwrap();
+                let dynamic_data = weel.context.lock().unwrap();
                 LocalData {
                     data: dynamic_data.data.clone(),
                     endpoints: dynamic_data.endpoints.clone(),
@@ -306,7 +306,7 @@ impl ConnectionWrapper {
                         if let Some(value) = argument.value.as_ref() {
                             let eval_result = match evaluate_expression(
                                 &dyn_data,
-                                &weel.static_data,
+                                &weel.opts,
                                 value,
                                 None,
                                 &thread_local,
@@ -754,7 +754,7 @@ impl ConnectionWrapper {
     ) -> Result<()> {
         let weel = self.weel();
         let recv =
-            eval_helper::structurize_result(&weel.static_data.eval_backend_structurize, &options, body)?;
+            eval_helper::structurize_result(&weel.opts.eval_backend_structurize, &options, body)?;
         let mut redis = weel.redis_notifications_client.lock()?;
         let content = self.construct_basic_content()?;
         {
@@ -998,7 +998,7 @@ impl ConnectionWrapper {
 
     pub fn additional(&self) -> Value {
         let weel = self.weel();
-        let data = &weel.static_data;
+        let data = &weel.opts;
         json!(
             {
                 "attributes": self.weel().attributes,
