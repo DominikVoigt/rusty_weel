@@ -34,7 +34,10 @@ pub fn evaluate_expression(
     location: &str,
 ) -> Result<EvaluationResult> {
     // This url has to be the full path to the exec-full endpoint
-    let mut client = Client::new(&static_context.eval_backend_exec_full, http_helper::Method::PUT)?;
+    let mut client = Client::new(
+        &static_context.eval_backend_exec_full,
+        http_helper::Method::PUT,
+    )?;
     {
         // Construct multipart request
         //let expression = encode(expression);
@@ -190,7 +193,7 @@ pub fn evaluate_expression(
                             // The code related error signals are converted to actual errors and handled separately
                             Signal::SyntaxError => {
                                 Err(Error::EvalError(EvalError::SyntaxError(signal_text)))
-                            },
+                            }
                             x => {
                                 log::error!("Got signaled: {:?} with text: {}", x, signal_text);
                                 panic!("Got signaled something unexpected by eval");
@@ -208,8 +211,23 @@ pub fn evaluate_expression(
             ))),
         }
     } else {
+        log::error!(
+            "Received from evaluation service:
+        data:{:?}\n
+        endpoints:{:?}\n
+        expression_result:{:?}\n
+        changed_data:{:?}\n 
+        changed_endpoints:{:?}\n
+         changed_status:{:?}",
+            data,
+            endpoints,
+            expression_result,
+            changed_data,
+            changed_endpoints,
+            changed_status
+        );
         Err(Error::EvalError(EvalError::GeneralEvalError(
-            "Response does not data or endpoints the evaluation results".to_owned(),
+            "Response does not contain data or endpoints the evaluation results".to_owned(),
         )))
     }
 }
@@ -244,11 +262,9 @@ impl Display for EvalError {
             "Error occured when evaluating an expression in an external language: {:?}",
             match self {
                 EvalError::GeneralEvalError(err) => format!("general error: {}", err),
-                EvalError::SyntaxError(message) =>
-                    format!("Syntax error: {message}"),
+                EvalError::SyntaxError(message) => format!("Syntax error: {message}"),
                 EvalError::RuntimeError(err) => format!("Runtime error: {err}"),
-                EvalError::Signal(signal, _) =>
-                    format!("Signal error: {:?}", signal),
+                EvalError::Signal(signal, _) => format!("Signal error: {:?}", signal),
             }
         )
     }
