@@ -1320,8 +1320,8 @@ mod test {
     use super::*;
 
     #[test]
-    fn create_static() { 
-        let file = fs::File::create_new("./static.yaml").unwrap();
+    fn create_opts() { 
+        let file = fs::File::create_new("./opts.yaml").unwrap();
         let stat = StaticData {
             instance_id:                1.to_string(),
             host:                       "localhost".to_owned(),
@@ -1340,8 +1340,8 @@ mod test {
     }
 
     #[test]
-    fn create_dynamic() { 
-        let file = fs::File::create_new("./dynamic.yaml").unwrap();
+    fn create_context() { 
+        let file = fs::File::create_new("./context.yaml").unwrap();
         let mut test_endpoints = HashMap::new();
         test_endpoints.insert("bookair".to_owned(), "http://gruppe.wst.univie.ac.at/~mangler/services/airline.php".to_owned());
 
