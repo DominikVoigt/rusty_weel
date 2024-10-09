@@ -484,6 +484,7 @@ impl Weel {
                 connection_wrapper.handler_activity_uuid.clone(),
                 false,
             )?;
+            println!("After progress");
             // Local information should not change outside of this thread TODO: add this to actual thread_local_storage
             let local = thread_info.local.clone();
             // Drop the thread_info here already as for a manipulate we do not need it at all and a call we need to acquire the lock every 'again loop anyway
@@ -562,7 +563,7 @@ impl Weel {
                                 other_error => break 'raise Err(other_error),
                             },
                         };
-                            
+
                         let state_stopping_or_finishing = matches!(
                             *self.state.lock().unwrap(),
                             State::Stopping | State::Finishing
