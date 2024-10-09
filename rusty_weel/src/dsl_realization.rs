@@ -1036,6 +1036,7 @@ impl Weel {
         // TODO: We could also guard the thread_info with a mutex again
         let mut ipc = HashMap::new();
         let current_thread = thread::current();
+        println!("0");
         let thread_info_map = self.thread_information.lock().unwrap();
         println!("1");
         let (parent_thread_id, weel_position) = {
