@@ -483,7 +483,6 @@ impl Weel {
             // Drop the thread_info here already as for a manipulate we do not need it at all and a call we need to acquire the lock every 'again loop anyway
             drop(thread_info);
             drop(thread_info_map);
-            println!("Before progress");
             weel_position = self.weel_progress(
                 position.to_owned(),
                 connection_wrapper.handler_activity_uuid.clone(),
@@ -1036,9 +1035,7 @@ impl Weel {
         // TODO: We could also guard the thread_info with a mutex again
         let mut ipc = HashMap::new();
         let current_thread = thread::current();
-        println!("0");
         let thread_info_map = self.thread_information.lock().unwrap();
-        println!("1");
         let (parent_thread_id, weel_position) = {
             // We need to limit the borrow of current_thread_info s.t. we can access the parents info afterwards -> scope it
             let mut current_thread_info = match thread_info_map.get(&current_thread.id()) {
@@ -1051,7 +1048,6 @@ impl Weel {
                     panic!("Thread information not present!")
                 }
             };
-            println!("2");
             if let Some(branch_position) = &current_thread_info.branch_position {
                 self.positions
                     .lock()
@@ -1061,7 +1057,6 @@ impl Weel {
                 set.insert(branch_position.clone());
                 ipc.insert("unmark".to_owned(), set);
             };
-            println!("3");
             let mut search_positions = self.search_positions.lock().unwrap();
             let search_position = search_positions.remove(&position);
             let passthrough = search_position.map(|pos| pos.handler_passthrough).flatten();
@@ -1081,7 +1076,6 @@ impl Weel {
                     None,
                 )
             };
-            println!("4");
             let mut set = HashSet::new();
             if skip {
                 set.insert(weel_position.clone());
@@ -1104,7 +1098,6 @@ impl Weel {
 
             (current_thread_info.parent, weel_position)
         };
-        println!("5");
         if let Some(parent_thread_id) = parent_thread_id {
             let mut parent_thread_info = match thread_info_map.get(&parent_thread_id) {
                 Some(x) => x.borrow_mut(),
@@ -1127,7 +1120,6 @@ impl Weel {
                 ipc.insert("unmark".to_owned(), set);
             };
         };
-        println!("6");
         let ipc: HashMap<String, String> = ipc
             .into_iter()
             .map(|(k, v)| (k, serde_json::to_string(&v).unwrap()))
