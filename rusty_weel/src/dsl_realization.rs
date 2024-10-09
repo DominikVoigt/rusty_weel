@@ -471,17 +471,16 @@ impl Weel {
             let parent = thread_info.parent.clone();
 
             // Register position/label of this thread in the branch traces of the parent thread
-            if parent.is_some() && thread_info.branch_traces_id.is_some() {
-                let branch_trace_id = thread_info.branch_traces_id.as_ref().unwrap();
+            if parent.is_some() {
                 let mut parent_thread_info =
                     thread_info_map.get(&parent.unwrap()).unwrap().borrow_mut();
-                let traces = parent_thread_info.branch_traces.get_mut(branch_trace_id);
+                let traces = parent_thread_info.branch_traces.get_mut(&thread_info.branch_id);
                 match traces {
                     Some(traces) => traces.push(position.to_owned()),
                     None => {
                         parent_thread_info
                             .branch_traces
-                            .insert(branch_trace_id.to_owned(), Vec::new());
+                            .insert(thread_info.branch_id, Vec::new());
                     }
                 }
             };
@@ -1178,9 +1177,9 @@ impl Weel {
 fn recursive_continue(thread_info_map: &MutexGuard<HashMap<ThreadId, RefCell<ThreadInfo>>>, thread_id: &ThreadId) {
     let thread_info = thread_info_map.get(thread_id).unwrap().borrow();
     thread_info.blocking_queue.enqueue(Signal::None);
-    if let Some(branch_event_thread) = &thread_info.branch_event {
+    if let Some(branch_event) = &thread_info.branch_event {
         // TODO: Unsure whether we can borrow here -> Where relative to this thread will this branch event exist?
-        thread_info_map.get(branch_event_thread).unwrap().borrow().blocking_queue.enqueue(Signal::None);
+        branch_event.enqueue(());
     }
     for child_id in &thread_info.branches {        
         recursive_continue(thread_info_map, child_id);

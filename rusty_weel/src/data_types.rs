@@ -181,18 +181,20 @@ pub struct ThreadInfo {
     pub switched_to_execution: bool,
     pub no_longer_necessary: bool,
     pub blocking_queue: Arc<BlockingQueue<Signal>>,
-    pub branch_traces_id: i32,
-    pub branch_traces: HashMap<String, Vec<String>>,
+
+    // ID of this thread relative to its parent (not globaly unique), used mainly for debugging), this id is used within the branch_traces
+    pub branch_id: i32,
+    pub branch_traces: HashMap<i32, Vec<String>>,
     pub branch_position: Option<Position>,
     pub branch_wait_count_cancel_condition: CancelCondition,
     pub branch_wait_count_cancel_active: bool,
     // Counts the number of already canceled branches
     pub branch_wait_count_cancel: i32,
     pub branch_wait_count: i32,
-    // 
-    pub branch_event: Option<ThreadId>,
+    // Used for synchronization of child branches
+    pub branch_event: Option<BlockingQueue<()>>,
     pub local: String,
-    // Thread IDs of all spawned children
+    // Thread IDs of all spawned children threads (are branches)
     pub branches: Vec<ThreadId>
 }
 

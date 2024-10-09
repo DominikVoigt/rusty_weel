@@ -139,7 +139,7 @@ fn startup(stop_signal_receiver: mpsc::Receiver<()>) -> Arc<Weel> {
         no_longer_necessary: false,
         blocking_queue: Arc::new(BlockingQueue::new()),
         // TODO: Unsure here
-        branch_traces_id: 0,
+        branch_id: 0,
         branch_traces: HashMap::new(),
         branch_position: None,
         // This should not matter since we are not in a parallel yet
@@ -147,7 +147,7 @@ fn startup(stop_signal_receiver: mpsc::Receiver<()>) -> Arc<Weel> {
         branch_wait_count_cancel_active: false,
         branch_wait_count_cancel: 0,
         branch_wait_count: 0,
-        branch_event: BlockingQueue::new(),
+        branch_event: None,
         // to here
         local: String::new(),
         branches: Vec::new(),
