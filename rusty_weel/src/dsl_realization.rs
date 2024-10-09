@@ -16,14 +16,14 @@ use rusty_weel_macro::get_str_from_value;
 
 use crate::connection_wrapper::ConnectionWrapper;
 use crate::data_types::{
-    BlockingQueue, CancelCondition, DynamicData, HTTPParams, InstanceMetaData, State, StaticData, Status, ThreadInfo
+    BlockingQueue, CancelCondition, DynamicData, HTTPParams, InstanceMetaData, State, StaticData,
+    Status, ThreadInfo,
 };
 use crate::dsl::DSL;
 use crate::eval_helper::{self, EvalError};
 use crate::redis_helper::{RedisHelper, Topic};
 
 static EVALUATION_LOCK: Mutex<()> = Mutex::new(());
-
 
 pub struct Weel {
     pub opts: StaticData,
@@ -175,30 +175,24 @@ impl Weel {
                         *self.state.lock().unwrap() = State::Running;
                     }
                     // TODO: implement the __weel_control_flow error handling logic in the handle_error/handle_join error
-                    let instance_thread = thread::spawn(model);
-                    let join_result = instance_thread.join();
+                    let result = model();
                     // Signal stop thread that execution of model ended:
                     let send_result = stop_signal_sender.send(());
                     if matches!(send_result, Err(_)) {
                         log::error!("Error sending termination signal for model thread. Receiver must have been dropped.")
                     }
 
-                    match join_result {
+                    match result {
                         Ok(result) => {
-                            match result {
-                                Ok(()) => {
-                                    match *self.state.lock().unwrap() {
-                                        State::Running | State::Finishing => todo!(),
-                                        State::Stopping => {}
-                                        _ => {
-                                            //Do nothing
-                                        }
-                                    }
+                            match *self.state.lock().unwrap() {
+                                State::Running | State::Finishing => todo!(),
+                                State::Stopping => {}
+                                _ => {
+                                    //Do nothing
                                 }
-                                Err(err) => self.handle_error(err),
                             }
-                        }
-                        Err(err) => handle_join_error(err),
+                        },
+                        Err(err) => self.handle_error(err),
                     }
                 } else {
                     self.abort_start();
@@ -288,8 +282,7 @@ impl Weel {
             content.insert(
                 "attributes".to_owned(),
                 // TODO: Check whether these are already "translated"
-                serde_json::to_string(&self.attributes)
-                    .expect("Could not serialize attributes"),
+                serde_json::to_string(&self.attributes).expect("Could not serialize attributes"),
             );
             content.insert("subscription".to_owned(), client.clone());
             let content = serde_json::to_string(&content)
@@ -407,12 +400,7 @@ impl Weel {
         self.redis_notifications_client
             .lock()
             .expect("Could not acquire Mutex for notifications RedisHelper")
-            .send(
-                "callback-end",
-                key,
-                self.get_instance_meta_data(),
-                None,
-            )?;
+            .send("callback-end", key, self.get_instance_meta_data(), None)?;
         Ok(())
     }
 
@@ -474,7 +462,9 @@ impl Weel {
             if parent.is_some() {
                 let mut parent_thread_info =
                     thread_info_map.get(&parent.unwrap()).unwrap().borrow_mut();
-                let traces = parent_thread_info.branch_traces.get_mut(&thread_info.branch_id);
+                let traces = parent_thread_info
+                    .branch_traces
+                    .get_mut(&thread_info.branch_id);
                 match traces {
                     Some(traces) => traces.push(position.to_owned()),
                     None => {
@@ -528,10 +518,7 @@ impl Weel {
                     connection_wrapper.inform_activity_done()?;
                     weel_position.detail = Mark::After;
                     let mut ipc = HashMap::new();
-                    ipc.insert(
-                        "after".to_owned(),
-                        serde_json::to_string(&weel_position)?,
-                    );
+                    ipc.insert("after".to_owned(), serde_json::to_string(&weel_position)?);
                     ConnectionWrapper::new(self.clone(), None, None)
                         .inform_position_change(Some(ipc))?;
                 }
@@ -599,8 +586,7 @@ impl Weel {
                         let connection_wrapper = connection_wrapper_mutex.lock().unwrap();
                         weel_position.handler_passthrough =
                             connection_wrapper.handler_passthrough.clone();
-                        if let Some(_) = &weel_position.handler_passthrough
-                        {
+                        if let Some(_) = &weel_position.handler_passthrough {
                             let connection_wrapper = ConnectionWrapper::new(
                                 self.clone(),
                                 // Do not need this data for the inform:
@@ -608,10 +594,8 @@ impl Weel {
                                 None,
                             );
                             let mut content = HashMap::new();
-                            content.insert(
-                                "wait".to_owned(),
-                                serde_json::to_string(&weel_position)?,
-                            );
+                            content
+                                .insert("wait".to_owned(), serde_json::to_string(&weel_position)?);
                             connection_wrapper.inform_position_change(Some(content))?;
                         };
                         drop(connection_wrapper);
@@ -765,10 +749,8 @@ impl Weel {
                             weel_position.handler_passthrough = None;
                             weel_position.detail = Mark::After;
                             let mut content = HashMap::new();
-                            content.insert(
-                                "after".to_owned(),
-                                serde_json::to_string(&weel_position)?,
-                            );
+                            content
+                                .insert("after".to_owned(), serde_json::to_string(&weel_position)?);
                             ConnectionWrapper::new(self.clone(), None, None)
                                 .inform_position_change(Some(content))?;
                         }
@@ -830,7 +812,9 @@ impl Weel {
                 },
                 Error::EvalError(eval_error) => match eval_error {
                     EvalError::SyntaxError(message) => {
-                        connection_wrapper.inform_activity_failed(Error::EvalError(EvalError::SyntaxError(message)))?;
+                        connection_wrapper.inform_activity_failed(Error::EvalError(
+                            EvalError::SyntaxError(message),
+                        ))?;
                         *self.state.lock().unwrap() = State::Stopping;
                     }
                     EvalError::Signal(_signal, _evaluation_result) => {
@@ -847,7 +831,8 @@ impl Weel {
                 }
             };
         };
-        {// Original ensure block
+        {
+            // Original ensure block
             let current_thread = thread::current().id();
             let thread_info_map = self.thread_information.lock().unwrap();
             // Unwrap as we have precondition that thread info is available on spawning
@@ -857,16 +842,21 @@ impl Weel {
                 let mut parent_info = thread_info_map.get(&parent_id).unwrap().borrow_mut();
 
                 if parent_info.branch_wait_count_cancel_condition == CancelCondition::First {
-                    if !thread_info.branch_wait_count_cancel_active && parent_info.branch_wait_count_cancel < parent_info.branch_wait_count {
+                    if !thread_info.branch_wait_count_cancel_active
+                        && parent_info.branch_wait_count_cancel < parent_info.branch_wait_count
+                    {
                         thread_info.branch_wait_count_cancel_active = true;
-                        parent_info.branch_wait_count_cancel = parent_info.branch_wait_count_cancel + 1;
+                        parent_info.branch_wait_count_cancel =
+                            parent_info.branch_wait_count_cancel + 1;
                     }
                 }
                 let state_not_stopping_or_finishing = match *self.state.lock().unwrap() {
                     State::Stopping | State::Finishing => false,
                     _other => true,
                 };
-                if parent_info.branch_wait_count_cancel == parent_info.branch_wait_count && state_not_stopping_or_finishing {
+                if parent_info.branch_wait_count_cancel == parent_info.branch_wait_count
+                    && state_not_stopping_or_finishing
+                {
                     // Will iteratively mark all children as no longer necessary
                     for child_id in &parent_info.branches {
                         match thread_info_map.get(child_id) {
@@ -878,13 +868,13 @@ impl Weel {
                                     // Should be fine w.r.t. mutable borrows, since this will continue recusively down the hieararchy
                                     recursive_continue(&thread_info_map, &current_thread)
                                 }
-                            },
+                            }
                             None => {
                                 log::info!("Child Thread of Thread {:?} with id: {:?} does not have any thread info", parent_id, child_id)
-                            },
+                            }
                         }
                     }
-                } 
+                }
             }
         }
 
@@ -1138,6 +1128,7 @@ impl Weel {
     }
 
     fn handle_error(self: &Arc<Self>, err: Error) {
+        // TODO implement error handling that adheres to the handling in __weel_control_flow
         *self.state.lock().unwrap() = State::Stopping;
         log::error!("Encountered error: {:?}", err);
         match ConnectionWrapper::new(self.clone(), None, None).inform_connectionwrapper_error(err) {
@@ -1175,28 +1166,19 @@ impl Weel {
     }
 }
 
-fn recursive_continue(thread_info_map: &MutexGuard<HashMap<ThreadId, RefCell<ThreadInfo>>>, thread_id: &ThreadId) {
+fn recursive_continue(
+    thread_info_map: &MutexGuard<HashMap<ThreadId, RefCell<ThreadInfo>>>,
+    thread_id: &ThreadId,
+) {
     let thread_info = thread_info_map.get(thread_id).unwrap().borrow();
     thread_info.blocking_queue.enqueue(Signal::None);
     if let Some(branch_event) = &thread_info.branch_event {
         // TODO: Unsure whether we can borrow here -> Where relative to this thread will this branch event exist?
         branch_event.enqueue(());
     }
-    for child_id in &thread_info.branches {        
+    for child_id in &thread_info.branches {
         recursive_continue(thread_info_map, child_id);
     }
-}
-
-fn handle_join_error(err: Box<dyn std::any::Any + Send>) {
-    if TypeId::of::<String>() == err.type_id() {
-        let x = err.downcast::<String>();
-        match x {
-            Ok(x) => log::error!("Model thread paniced: {}", x),
-            Err(_err) => log::error!(
-                "Model thread paniced but provided panic result cannot be cast into a String."
-            ),
-        }
-    };
 }
 
 #[derive(Debug, From)]
@@ -1312,7 +1294,6 @@ pub fn generate_random_key() -> String {
         .collect()
 }
 
-
 #[cfg(test)]
 mod test {
     use std::fs;
@@ -1320,36 +1301,39 @@ mod test {
     use super::*;
 
     #[test]
-    fn create_opts() { 
+    fn create_opts() {
         let file = fs::File::create_new("./opts.yaml").unwrap();
         let stat = StaticData {
-            instance_id:                1.to_string(),
-            host:                       "localhost".to_owned(),
-            cpee_base_url:              "https://echo.bpm.in.tum.de/flow/engine".to_owned(),
-            redis_url:                  None,
-            redis_path:                 Some(format!("unix:///home/mangler/run/flow/redis.sock")),
-            redis_db:                   0,
-            redis_workers:              2,
-            executionhandlers:          "/home/mangler/run/flow/executionhandlers".to_owned(),
-            executionhandler:           "rust".to_owned(),
-            eval_language:              "rust".to_owned(),
-            eval_backend_exec_full:     "http://localhost:9302/exec_full".to_owned(),
-            eval_backend_structurize:   "http://localhost:9302/structurize".to_owned(),
+            instance_id: 1.to_string(),
+            host: "localhost".to_owned(),
+            cpee_base_url: "https://echo.bpm.in.tum.de/flow/engine".to_owned(),
+            redis_url: None,
+            redis_path: Some(format!("unix:///home/mangler/run/flow/redis.sock")),
+            redis_db: 0,
+            redis_workers: 2,
+            executionhandlers: "/home/mangler/run/flow/executionhandlers".to_owned(),
+            executionhandler: "rust".to_owned(),
+            eval_language: "rust".to_owned(),
+            eval_backend_exec_full: "http://localhost:9302/exec_full".to_owned(),
+            eval_backend_structurize: "http://localhost:9302/structurize".to_owned(),
         };
         serde_yaml::to_writer(file, &stat).unwrap();
     }
 
     #[test]
-    fn create_context() { 
+    fn create_context() {
         let file = fs::File::create_new("./context.yaml").unwrap();
         let mut test_endpoints = HashMap::new();
-        test_endpoints.insert("bookair".to_owned(), "http://gruppe.wst.univie.ac.at/~mangler/services/airline.php".to_owned());
+        test_endpoints.insert(
+            "bookair".to_owned(),
+            "http://gruppe.wst.univie.ac.at/~mangler/services/airline.php".to_owned(),
+        );
 
         let mut test_data = HashMap::new();
-        test_data.insert("from".to_owned(),     "Vienna".to_owned());
-        test_data.insert("to".to_owned(),       "Prague".to_owned());
-        test_data.insert("persons".to_owned(),  "3".to_owned());
-        test_data.insert("costs".to_owned(),    "0".to_owned());
+        test_data.insert("from".to_owned(), "Vienna".to_owned());
+        test_data.insert("to".to_owned(), "Prague".to_owned());
+        test_data.insert("persons".to_owned(), "3".to_owned());
+        test_data.insert("costs".to_owned(), "0".to_owned());
         let dynamic = DynamicData {
             endpoints: test_endpoints,
             data: serde_yaml::to_string(&test_data).unwrap(),
