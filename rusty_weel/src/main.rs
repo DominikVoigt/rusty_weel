@@ -152,6 +152,9 @@ fn startup(stop_signal_receiver: mpsc::Receiver<()>) -> Arc<Weel> {
         local: String::new(),
         branches: Vec::new(),
     }));
+
+    let thread = thread::current();
+    println!("ThreadID in main method: {:?}", thread.id());
     // create thread for callback subscriptions with redis
     RedisHelper::establish_callback_subscriptions(
         &weel.opts,

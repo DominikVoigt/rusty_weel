@@ -981,6 +981,7 @@ impl Weel {
      */
     fn in_search_mode(&self, label: Option<&str>) -> bool {
         let thread = thread::current();
+        println!("ThreadID in search mode method: {:?}", thread.id());
         let thread_info_map = self.thread_information.lock().unwrap();
         // We unwrap here but we need to ensure that when the weel creates a thread, it registers the thread info!
         let mut thread_info = thread_info_map.get(&thread.id()).unwrap().borrow_mut();
