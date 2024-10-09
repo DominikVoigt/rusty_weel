@@ -62,6 +62,7 @@ impl DSL for Weel {
         finalize_code: Option<&str>,
         rescue_code: Option<&str>,
     ) -> Result<()> {
+        println!("Within call");
         self.weel_activity(
             label,
             ActivityType::Call,
@@ -434,6 +435,8 @@ impl Weel {
         let connection_wrapper_mutex = Arc::new(Mutex::new(connection_wrapper));
 
         let mut weel_position;
+
+        println!("Before outer loop");
         /*
          * We use a block computation here to mimick the exception handling -> If an exception in the original ruby code is raised, we return it here
          */
@@ -475,6 +478,7 @@ impl Weel {
                 }
             };
 
+            println!("Before progress");
             weel_position = self.weel_progress(
                 position.to_owned(),
                 connection_wrapper.handler_activity_uuid.clone(),
@@ -523,6 +527,7 @@ impl Weel {
                         .inform_position_change(Some(ipc))?;
                 }
                 ActivityType::Call => {
+                    println!("In activity::call");
                     drop(connection_wrapper);
                     'again: loop {
                         // Reacquire thread information mutex every loop again as we might need to drop it during wait
@@ -557,7 +562,7 @@ impl Weel {
                                 other_error => break 'raise Err(other_error),
                             },
                         };
-
+                            
                         let state_stopping_or_finishing = matches!(
                             *self.state.lock().unwrap(),
                             State::Stopping | State::Finishing

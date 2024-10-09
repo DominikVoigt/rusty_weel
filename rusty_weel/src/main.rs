@@ -25,8 +25,6 @@ fn main() {
     };
     
     let model = move || -> Result<()> {
-        let thread = thread::current();
-        println!("ThreadID in closure: {:?}", thread.id());
         //inject!("/home/i17/git-repositories/ma-code/rusty-weel/resources/model_instance.eic");
         // Inject start
         weel().call(
