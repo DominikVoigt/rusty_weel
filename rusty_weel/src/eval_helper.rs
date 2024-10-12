@@ -404,7 +404,7 @@ mod test {
             &static_data,
             "data.name = 'Tom'",
             Some(status.to_dto()),
-            "test_local_data",
+            "",
             serde_json::Value::Null,
             None,
             None,
