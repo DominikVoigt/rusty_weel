@@ -941,11 +941,11 @@ impl Weel {
             if result.data.is_some() || result.endpoints.is_some() {
                 let mut dynamic_data = self.context.lock().unwrap();
 
-                if let Some(data) = result.data {
-                    dynamic_data.data = data;
+                if let Some(data) = &result.data {
+                    dynamic_data.data = data.clone();
                 };
-                if let Some(endpoints) = result.endpoints {
-                    dynamic_data.endpoints = endpoints;
+                if let Some(endpoints) = &result.endpoints {
+                    dynamic_data.endpoints = endpoints.clone();
                 };
                 drop(dynamic_data);
             };
