@@ -162,6 +162,8 @@ pub fn evaluate_expression(
             }
         };
     }
+
+    let status_not_ok = status < 200 || status >= 300;
     if data.is_some() && endpoints.is_some() {
         let data = data.unwrap();
         let endpoints = endpoints.unwrap();
@@ -176,7 +178,7 @@ pub fn evaluate_expression(
                     data,
                     endpoints,
                 };
-                if status < 200 || status >= 300 {
+                if status_not_ok {
                     let signal_text = match signal_text {
                         Some(text) => text,
                         None => "".to_owned(),
@@ -212,24 +214,34 @@ pub fn evaluate_expression(
             ))),
         }
     } else {
-        log::error!(
-            "Received from evaluation service:
-        data:{:?}\n
-        endpoints:{:?}\n
-        expression_result:{:?}\n
-        changed_data:{:?}\n 
-        changed_endpoints:{:?}\n
-         changed_status:{:?}",
-            data,
-            endpoints,
-            expression_result,
-            changed_data,
-            changed_endpoints,
-            changed_status
-        );
-        Err(Error::EvalError(EvalError::GeneralEvalError(
-            "Response does not contain data or endpoints the evaluation results".to_owned(),
-        )))
+        // Some general issue occured
+        if status_not_ok {
+            Err(Error::EvalError(EvalError::GeneralEvalError(
+                "Response is not 2xx and the body does not contain the correct body/sigal -> General issue with the service".to_owned(),
+            )))
+        } else {
+            // Status says okay but the body is not okay
+            log::error!(
+                "
+                Received from evaluation service:
+                data:{:?}\n
+                endpoints:{:?}\n
+                expression_result:{:?}\n
+                changed_data:{:?}\n 
+                changed_endpoints:{:?}\n
+                changed_status:{:?}
+                ",
+                data,
+                endpoints,
+                expression_result,
+                changed_data,
+                changed_endpoints,
+                changed_status
+            );
+            Err(Error::EvalError(EvalError::GeneralEvalError(
+                "Response does not contain data or endpoints the evaluation results".to_owned(),
+            )))
+        }
     }
 }
 
