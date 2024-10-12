@@ -60,7 +60,9 @@ pub fn evaluate_expression(
             serde_json::to_string_pretty(&data_map)?.as_bytes(),
         )?;
 
-        client.add_complex_parameter("local", APPLICATION_JSON, thread_local.as_bytes())?;
+        if !thread_local.is_empty() {
+            client.add_complex_parameter("local", APPLICATION_JSON, thread_local.as_bytes())?;
+        }
 
         let endpoints = serde_json::to_string(&dynamic_context.endpoints)?;
         client.add_complex_parameter("endpoints", APPLICATION_JSON, endpoints.as_bytes())?;
@@ -118,7 +120,6 @@ pub fn evaluate_expression(
     while let Some(parameter) = result.content.pop() {
         match parameter {
             Parameter::SimpleParameter { name, value, .. } => {
-                println!("received from service simple parameter: name: {name}, value: {value}");
                 if name == "result" {
                     expression_result = Some(serde_json::from_str(&value)?);
                 } else {
@@ -132,7 +133,6 @@ pub fn evaluate_expression(
             } => {
                 let mut content = String::new();
                 content_handle.read_to_string(&mut content)?;
-                println!("received from service simple parameter: name: {name}, content: {content}");
                 match name.as_str() {
                     "result" => {
                         expression_result = Some(content);
