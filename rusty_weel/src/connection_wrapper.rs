@@ -952,6 +952,7 @@ impl ConnectionWrapper {
         }
     }
 
+
     fn extract_info_from_message(
         &self,
         err: Error,
@@ -963,11 +964,12 @@ impl ConnectionWrapper {
                 eval_helper::EvalError::SyntaxError(message) => self.try_extract(&message),
                 eval_helper::EvalError::RuntimeError(message) => self.try_extract(&message),
                 eval_helper::EvalError::Signal(signal, evaluation_result) => {
+                    let signal_error = EvalError::Signal(signal, evaluation_result);
                     log::error!(
-                        "Trying to extract information from error: {:?}",
-                        EvalError::Signal(signal, evaluation_result)
+                        "Trying to extract information from error: {:?}, this should not happen as Signal Errors should be handled",
+                        &signal_error
                     );
-                    Err("".to_owned())
+                    Err(signal_error.to_string())
                 }
             },
             other => {
@@ -977,6 +979,9 @@ impl ConnectionWrapper {
         }
     }
 
+    /**
+     * Will try to extract information from the error in a structurized form (OK), otherwise will return the original message (Err)
+     */
     fn try_extract(&self, message: &str) -> std::result::Result<(String, String, String), String> {
         match self.error_regex.captures(message) {
             Some(capture) => {
