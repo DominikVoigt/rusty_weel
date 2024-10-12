@@ -1321,7 +1321,7 @@ mod test {
             executionhandlers: "/home/mangler/run/flow/executionhandlers".to_owned(),
             executionhandler: "rust".to_owned(),
             eval_language: "rust".to_owned(),
-            eval_backend_exec_full: "http://localhost:9302/exec_full".to_owned(),
+            eval_backend_exec_full: "http://localhost:9302/exec-full".to_owned(),
             eval_backend_structurize: "http://localhost:9302/structurize".to_owned(),
         };
         file.write("---\n".as_bytes()).unwrap();
