@@ -133,6 +133,7 @@ pub fn evaluate_expression(
             } => {
                 let mut content = String::new();
                 content_handle.read_to_string(&mut content)?;
+                println!("Received complex param: name:{name} content:{content}");
                 match name.as_str() {
                     "result" => {
                         expression_result = Some(content);
