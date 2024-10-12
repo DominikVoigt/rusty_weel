@@ -254,15 +254,19 @@ impl ConnectionWrapper {
         parameters: HTTPParams,
     ) -> Result<HTTPParams> {
         let weel = self.weel();
-        // Execute the prepare code and use the modified context for the rest of this metod (prepare_result)
-        let prepare_result = match prepare_code {
+        // Execute the prepare code and use the modified context for the rest of this metod (prepare_result) (Note: This context can differ as the prepare will not modify the global context)
+        let contex_snapshot = match prepare_code {
             Some(code) => {
                 let result = weel.execute_code(true, code, &thread_local, self, "prepare")?;
-                result.into()
+                // Create snapshot of the context after the code is executed, if nothing changes, use the current dynamic data
+                DynamicData {
+                    data: result.data.unwrap_or(weel.context.lock().unwrap().data.clone()),
+                    endpoints: result.endpoints.unwrap_or(weel.context.lock().unwrap().endpoints.clone())
+                }
             }
             None => {
                 let dynamic_data = weel.context.lock().unwrap();
-                LocalData {
+                DynamicData {
                     data: dynamic_data.data.clone(),
                     endpoints: dynamic_data.endpoints.clone(),
                 }
@@ -271,7 +275,7 @@ impl ConnectionWrapper {
 
         // Resolve the endpoint name to the actual correct endpoint (incl. twin_translate)
         if endpoint_names.len() > 0 {
-            self.resolve_endpoints(&prepare_result.endpoints, endpoint_names);
+            self.resolve_endpoints(&contex_snapshot.endpoints, endpoint_names);
 
             match weel.attributes.get("twin_engine") {
                 Some(twin_engine_url) => {
@@ -290,10 +294,6 @@ impl ConnectionWrapper {
                 }
             };
         };
-        let dyn_data = DynamicData {
-            endpoints: prepare_result.endpoints,
-            data: prepare_result.data,
-        };
 
         if let Some(arguments) = parameters.arguments {
             let error: Mutex<Option<Error>> = Mutex::new(None);
@@ -305,7 +305,7 @@ impl ConnectionWrapper {
                     if argument.expression_value {
                         if let Some(value) = argument.value.as_ref() {
                             let eval_result = match evaluate_expression(
-                                &dyn_data,
+                                &contex_snapshot,
                                 &weel.opts,
                                 value,
                                 None,
@@ -1024,23 +1024,4 @@ impl ConnectionWrapper {
 
 fn contains_non_empty(options: &HashMap<String, String>, key: &str) -> bool {
     options.get(key).map(|e| !e.is_empty()).unwrap_or(false)
-}
-
-impl Into<LocalData> for EvaluationResult {
-    fn into(self) -> LocalData {
-        LocalData {
-            data: self.data,
-            endpoints: self.endpoints,
-        }
-    }
-}
-
-/*
- * Contains either:
- *  - Snapshot of the weel instance dynamic data and the thread_local information
- *  - Modified version of the snapshot after execution of some provided code (see prepare function in the conection wrapper)
- */
-pub struct LocalData {
-    pub data: String,
-    pub endpoints: HashMap<String, String>,
 }

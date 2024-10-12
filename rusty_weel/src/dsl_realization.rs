@@ -938,14 +938,14 @@ impl Weel {
                 location,
             )?;
             // Apply changes to instance
-            if result.changed_data.is_some() || result.changed_endpoints.is_some() {
+            if result.data.is_some() || result.endpoints.is_some() {
                 let mut dynamic_data = self.context.lock().unwrap();
 
-                if result.changed_data.is_some() {
-                    dynamic_data.data = result.data.clone();
+                if let Some(data) = result.data {
+                    dynamic_data.data = data;
                 };
-                if result.changed_endpoints.is_some() {
-                    dynamic_data.endpoints = result.endpoints.clone();
+                if let Some(endpoints) = result.endpoints {
+                    dynamic_data.endpoints = endpoints;
                 };
                 drop(dynamic_data);
             };
