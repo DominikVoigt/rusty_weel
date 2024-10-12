@@ -938,10 +938,17 @@ impl Weel {
                 location,
             )?;
             // Apply changes to instance
-            let mut dynamic_data = self.context.lock().unwrap();
-            dynamic_data.data = result.data.clone();
-            dynamic_data.endpoints = result.endpoints.clone();
-            drop(dynamic_data);
+            if result.changed_data.is_some() || result.changed_endpoints.is_some() {
+                let mut dynamic_data = self.context.lock().unwrap();
+
+                if result.changed_data.is_some() {
+                    dynamic_data.data = result.data.clone();
+                };
+                if result.changed_endpoints.is_some() {
+                    dynamic_data.endpoints = result.endpoints.clone();
+                };
+                drop(dynamic_data);
+            };
             if let Some(new_status) = &result.changed_status {
                 // TODO: We probably reuse the existing blocking queue instead of adding a new one right?
                 let mut current_status = self.status.lock().unwrap();
@@ -1308,7 +1315,7 @@ mod test {
             Err(err) => {
                 log::error!("Error creating the opts.yaml file: {:?}", err);
                 panic!("Could not create opts.yaml file")
-            },
+            }
         };
         let stat = StaticData {
             instance_id: 127.to_string(),
@@ -1335,7 +1342,7 @@ mod test {
             Err(err) => {
                 log::error!("Error creating the context.yaml file: {:?}", err);
                 panic!("Could not create context.yaml file")
-            },
+            }
         };
         let mut test_endpoints = HashMap::new();
         test_endpoints.insert(

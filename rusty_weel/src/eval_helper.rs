@@ -394,8 +394,8 @@ mod test {
             executionhandlers: "".to_owned(),
             executionhandler: "".to_owned(),
             eval_language: "".to_owned(),
-            eval_backend_exec_full: "http://localhost:8550/exec_full".to_owned(),
-            eval_backend_structurize: "http://localhost:8550/structurize".to_owned(),
+            eval_backend_exec_full: "http://localhost:9302/exec-full".to_owned(),
+            eval_backend_structurize: "http://localhost:9302/structurize".to_owned(),
         };
         let status = Status::new(0, "test".to_owned());
 
@@ -440,9 +440,8 @@ mod test {
         let response = client.execute_raw().unwrap();
         let body = str::from_utf8(&response.body).unwrap();
         println!("Received response: {}", body);
-        // SSH connect 8550 to 9302 `ssh -L 8550:localhost:9302 echo`
         let result = structurize_result(
-            "http://localhost:8550/structurize",
+            "http://localhost:9302/structurize",
             &http_helper::header_map_to_hash_map(&response.headers).unwrap(),
             &response.body,
         )
