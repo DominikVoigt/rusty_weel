@@ -118,6 +118,7 @@ pub fn evaluate_expression(
     while let Some(parameter) = result.content.pop() {
         match parameter {
             Parameter::SimpleParameter { name, value, .. } => {
+                println!("received from service simple parameter: name: {name}, value: {value}")
                 if name == "result" {
                     expression_result = Some(serde_json::from_str(&value)?);
                 } else {
