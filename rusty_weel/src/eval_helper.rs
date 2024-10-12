@@ -47,11 +47,17 @@ pub fn evaluate_expression(
             value: expression.to_owned(),
             param_type: http_helper::ParameterType::Body,
         });
-
+        let data_map: HashMap<String, String> = match serde_yaml::from_str(&dynamic_context.data) {
+            Ok(res) => res,
+            Err(err) => {
+                log::error!("Failed to deserialize data to send in JSON format: {:?}", err);
+                panic!("Failed to deserialize data to send in JSON format: {:?}", err)
+            }
+        };
         client.add_complex_parameter(
             "dataelements",
             APPLICATION_JSON,
-            dynamic_context.data.as_bytes(),
+            serde_json::to_string_pretty(&data_map)?.as_bytes(),
         )?;
 
         client.add_complex_parameter("local", APPLICATION_JSON, thread_local.as_bytes())?;
@@ -198,7 +204,12 @@ pub fn evaluate_expression(
                                 Err(Error::EvalError(EvalError::SyntaxError(signal_text)))
                             }
                             x => {
-                                log::error!("Got signaled: {:?} with text: {} when evaluating {}", x, signal_text, expression);
+                                log::error!(
+                                    "Got signaled: {:?} with text: {} when evaluating {}",
+                                    x,
+                                    signal_text,
+                                    expression
+                                );
                                 panic!("Got signaled something unexpected by eval");
                             }
                         }

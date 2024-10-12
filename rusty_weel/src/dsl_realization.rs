@@ -1297,13 +1297,19 @@ pub fn generate_random_key() -> String {
 
 #[cfg(test)]
 mod test {
-    use std::fs;
+    use std::{fs, io::Write};
 
     use super::*;
 
     #[test]
     fn create_opts() {
-        let file = fs::File::create_new("./opts.yaml").unwrap();
+        match fs::remove_file("./opts.yaml") {
+            Ok(_) => {},
+            Err(err) => {
+                log::info!("Error occured deleting the old file: {:?}", err);
+            },
+        };
+        let mut file = fs::File::create_new("./opts.yaml").unwrap();
         let stat = StaticData {
             instance_id: 1.to_string(),
             host: "localhost".to_owned(),
@@ -1318,12 +1324,19 @@ mod test {
             eval_backend_exec_full: "http://localhost:9302/exec_full".to_owned(),
             eval_backend_structurize: "http://localhost:9302/structurize".to_owned(),
         };
+        file.write("---\n".as_bytes()).unwrap();
         serde_yaml::to_writer(file, &stat).unwrap();
     }
 
     #[test]
     fn create_context() {
-        let file = fs::File::create_new("./context.yaml").unwrap();
+        match fs::remove_file("./context.yaml") {
+            Ok(_) => {},
+            Err(err) => {
+                log::info!("Error occured deleting the old file: {:?}", err);
+            },
+        };
+        let mut file = fs::File::create_new("./context.yaml").unwrap();
         let mut test_endpoints = HashMap::new();
         test_endpoints.insert(
             "bookair".to_owned(),
@@ -1339,6 +1352,7 @@ mod test {
             endpoints: test_endpoints,
             data: serde_yaml::to_string(&test_data).unwrap(),
         };
+        file.write("---\n".as_bytes()).unwrap();
         serde_yaml::to_writer(file, &dynamic).unwrap();
     }
 }
