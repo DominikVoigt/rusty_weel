@@ -176,7 +176,7 @@ pub fn evaluate_expression(
                     data,
                     endpoints,
                 };
-                if status < 100 || status >= 300 {
+                if status < 200 || status >= 300 {
                     let signal_text = match signal_text {
                         Some(text) => text,
                         None => "".to_owned(),
