@@ -50,8 +50,14 @@ pub fn evaluate_expression(
         let data_map: HashMap<String, String> = match serde_yaml::from_str(&dynamic_context.data) {
             Ok(res) => res,
             Err(err) => {
-                log::error!("Failed to deserialize data to send in JSON format: {:?}", err);
-                panic!("Failed to deserialize data to send in JSON format: {:?}", err)
+                log::error!(
+                    "Failed to deserialize data to send in JSON format: {:?}",
+                    err
+                );
+                panic!(
+                    "Failed to deserialize data to send in JSON format: {:?}",
+                    err
+                )
             }
         };
         client.add_complex_parameter(
@@ -102,7 +108,10 @@ pub fn evaluate_expression(
     let mut result = client.execute()?;
     let status = result.status_code;
     // Error in the provided code
-    println!("Received response headers from eval request: {:?}", result.headers);
+    println!(
+        "Received response headers from eval request: {:?}",
+        result.headers
+    );
     // Get the expressions parameter from the parsed response
     let mut expression_result: Option<String> = None;
     let mut changed_data: Option<HashMap<String, String>> = None;
@@ -172,27 +181,24 @@ pub fn evaluate_expression(
     }
 
     let status_not_ok = status < 200 || status >= 300;
-    if data.is_some() && endpoints.is_some() {
-        let data = data.unwrap();
-        let endpoints = endpoints.unwrap();
 
-        match expression_result {
-            Some(expression_result) => {
-                let eval_result = EvaluationResult {
-                    expression_result,
-                    changed_data,
-                    changed_endpoints,
-                    changed_status,
-                    data,
-                    endpoints,
+    match expression_result {
+        Some(expression_result) => {
+            let eval_result = EvaluationResult {
+                expression_result,
+                changed_data,
+                changed_endpoints,
+                changed_status,
+                data,
+                endpoints,
+            };
+            if status_not_ok {
+                let signal_text = match signal_text {
+                    Some(text) => text,
+                    None => "".to_owned(),
                 };
-                if status_not_ok {
-                    let signal_text = match signal_text {
-                        Some(text) => text,
-                        None => "".to_owned(),
-                    };
-                    if let Some(signal) = signal.as_ref() {
-                        // TODO: Handle Signal again
+                match signal.as_ref() {
+                    Some(signal) => {
                         match signal {
                             // Actual signals are handed over as Signals (different from Error::Signal as the eval result will be required here)
                             Signal::Again | Signal::Stop => Err(Error::EvalError(
@@ -212,28 +218,25 @@ pub fn evaluate_expression(
                                     signal_text,
                                     expression
                                 );
-                                panic!("Got signaled something unexpected by eval");
+                                Err(Error::EvalError(EvalError::GeneralEvalError(
+                                    format!(
+                                        "Got signaled: {:?} with text: {} when evaluating {}",
+                                        x,
+                                        signal_text,
+                                        expression))))
                             }
                         }
-                    } else {
-                        panic!("Status code of Eval Service is not OK(2xx), body was provided but signal is missing")
                     }
-                } else {
-                    Ok(eval_result)
+                    None => {
+                        Err(Error::EvalError(EvalError::GeneralEvalError(
+                            "Response of Eval Service is not 2xx, eval result was returned but signal is missing".to_owned())))
+                    }
                 }
+            } else {
+                Ok(eval_result)
             }
-            None => Err(Error::EvalError(EvalError::GeneralEvalError(
-                "Response does not contain the evaluation results".to_owned(),
-            ))),
         }
-    } else {
-        // Some general issue occured
-        if status_not_ok {
-            Err(Error::EvalError(EvalError::GeneralEvalError(
-                "Response of Eval Service is not 2xx and the body does not contain the correct body/sigal -> General issue with the service".to_owned(),
-            )))
-        } else {
-            // Status says okay but the body is not okay
+        None => {
             log::error!(
                 "
                 Received from evaluation service:
@@ -252,8 +255,7 @@ pub fn evaluate_expression(
                 changed_status
             );
             Err(Error::EvalError(EvalError::GeneralEvalError(
-                "Response does not contain data or endpoints the evaluation results".to_owned(),
-            )))
+            "Response of Eval Service is not 2xx and the body does not contain the evaluation result -> General issue with the service".to_owned())))
         }
     }
 }
@@ -266,8 +268,8 @@ pub fn evaluate_expression(
 #[derive(Debug)]
 pub struct EvaluationResult {
     pub expression_result: String,
-    pub data: String,
-    pub endpoints: HashMap<String, String>,
+    pub data: Option<String>,
+    pub endpoints: Option<HashMap<String, String>>,
     pub changed_data: Option<HashMap<String, String>>,
     pub changed_endpoints: Option<HashMap<String, String>>,
     pub changed_status: Option<StatusDTO>,
