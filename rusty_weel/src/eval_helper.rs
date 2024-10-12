@@ -148,7 +148,7 @@ pub fn evaluate_expression(
                         changed_status = Some(serde_json::from_str(&content)?);
                     }
                     "dataelements" => {
-                        data = serde_json::from_str(&content)?;
+                        data = Some(content);
                     }
                     "endpoints" => {
                         endpoints = serde_json::from_str(&content)?;
