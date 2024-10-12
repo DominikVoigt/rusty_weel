@@ -414,6 +414,11 @@ mod test {
             "",
         )
         .unwrap();
+        assert!(result.data.is_some());
+        assert!(result.changed_data.is_some());
+        assert!(result.endpoints.is_none());
+        assert!(result.changed_endpoints.is_none());
+        assert!(result.changed_status.is_none());
         println!("Result: {:?}", result)
     }
 
