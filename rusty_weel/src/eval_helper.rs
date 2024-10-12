@@ -6,7 +6,7 @@ use std::{
 
 use http_helper::{Client, Parameter};
 use log;
-use mime::{APPLICATION_JSON, APPLICATION_OCTET_STREAM};
+use mime::{APPLICATION_JSON, APPLICATION_OCTET_STREAM, TEXT_PLAIN, TEXT_PLAIN_UTF_8};
 use reqwest::{header::CONTENT_TYPE, Method};
 use serde_json::Value;
 use tempfile::tempfile;
@@ -318,7 +318,7 @@ pub fn structurize_result(
     body_file.rewind()?;
     client.add_parameter(Parameter::ComplexParameter {
         name: "body".to_owned(),
-        mime_type: APPLICATION_OCTET_STREAM,
+        mime_type: TEXT_PLAIN_UTF_8,
         content_handle: body_file,
     });
     let response = client.execute()?;
