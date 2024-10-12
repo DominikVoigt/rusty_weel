@@ -198,12 +198,12 @@ pub fn evaluate_expression(
                                 Err(Error::EvalError(EvalError::SyntaxError(signal_text)))
                             }
                             x => {
-                                log::error!("Got signaled: {:?} with text: {}", x, signal_text);
+                                log::error!("Got signaled: {:?} with text: {} when evaluating {}", x, signal_text, expression);
                                 panic!("Got signaled something unexpected by eval");
                             }
                         }
                     } else {
-                        panic!("Status code not OK(2xx) variant but also no signal provided")
+                        panic!("Status code of Eval Service is not OK(2xx), body was provided but signal is missing")
                     }
                 } else {
                     Ok(eval_result)
@@ -217,7 +217,7 @@ pub fn evaluate_expression(
         // Some general issue occured
         if status_not_ok {
             Err(Error::EvalError(EvalError::GeneralEvalError(
-                "Response is not 2xx and the body does not contain the correct body/sigal -> General issue with the service".to_owned(),
+                "Response of Eval Service is not 2xx and the body does not contain the correct body/sigal -> General issue with the service".to_owned(),
             )))
         } else {
             // Status says okay but the body is not okay
