@@ -100,7 +100,7 @@ pub fn evaluate_expression(
     let mut result = client.execute()?;
     let status = result.status_code;
     // Error in the provided code
-    println!("Headers: {:?}", result.headers);
+    println!("Received response headers from eval request: {:?}", result.headers);
     // Get the expressions parameter from the parsed response
     let mut expression_result: Option<String> = None;
     let mut changed_data: Option<HashMap<String, String>> = None;
@@ -132,7 +132,7 @@ pub fn evaluate_expression(
             } => {
                 let mut content = String::new();
                 content_handle.read_to_string(&mut content)?;
-
+                println!("received from service simple parameter: name: {name}, content: {content}");
                 match name.as_str() {
                     "result" => {
                         expression_result = Some(content);
