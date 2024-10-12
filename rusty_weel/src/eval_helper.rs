@@ -447,9 +447,6 @@ mod test {
         )
         .unwrap();
         println!("Result: {result}");
-        let result = base64::engine::general_purpose::STANDARD
-            .decode("aWQ9QVVBJmNvc3RzPTEzNg==")
-            .unwrap();
-        println!("{}", String::from_utf8_lossy(&result))
+        assert!(false)
     }
 }
