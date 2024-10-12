@@ -1303,13 +1303,13 @@ mod test {
 
     #[test]
     fn create_opts() {
-        match fs::remove_file("./opts.yaml") {
-            Ok(_) => {},
+        let mut file = match fs::File::create("./opts.yaml") {
+            Ok(file) => file,
             Err(err) => {
-                log::info!("Error occured deleting the old file: {:?}", err);
+                log::error!("Error creating the opts.yaml file: {:?}", err);
+                panic!("Could not create opts.yaml file")
             },
         };
-        let mut file = fs::File::create_new("./opts.yaml").unwrap();
         let stat = StaticData {
             instance_id: 1.to_string(),
             host: "localhost".to_owned(),
@@ -1330,13 +1330,13 @@ mod test {
 
     #[test]
     fn create_context() {
-        match fs::remove_file("./context.yaml") {
-            Ok(_) => {},
+        let mut file = match fs::File::create("./context.yaml") {
+            Ok(file) => file,
             Err(err) => {
-                log::info!("Error occured deleting the old file: {:?}", err);
+                log::error!("Error creating the context.yaml file: {:?}", err);
+                panic!("Could not create context.yaml file")
             },
         };
-        let mut file = fs::File::create_new("./context.yaml").unwrap();
         let mut test_endpoints = HashMap::new();
         test_endpoints.insert(
             "bookair".to_owned(),
