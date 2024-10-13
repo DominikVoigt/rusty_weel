@@ -62,7 +62,6 @@ impl DSL for Weel {
         finalize_code: Option<&str>,
         rescue_code: Option<&str>,
     ) -> Result<()> {
-        println!("Within call");
         self.weel_activity(
             id,
             ActivityType::Call,
@@ -439,7 +438,6 @@ impl Weel {
 
         let mut weel_position;
 
-        println!("Before outer loop");
         /*
          * We use a block computation here to mimick the exception handling -> If an exception in the original ruby code is raised, we return it here
          */
@@ -491,7 +489,6 @@ impl Weel {
                 connection_wrapper.handler_activity_uuid.clone(),
                 false,
             )?;
-            println!("After progress");
             match activity_type {
                 ActivityType::Manipulate => {
                     let state_stopping_or_finishing = matches!(
@@ -530,7 +527,6 @@ impl Weel {
                         .inform_position_change(Some(ipc))?;
                 }
                 ActivityType::Call => {
-                    println!("In activity::call");
                     drop(connection_wrapper);
                     'again: loop {
                         // Reacquire thread information mutex every loop again as we might need to drop it during wait
@@ -582,7 +578,6 @@ impl Weel {
 
                         // Will be locked in the activity_handle again
                         drop(connection_wrapper);
-                        println!("Before activity_handle, parameters: {:?}", parameters);
                         // This executes the actual call
                         ConnectionWrapper::activity_handle(
                             &connection_wrapper_mutex,
@@ -592,7 +587,6 @@ impl Weel {
                                 .map(|x| x.as_str()),
                             parameters,
                         )?;
-                        println!("After activity handle");
                         let connection_wrapper = connection_wrapper_mutex.lock().unwrap();
                         weel_position.handler_passthrough =
                             connection_wrapper.handler_passthrough.clone();
@@ -609,9 +603,8 @@ impl Weel {
                             connection_wrapper.inform_position_change(Some(content))?;
                         };
                         drop(connection_wrapper);
-                        println!("Before loop inner");
+
                         'inner: loop {
-                            println!("In loop inner");
                             let current_thread = thread::current().id();
                             let thread_info_map = self.thread_information.lock().unwrap();
                             // Unwrap as we have precondition that thread info is available on spawning
@@ -630,7 +623,6 @@ impl Weel {
                             // Get reference on the queue to allow us to unlock the rest of the thread info
                             // TODO: Maybe put the blocking queue info into real thread local storage
                             let thread_queue = thread_info.blocking_queue.clone();
-                            println!("After thread_queue");
                             // We need to release the locks on the thread_info_map to allow other parallel branches to execute while we wait for the callback (can take long for async case)
                             drop(thread_info);
                             drop(thread_info_map);
@@ -990,7 +982,6 @@ impl Weel {
      */
     fn in_search_mode(&self, activity_id: Option<&str>) -> bool {
         let thread = thread::current();
-        println!("ThreadID in search mode method: {:?}", thread.id());
         let thread_info_map = self.thread_information.lock().unwrap();
         // We unwrap here but we need to ensure that when the weel creates a thread, it registers the thread info!
         let mut thread_info = thread_info_map.get(&thread.id()).unwrap().borrow_mut();
