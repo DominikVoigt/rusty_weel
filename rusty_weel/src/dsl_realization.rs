@@ -53,7 +53,7 @@ pub struct Weel {
 impl DSL for Weel {
     fn call(
         self: Arc<Self>,
-        label: &str,
+        id: &str,
         endpoint_name: &str,
         parameters: HTTPParams,
         // Even though adding separate functions would be more idomatic for opt. parameters, the number and similar handling of these parameters would make it clunky to handle (2^4 variants)
@@ -64,7 +64,7 @@ impl DSL for Weel {
     ) -> Result<()> {
         println!("Within call");
         self.weel_activity(
-            label,
+            id,
             ActivityType::Call,
             prepare_code,
             update_code,
@@ -416,7 +416,7 @@ impl Weel {
      */
     fn weel_activity(
         self: Arc<Self>,
-        label: &str,
+        activity_id: &str,
         activity_type: ActivityType,
         prepare_code: Option<&str>,
         update_code: Option<&str>,
@@ -425,8 +425,8 @@ impl Weel {
         parameters: Option<HTTPParams>,
         endpoint_name: Option<&str>,
     ) -> Result<()> {
-        let position = self.position_test(label)?;
-        let in_search_mode = self.in_search_mode(Some(label));
+        let position = self.position_test(activity_id)?;
+        let in_search_mode = self.in_search_mode(Some(activity_id));
         if in_search_mode {
             return Ok(());
         }
@@ -502,7 +502,7 @@ impl Weel {
                     }
                     match finalize_code {
                         Some(finalize_code) => {
-                            connection_wrapper.activity_manipulate_handle(label);
+                            connection_wrapper.activity_manipulate_handle(activity_id);
                             connection_wrapper.inform_activity_manipulate()?;
                             let result = match self.clone().execute_code(
                                 false,
@@ -972,12 +972,12 @@ impl Weel {
     /**
      * Checks whether the provided label is valid
      */
-    fn position_test<'a>(&self, label: &'a str) -> Result<&'a str> {
-        if label.chars().all(char::is_alphanumeric) {
-            Ok(label)
+    fn position_test<'a>(&self, activity_id: &'a str) -> Result<&'a str> {
+        if activity_id.chars().all(char::is_alphanumeric) {
+            Ok(activity_id)
         } else {
             *self.state.lock().unwrap() = State::Stopping;
-            Err(Error::GeneralError(format!("position: {label} not valid")))
+            Err(Error::GeneralError(format!("position: {activity_id} not valid")))
         }
     }
 
@@ -985,7 +985,7 @@ impl Weel {
      * Checks whether the instance is in search mode w.r.t. the current position
      *
      */
-    fn in_search_mode(&self, label: Option<&str>) -> bool {
+    fn in_search_mode(&self, activity_id: Option<&str>) -> bool {
         let thread = thread::current();
         println!("ThreadID in search mode method: {:?}", thread.id());
         let thread_info_map = self.thread_information.lock().unwrap();
@@ -996,13 +996,13 @@ impl Weel {
             return false;
         }
 
-        if let Some(label) = label {
+        if let Some(activity_id) = activity_id {
             // Whether the current position was searched for
             let found_position = self
                 .search_positions
                 .lock()
                 .unwrap()
-                .contains_key(&label.to_owned());
+                .contains_key(&activity_id.to_owned());
             if found_position {
                 // We found the first position on this branch -> We do not need to search futher along this branch of execution
                 thread_info.in_search_mode = false;
@@ -1018,7 +1018,7 @@ impl Weel {
                 self.search_positions
                     .lock()
                     .unwrap()
-                    .get(label)
+                    .get(activity_id)
                     .unwrap()
                     .detail
                     == Mark::After

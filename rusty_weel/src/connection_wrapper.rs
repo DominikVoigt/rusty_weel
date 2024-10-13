@@ -40,7 +40,7 @@ pub struct ConnectionWrapper {
     handler_endpoint_origin: Vec<String>,
     // Unique identifier (randomly created)
     pub handler_activity_uuid: String,
-    label: String,
+    activity_id: String,
     annotations: Option<String>,
     error_regex: Regex,
 }
@@ -71,7 +71,7 @@ impl ConnectionWrapper {
             handler_return_options: None,
             handler_endpoints: Vec::new(),
             handler_activity_uuid: generate_random_key(),
-            label: "".to_owned(),
+            activity_id: "".to_owned(),
             handler_endpoint_origin: Vec::new(),
             annotations: None,
             error_regex: Regex::new(r#"(.*?)(, Line |:)(\d+):\s(.*)"#).unwrap(),
@@ -148,7 +148,7 @@ impl ConnectionWrapper {
 
     pub fn inform_activity_manipulate(&self) -> Result<()> {
         let mut content = self.construct_basic_content()?;
-        content.insert("label".to_owned(), self.label.clone());
+        content.insert("label".to_owned(), self.activity_id.clone());
         self.inform("activity/manipulating", Some(content))
     }
 
@@ -381,8 +381,8 @@ impl ConnectionWrapper {
         self.handler_passthrough.clone()
     }
 
-    pub fn activity_manipulate_handle(&mut self, label: &str) {
-        self.label = label.to_owned();
+    pub fn activity_manipulate_handle(&mut self, activity_id: &str) {
+        self.activity_id = activity_id.to_owned();
     }
 
     /**
@@ -408,18 +408,17 @@ impl ConnectionWrapper {
         passthrough: Option<&str>,
         parameters: HTTPParams,
     ) -> Result<()> {
-        let mut this = selfy.lock()?;
+        let this = selfy.lock()?;
         let weel = this.weel();
         println!("Entered activity handle");
         if this.handler_endpoints.is_empty() {
-            return Err(Error::GeneralError(format!("No endpoint provided for connection wrapper of activity: {}", this.label)));
+            return Err(Error::GeneralError(format!("No endpoint provided for connection wrapper of activity: {}", this.activity_id)));
         }
-        this.label = parameters.label.to_owned();
         // We do not model annotations anyway -> Can skip this from the original code
         {
             this.inform_resource_utilization()?;
             let mut content = this.construct_basic_content()?;
-            content.insert("label".to_owned(), this.label.clone());
+            content.insert("label".to_owned(), this.activity_id.clone());
             content.insert(
                 "passthrough".to_owned(),
                 passthrough.unwrap_or("").to_owned(),
@@ -436,7 +435,7 @@ impl ConnectionWrapper {
             Some(passthrough) => {
                 println!("In passthrough in activity handle");
                 let mut content = this.construct_basic_content()?;
-                content.insert("label".to_owned(), this.label.clone());
+                content.insert("label".to_owned(), this.activity_id.clone());
                 content.remove("endpoint");
                 weel.register_callback(selfy.clone(), passthrough, content)?;
             }
@@ -516,7 +515,7 @@ impl ConnectionWrapper {
                 "activity_uuid".to_owned(),
                 this.handler_activity_uuid.clone(),
             );
-            content_json.insert("label".to_owned(), this.label.clone());
+            content_json.insert("label".to_owned(), this.activity_id.clone());
             let position = this
                 .handler_position
                 .as_ref()
@@ -544,7 +543,7 @@ impl ConnectionWrapper {
             println!("After call in curl");
 
             status = response.status_code;
-            log::info!("Service call of {:?} returned with status code: {}", this.label, status);
+            log::info!("Service call of {:?} returned with status code: {}", this.activity_id, status);
             response_headers = header_map_to_hash_map(&response.headers)?;
             body = response.body;
 
@@ -584,7 +583,7 @@ impl ConnectionWrapper {
                             "activity_uuid".to_owned(),
                             this.handler_activity_uuid.clone(),
                         );
-                        content.insert("label".to_owned(), this.label.clone());
+                        content.insert("label".to_owned(), this.activity_id.clone());
                         content.insert(
                             "activity".to_owned(),
                             this.handler_position.clone().unwrap_or("".to_owned()),
@@ -881,7 +880,7 @@ impl ConnectionWrapper {
             "activity-uuid".to_owned(),
             self.handler_activity_uuid.clone(),
         );
-        content.insert("label".to_owned(), self.label.clone());
+        content.insert("label".to_owned(), self.activity_id.clone());
         content.insert(
             "activity".to_owned(),
             self.handler_position
@@ -922,7 +921,7 @@ impl ConnectionWrapper {
         );
         headers.append("CPEE-CALLBACK-ID", HeaderValue::from_str(callback_id)?);
         headers.append("CPEE-ACTIVITY", HeaderValue::from_str(&position)?);
-        headers.append("CPEE-LABEL", HeaderValue::from_str(&self.label)?);
+        headers.append("CPEE-LABEL", HeaderValue::from_str(&self.activity_id)?);
 
         let twin_target = data.attributes.get("twin_target");
         if let Some(twin_target) = twin_target {
@@ -1031,7 +1030,7 @@ impl ConnectionWrapper {
                     "instance_uuid": self.weel().uuid()
                 },
                 "task": {
-                    "label": self.label,
+                    "label": self.activity_id,
                     "id": self.handler_position
                 }
             }
