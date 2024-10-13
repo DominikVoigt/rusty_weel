@@ -855,6 +855,7 @@ impl ConnectionWrapper {
             
             println!("Before passthrough in handle_callback");
             if let Some(passthrough) = &self.handler_passthrough {
+                println!("Within passthrough in handle_callback");
                 weel.cancel_callback(passthrough)?;
                 self.handler_passthrough = None;
             }
