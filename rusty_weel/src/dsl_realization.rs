@@ -1315,7 +1315,7 @@ mod test {
         let stat = StaticData {
             instance_id: 127.to_string(),
             host: "localhost".to_owned(),
-            cpee_base_url: "http:localhost:7777".to_owned(),
+            cpee_base_url: "http://echo.bpm.in.tum.de/flow/engine".to_owned(),
             redis_url: None,
             redis_path: Some(format!("unix:///home/mangler/run/flow/redis.sock")),
             redis_db: 0,
@@ -1342,7 +1342,7 @@ mod test {
         let mut test_endpoints = HashMap::new();
         test_endpoints.insert(
             "bookAir".to_owned(),
-            "http://gruppe.wst.univie.ac.at/~mangler/services/airline.php".to_owned(),
+            "http://localhost:7777".to_owned(),
         );
 
         let mut test_data = HashMap::new();
