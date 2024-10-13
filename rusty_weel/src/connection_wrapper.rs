@@ -415,6 +415,7 @@ impl ConnectionWrapper {
             return Err(Error::GeneralError(format!("No endpoint provided for connection wrapper of activity: {}", this.label)));
         }
         this.label = parameters.label.to_owned();
+        println!("Before block in activity_hanlde");
         // We do not model annotations anyway -> Can skip this from the original code
         {
             this.inform_resource_utilization()?;
@@ -432,6 +433,7 @@ impl ConnectionWrapper {
                 weel.get_instance_meta_data(),
             )?
         }
+        println!("After block in activity_hanlde");
         match passthrough {
             Some(passthrough) => {
                 let mut content = this.construct_basic_content()?;
