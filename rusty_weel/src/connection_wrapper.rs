@@ -367,9 +367,6 @@ impl ConnectionWrapper {
         endpoint_urls: &HashMap<String, String>,
         endpoint_names: &Vec<&str>,
     ) {
-        println!("Within resolve endpoints");
-        println!("Names: {:?}", endpoint_names);
-        println!("Urls: {:?}", endpoint_urls);
         self.handler_endpoints = endpoint_names
             .iter()
             .map(|ep| endpoint_urls.get(*ep))
