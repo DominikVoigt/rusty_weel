@@ -179,10 +179,11 @@ fn init_logger() -> () {
     env_logger::Builder::from_default_env()
         .filter_level(log::LevelFilter::Info)
         .format(|buf, record| {
+            let style = buf.default_level_style(record.level());
             //buf.default_level_style(record.level());
             writeln!(
                 buf,
-                "{}:{} {} [{}] - {}",
+                "{}:{} {} {style}[{}]{style:#} - {}",
                 record.file().unwrap_or("unknown"),
                 record.line().unwrap_or(0),
                 chrono::Local::now().format("%Y-%m-%dT%H:%M:%S"),
