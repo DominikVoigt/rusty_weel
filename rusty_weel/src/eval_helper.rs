@@ -386,7 +386,7 @@ mod test {
 
     #[test]
     fn test_evaluation() {
-        env_logger::init();
+        env_logger::Builder::from_default_env().init();
         let endpoints = HashMap::new();
         let mut data = HashMap::new();
         data.insert("name".to_owned(), "Testhodor".to_owned());

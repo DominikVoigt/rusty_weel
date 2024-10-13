@@ -437,7 +437,7 @@ mod test {
     use super::*;
 
     fn init_logger() {
-        env_logger::init();
+        env_logger::Builder::from_default_env().init();;
     }
 
     /**
