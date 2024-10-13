@@ -523,7 +523,7 @@ impl ConnectionWrapper {
                 .map(|x| x.clone())
                 .unwrap_or("".to_owned());
             content_json.insert("activity".to_owned(), position);
-
+            println!("Before register callback in curl");
             weel.register_callback(Arc::clone(selfy), &callback_id, content_json)?;
             let endpoint = match this.handler_endpoints.get(0) {
                 // TODO: Set method by matched method in url
@@ -538,7 +538,11 @@ impl ConnectionWrapper {
             client.set_request_headers(headers.clone());
             client.add_parameters(params);
 
+
+            println!("Before call in curl");
             let response = client.execute_raw()?;
+            println!("After call in curl");
+
             status = response.status_code;
             response_headers = header_map_to_hash_map(&response.headers)?;
             body = response.body;
