@@ -16,6 +16,7 @@ use rusty_weel::redis_helper::RedisHelper;
 use rusty_weel_macro::inject;
 use reqwest::Method;
 
+
 fn main() {
     let (stop_signal_sender, stop_signal_receiver) = mpsc::channel::<()>();
     let local_weel = startup(stop_signal_receiver);
@@ -92,8 +93,8 @@ fn main() {
 }
 
 fn startup(stop_signal_receiver: mpsc::Receiver<()>) -> Arc<Weel> {
-    simple_logger::init_with_level(log::Level::Info).unwrap();
-
+    //simple_logger::init_with_level(log::Level::Info).unwrap();
+    env_logger::Builder::from_default_env().init();
     set_panic_hook();
 
     let opts = StaticData::load("opts.yaml");
@@ -154,7 +155,6 @@ fn startup(stop_signal_receiver: mpsc::Receiver<()>) -> Arc<Weel> {
     }));
 
     let thread = thread::current();
-    println!("ThreadID in main method: {:?}", thread.id());
     // create thread for callback subscriptions with redis
     RedisHelper::establish_callback_subscriptions(
         &weel.opts,
