@@ -1,5 +1,6 @@
 use derive_more::From;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::any::{Any, TypeId};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -244,7 +245,7 @@ impl Weel {
                 "vote-response",
                 vote_id,
                 self.get_instance_meta_data(),
-                Some("true".to_owned()),
+                Some(serde_json::Value::Bool(true)),
             )?;
         }
         Ok(())
@@ -292,7 +293,7 @@ impl Weel {
                 "vote",
                 vote_topic,
                 self.get_instance_meta_data(),
-                Some(content),
+                Some(json!(content)),
             )?;
         }
 
@@ -384,7 +385,7 @@ impl Weel {
                 "callback",
                 "activity/content",
                 self.get_instance_meta_data(),
-                Some(content),
+                Some(json!(content)),
             )?;
         self.callback_keys
             .lock()

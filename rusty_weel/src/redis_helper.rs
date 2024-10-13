@@ -15,7 +15,7 @@ use http_helper::Parameter;
 use once::assert_has_not_been_called;
 use redis::{Commands, Connection, RedisResult};
 use rusty_weel_macro::get_str_from_value;
-use serde_json::json;
+use serde_json::{json, Value};
 
 const CALLBACK_RESPONSE_ERROR_MESSAGE: &str =
     "Callback-response had not the correct format, could not find whitespace separator";
@@ -70,9 +70,7 @@ impl RedisHelper {
             serde_json::to_string(&instace_meta_data.attributes)
                 .expect("Could not serialize attributes"),
         );
-        let content =
-            serde_json::to_string(&content).expect("Could not serialize content to json string");
-        self.send("event", what, instace_meta_data, Some(content))?;
+        self.send("event", what, instace_meta_data, Some(json!(content)));
         Ok(())
     }
 
@@ -90,29 +88,29 @@ impl RedisHelper {
         message_type: &str,
         event: &str,
         instace_meta_data: InstanceMetaData,
-        content: Option<String>,
+        content: Option<Value>,
     ) -> Result<()> {
         let cpee_url = instace_meta_data.cpee_base_url;
         let instance_id = instace_meta_data.instance_id;
         let instance_uuid = instace_meta_data.instance_uuid;
         let info = instace_meta_data.info;
-        let content = content.unwrap_or("{}".to_owned());
+        let content = content.unwrap_or(Value::Null);
         let target_worker = self.target_worker();
         let (topic, name) = event
             // If no separator is contained e.g. in case for callback-end, no topic is provided
             .split_once("/").unwrap_or(("", event));
 
         let mut payload = HashMap::new();
-        payload.insert("cpee",                cpee_url.clone());      
-        payload.insert("instance-url",        format!("{}/{}", cpee_url, instance_id.clone()));          
-        payload.insert("instance",            instance_id.clone());      
-        payload.insert("topic",               topic.to_owned());  
-        payload.insert("type",                message_type.to_owned());  
-        payload.insert("name",                name.to_owned());  
-        payload.insert("timestamp",           chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, false).to_string());      
+        payload.insert("cpee",                Value::String(cpee_url.clone()));      
+        payload.insert("instance-url",        Value::String(format!("{}/{}", cpee_url, instance_id.clone())));          
+        payload.insert("instance",            Value::String(instance_id.clone())) ;      
+        payload.insert("topic",               Value::String(topic.to_owned()));  
+        payload.insert("type",                Value::String(message_type.to_owned()));  
+        payload.insert("name",                Value::String(name.to_owned()));  
+        payload.insert("timestamp",           Value::String(chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, false).to_string()));      
         payload.insert("content",             content);      
-        payload.insert("instance-uuid",       instance_uuid);          
-        payload.insert("instance-name",       info);      
+        payload.insert("instance-uuid",       Value::String(instance_uuid));          
+        payload.insert("instance-name",       Value::String(info));      
 
         let channel: String = format!("{}:{}:{}", message_type, target_worker, event);
         // Construct complete payload out of: <instance-id> <actual-payload>
@@ -601,7 +599,7 @@ mod test {
                 info: "test".to_owned(),
                 attributes: HashMap::new(),
             },
-            Some("test_payload".to_owned()),
+            Some(serde_json::Value::String("test_payload".to_owned())),
         )?;
         let result = rec_thread.join();
         match result {
