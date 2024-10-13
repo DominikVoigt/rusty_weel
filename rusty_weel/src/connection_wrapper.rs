@@ -772,12 +772,12 @@ impl ConnectionWrapper {
         options: HashMap<String, String>, // Headers
     ) -> Result<()> {
         let weel = self.weel();
-        println!("Before structurize call");
+        println!("Before structurize call in handle_callback");
         let recv =
             eval_helper::structurize_result(&weel.opts.eval_backend_structurize, &options, body)?;
         let mut redis = weel.redis_notifications_client.lock()?;
         let content = self.construct_basic_content()?;
-        println!("After structurize call");
+        println!("After structurize call in handle_callback");
         {
             let mut content = content.clone();
             content.insert("received".to_owned(), recv.clone());
@@ -806,6 +806,7 @@ impl ConnectionWrapper {
                 weel.get_instance_meta_data(),
             )?;
         }
+        println!("Before event in handle_callback");
 
         if contains_non_empty(&options, "CPEE_EVENT") {
             let event_regex = match regex::Regex::new(r"[^\w_-]") {
