@@ -244,7 +244,7 @@ impl Weel {
                 "vote-response",
                 vote_id,
                 self.get_instance_meta_data(),
-                Some("true"),
+                Some("true".to_owned()),
             )?;
         }
         Ok(())
@@ -292,7 +292,7 @@ impl Weel {
                 "vote",
                 vote_topic,
                 self.get_instance_meta_data(),
-                Some(content.as_str()),
+                Some(content),
             )?;
         }
 
@@ -384,7 +384,7 @@ impl Weel {
                 "callback",
                 "activity/content",
                 self.get_instance_meta_data(),
-                Some(&content),
+                Some(content),
             )?;
         self.callback_keys
             .lock()

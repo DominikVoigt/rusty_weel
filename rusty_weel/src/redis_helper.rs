@@ -72,7 +72,7 @@ impl RedisHelper {
         );
         let content =
             serde_json::to_string(&content).expect("Could not serialize content to json string");
-        self.send("event", what, instace_meta_data, Some(content.as_str()))?;
+        self.send("event", what, instace_meta_data, Some(content))?;
         Ok(())
     }
 
@@ -90,30 +90,30 @@ impl RedisHelper {
         message_type: &str,
         event: &str,
         instace_meta_data: InstanceMetaData,
-        content: Option<&str>,
+        content: Option<String>,
     ) -> Result<()> {
         let cpee_url = instace_meta_data.cpee_base_url;
         let instance_id = instace_meta_data.instance_id;
         let instance_uuid = instace_meta_data.instance_uuid;
         let info = instace_meta_data.info;
-        let content = content.unwrap_or("{}");
+        let content = content.unwrap_or("{}".to_owned());
         let target_worker = self.target_worker();
         let (topic, name) = event
             // If no separator is contained e.g. in case for callback-end, no topic is provided
             .split_once("/").unwrap_or(("", event));
-        let payload = json!({
-            "cpee": cpee_url,
-            "instance-url": format!("{}/{}", cpee_url, instance_id),
-            "instance": instance_id,
-            "topic": topic,
-            "type": message_type,
-            "name": name,
-            // Use ISO 8601 format
-            "timestamp": chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, false),
-            "content": content,
-            "instance-uuid": instance_uuid,
-            "instance-name": info
-        });
+
+        let mut payload = HashMap::new();
+        payload.insert("cpee",                cpee_url);      
+        payload.insert("instance-url",        format!("{}/{}", cpee_url, instance_id));          
+        payload.insert("instance",            instance_id);      
+        payload.insert("topic",               topic.to_owned());  
+        payload.insert("type",                message_type.to_owned());  
+        payload.insert("name",                name.to_owned());  
+        payload.insert("timestamp",           chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, false).to_string());      
+        payload.insert("content",             content);      
+        payload.insert("instance-uuid",       instance_uuid);          
+        payload.insert("instance-name",       info);      
+
         let channel: String = format!("{}:{}:{}", message_type, target_worker, event);
         // Construct complete payload out of: <instance-id> <actual-payload>
         let payload: String = format!(
@@ -601,7 +601,7 @@ mod test {
                 info: "test".to_owned(),
                 attributes: HashMap::new(),
             },
-            Some("test_payload"),
+            Some("test_payload".to_owned()),
         )?;
         let result = rec_thread.join();
         match result {
