@@ -1342,7 +1342,7 @@ mod test {
         let mut test_endpoints = HashMap::new();
         test_endpoints.insert(
             "bookAir".to_owned(),
-            "http://localhost:7777".to_owned(),
+            "http://gruppe.wst.univie.ac.at/~mangler/services/airline.php".to_owned(),
         );
 
         let mut test_data = HashMap::new();
