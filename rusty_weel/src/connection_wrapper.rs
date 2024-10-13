@@ -556,7 +556,6 @@ impl ConnectionWrapper {
                 break;
             }
         }
-        println!("Left loop in curl");
 
         // If status not okay:
         if status < 200 || status >= 300 {
@@ -633,6 +632,7 @@ impl ConnectionWrapper {
                 this.handle_callback(Some(status), &body, response_headers)?
             }
         }
+        println!("Leaving curl");
         Ok(())
     }
 
