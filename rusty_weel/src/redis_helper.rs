@@ -103,9 +103,9 @@ impl RedisHelper {
             .split_once("/").unwrap_or(("", event));
 
         let mut payload = HashMap::new();
-        payload.insert("cpee",                cpee_url);      
-        payload.insert("instance-url",        format!("{}/{}", cpee_url, instance_id));          
-        payload.insert("instance",            instance_id);      
+        payload.insert("cpee",                cpee_url.clone());      
+        payload.insert("instance-url",        format!("{}/{}", cpee_url, instance_id.clone()));          
+        payload.insert("instance",            instance_id.clone());      
         payload.insert("topic",               topic.to_owned());  
         payload.insert("type",                message_type.to_owned());  
         payload.insert("name",                name.to_owned());  
