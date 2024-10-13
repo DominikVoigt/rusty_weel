@@ -276,9 +276,7 @@ impl ConnectionWrapper {
 
         // Resolve the endpoint name to the actual correct endpoint (incl. twin_translate)
         if endpoint_names.len() > 0 {
-            println!("Connection wrapper before resolve endpoints: {:?}", &self);
             self.resolve_endpoints(&contex_snapshot.endpoints, endpoint_names);
-            println!("Connection wrapper after resolve endpoints: {:?}", &self);
 
             match weel.attributes.get("twin_engine") {
                 Some(twin_engine_url) => {
@@ -369,6 +367,9 @@ impl ConnectionWrapper {
         endpoint_urls: &HashMap<String, String>,
         endpoint_names: &Vec<&str>,
     ) {
+        println!("Within resolve endpoints");
+        println!("Names: {:?}", endpoint_names);
+        println!("Urls: {:?}", endpoint_urls);
         self.handler_endpoints = endpoint_names
             .iter()
             .map(|ep| endpoint_urls.get(*ep))
