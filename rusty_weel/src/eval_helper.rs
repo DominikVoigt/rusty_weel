@@ -145,8 +145,7 @@ pub fn evaluate_expression(
                 log::info!("Received complex param: name:{name} content:{content}");
                 match name.as_str() {
                     "result" => {
-                        let content = serde_json::from_str(&content)?;
-                        expression_result = Some(content);
+                        expression_result = Some(serde_json::from_str(&content)?);
                     }
                     "changed_dataelements" => {
                         changed_data = Some(serde_json::from_str(&content)?);
@@ -158,8 +157,7 @@ pub fn evaluate_expression(
                         changed_status = Some(serde_json::from_str(&content)?);
                     }
                     "dataelements" => {
-                        let content = serde_json::from_str(&content)?;
-                        data = Some(content);
+                        data = Some(serde_json::from_str(&content)?);
                     }
                     "endpoints" => {
                         endpoints = serde_json::from_str(&content)?;
@@ -170,8 +168,7 @@ pub fn evaluate_expression(
                         signal = Some(serde_json::from_str(&content)?);
                     }
                     "signal_text" => {
-                        let content = strip_quotes(content);
-                        signal_text = Some(content);
+                        signal_text = Some(serde_json::from_str(&content)?);
                     }
                     x => {
                         log::info!("Eval endpoint send unexpected part: {x}");
@@ -261,15 +258,6 @@ pub fn evaluate_expression(
             "Response of Eval Service is not 2xx and the body does not contain the evaluation result -> General issue with the service".to_owned())))
         }
     }
-}
-
-fn strip_quotes(content: String) -> String {
-    let str = content
-        .as_str()
-        .strip_prefix("\"")
-        .unwrap_or(content.as_str());
-    let str = str.strip_suffix("\"").unwrap_or(str);
-    str.to_owned()
 }
 
 /**
