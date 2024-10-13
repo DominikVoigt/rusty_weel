@@ -94,7 +94,7 @@ fn main() {
 
 fn startup(stop_signal_receiver: mpsc::Receiver<()>) -> Arc<Weel> {
     //simple_logger::init_with_level(log::Level::Info).unwrap();
-    env_logger::Builder::from_default_env().init();
+    env_logger::init();
     set_panic_hook();
 
     let opts = StaticData::load("opts.yaml");

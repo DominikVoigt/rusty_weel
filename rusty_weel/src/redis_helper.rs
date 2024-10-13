@@ -220,7 +220,7 @@ impl RedisHelper {
                             .remove(&topic.type_);
                     }
                     x => {
-                        println!("Received on channel {} the payload: {}", x, payload);
+                        log::info!("Received on channel {} the payload: {}", x, payload);
                     }
                 };
                 // This should loop indefinitely:
@@ -440,7 +440,7 @@ mod test {
     use super::*;
 
     fn init_logger() {
-        simple_logger::init_with_level(log::Level::Info).unwrap();
+        env_logger::init();
     }
 
     /**
