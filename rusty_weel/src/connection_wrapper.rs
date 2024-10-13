@@ -411,7 +411,7 @@ impl ConnectionWrapper {
         let weel = this.weel();
 
         if this.handler_endpoints.is_empty() {
-            return Err(Error::GeneralError("Wrong endpoint".to_owned()));
+            return Err(Error::GeneralError(format!("No endpoint provided for connection wrapper of activity: {}", this.label)));
         }
         this.label = parameters.label.to_owned();
         // We do not model annotations anyway -> Can skip this from the original code
