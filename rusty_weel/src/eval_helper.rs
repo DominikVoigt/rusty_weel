@@ -264,7 +264,10 @@ pub fn evaluate_expression(
 }
 
 fn strip_quotes(content: String) -> String {
-    let str = content.as_str().strip_prefix("\"").unwrap_or(content.as_str());
+    let str = content
+        .as_str()
+        .strip_prefix("\"")
+        .unwrap_or(content.as_str());
     let str = str.strip_suffix("\"").unwrap_or(str);
     str.to_owned()
 }
@@ -383,7 +386,7 @@ mod test {
 
     #[test]
     fn test_evaluation() {
-        simple_logger::init_with_level(log::Level::Info).unwrap();
+        env_logger::init();
         let endpoints = HashMap::new();
         let mut data = HashMap::new();
         data.insert("name".to_owned(), "Testhodor".to_owned());

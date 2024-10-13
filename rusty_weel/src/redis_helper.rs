@@ -154,10 +154,7 @@ impl RedisHelper {
             // Create redis connection for subscriptions and their handling
             let connection_result = connect_to_redis(
                 static_data,
-                &format!(
-                    "Callback_Subscription_Instance:{}",
-                    static_data.instance_id
-                ),
+                &format!("Callback_Subscription_Instance:{}", static_data.instance_id),
             );
 
             match connection_result {
