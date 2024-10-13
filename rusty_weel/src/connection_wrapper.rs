@@ -561,6 +561,7 @@ impl ConnectionWrapper {
                 break;
             }
         }
+        println!("After loop in curl");
 
         // If status not okay:
         if status < 200 || status >= 300 {
