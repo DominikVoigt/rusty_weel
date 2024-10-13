@@ -579,6 +579,7 @@ impl Weel {
 
                         // Will be locked in the activity_handle again
                         drop(connection_wrapper);
+                        println!("Before activity_handle, parameters: {:?}", parameters);
                         // This executes the actual call
                         ConnectionWrapper::activity_handle(
                             &connection_wrapper_mutex,

@@ -409,7 +409,7 @@ impl ConnectionWrapper {
     ) -> Result<()> {
         let mut this = selfy.lock()?;
         let weel = this.weel();
-
+        println!("In activity handle");
         if this.handler_endpoints.is_empty() {
             return Err(Error::GeneralError(format!("No endpoint provided for connection wrapper of activity: {}", this.label)));
         }

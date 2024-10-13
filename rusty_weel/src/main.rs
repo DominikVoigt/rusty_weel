@@ -9,10 +9,10 @@ use std::{panic, thread};
 
 use rusty_weel::connection_wrapper::ConnectionWrapper;
 use rusty_weel::dsl::DSL;
-// Needed for inject!
 use rusty_weel::data_types::{BlockingQueue, DynamicData, HTTPParams, KeyValuePair, State, StaticData, Status, ThreadInfo};
 use rusty_weel::dsl_realization::{Weel, Result};
 use rusty_weel::redis_helper::RedisHelper;
+// Needed for inject!
 use rusty_weel_macro::inject;
 use reqwest::Method;
 
