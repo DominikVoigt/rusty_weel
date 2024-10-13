@@ -8,23 +8,23 @@ use indoc::indoc;
 use std::{panic, thread};
 
 use rusty_weel::connection_wrapper::ConnectionWrapper;
+use rusty_weel::data_types::{
+    BlockingQueue, DynamicData, HTTPParams, KeyValuePair, State, StaticData, Status, ThreadInfo,
+};
 use rusty_weel::dsl::DSL;
-use rusty_weel::data_types::{BlockingQueue, DynamicData, HTTPParams, KeyValuePair, State, StaticData, Status, ThreadInfo};
-use rusty_weel::dsl_realization::{Weel, Result};
+use rusty_weel::dsl_realization::{Result, Weel};
 use rusty_weel::redis_helper::RedisHelper;
 // Needed for inject!
-use rusty_weel_macro::inject;
 use reqwest::Method;
-
+use rusty_weel_macro::inject;
+use std::io::Write;
 
 fn main() {
     let (stop_signal_sender, stop_signal_receiver) = mpsc::channel::<()>();
     let local_weel = startup(stop_signal_receiver);
     let weel_ref = local_weel.clone();
-    let weel = move || {
-        weel_ref.clone()
-    };
-    
+    let weel = move || weel_ref.clone();
+
     let model = move || -> Result<()> {
         //inject!("/home/i17/git-repositories/ma-code/rusty-weel/resources/model_instance.eic");
         // Inject start
@@ -87,7 +87,6 @@ fn main() {
         Ok(())
     };
 
-
     // Executes the code and blocks until it is finished
     local_weel.start(model, stop_signal_sender);
 }
@@ -103,16 +102,25 @@ fn startup(stop_signal_receiver: mpsc::Receiver<()>) -> Arc<Weel> {
         Arc::new(Mutex::new(HashMap::new()));
     let redis_helper = match RedisHelper::new(&opts, "notifications") {
         Ok(redis) => redis,
-        Err(err) => {log::error!("Error during startup when connecting to redis: {:?}", err); panic!("Error during startup")},
+        Err(err) => {
+            log::error!("Error during startup when connecting to redis: {:?}", err);
+            panic!("Error during startup")
+        }
     };
     let attributes = match RedisHelper::new(&opts, "attributes") {
         Ok(mut redis) => match redis.get_attributes(&opts.instance_id) {
             Ok(attributes) => attributes,
-            Err(err) => {log::error!("Error during startup when connecting to redis: {:?}", err); panic!("Error during startup")},
+            Err(err) => {
+                log::error!("Error during startup when connecting to redis: {:?}", err);
+                panic!("Error during startup")
+            }
         },
-        Err(err) => {log::error!("Error during startup when connecting to redis: {:?}", err); panic!("Error during startup")},
+        Err(err) => {
+            log::error!("Error during startup when connecting to redis: {:?}", err);
+            panic!("Error during startup")
+        }
     };
-    let search_positions= get_search_positions(&context); 
+    let search_positions = get_search_positions(&context);
     let in_search_mode = !search_positions.is_empty();
 
     let weel = Weel {
@@ -133,35 +141,35 @@ fn startup(stop_signal_receiver: mpsc::Receiver<()>) -> Arc<Weel> {
     let current_thread = thread::current();
 
     // TODO: Think about the correct values. Some of them need to be determined dynamically I believe? E.g. search_mode and branch traces
-    weel.thread_information.lock().unwrap().insert(current_thread.id(), RefCell::new(ThreadInfo {
-        parent: None,
-        in_search_mode: in_search_mode,
-        switched_to_execution: false,
-        no_longer_necessary: false,
-        blocking_queue: Arc::new(BlockingQueue::new()),
-        // TODO: Unsure here
-        branch_id: 0,
-        branch_traces: HashMap::new(),
-        branch_position: None,
-        // This should not matter since we are not in a parallel yet
-        branch_wait_count_cancel_condition: rusty_weel::data_types::CancelCondition::First,
-        branch_wait_count_cancel_active: false,
-        branch_wait_count_cancel: 0,
-        branch_wait_count: 0,
-        branch_event: None,
-        // to here
-        local: String::new(),
-        branches: Vec::new(),
-    }));
+    weel.thread_information.lock().unwrap().insert(
+        current_thread.id(),
+        RefCell::new(ThreadInfo {
+            parent: None,
+            in_search_mode: in_search_mode,
+            switched_to_execution: false,
+            no_longer_necessary: false,
+            blocking_queue: Arc::new(BlockingQueue::new()),
+            // TODO: Unsure here
+            branch_id: 0,
+            branch_traces: HashMap::new(),
+            branch_position: None,
+            // This should not matter since we are not in a parallel yet
+            branch_wait_count_cancel_condition: rusty_weel::data_types::CancelCondition::First,
+            branch_wait_count_cancel_active: false,
+            branch_wait_count_cancel: 0,
+            branch_wait_count: 0,
+            branch_event: None,
+            // to here
+            local: String::new(),
+            branches: Vec::new(),
+        }),
+    );
 
     let thread = thread::current();
     // create thread for callback subscriptions with redis
-    RedisHelper::establish_callback_subscriptions(
-        &weel.opts,
-        Arc::clone(&weel.callback_keys),
-    );
+    RedisHelper::establish_callback_subscriptions(&weel.opts, Arc::clone(&weel.callback_keys));
     let weel = Arc::new(weel);
-    
+
     setup_signal_handler(&weel);
     let local_weel = Arc::clone(&weel);
     local_weel
@@ -169,14 +177,29 @@ fn startup(stop_signal_receiver: mpsc::Receiver<()>) -> Arc<Weel> {
 
 fn init_logger() -> () {
     env_logger::Builder::from_default_env()
-    .filter_level(log::LevelFilter::Info)
-    .init();
+        .filter_level(log::LevelFilter::Info)
+        .format(|buf, record| {
+            //buf.default_level_style(record.level());
+            writeln!(
+                buf,
+                "{}:{} {} [{}] - {}",
+                record.file().unwrap_or("unknown"),
+                record.line().unwrap_or(0),
+                chrono::Local::now().format("%Y-%m-%dT%H:%M:%S"),
+                record.level(),
+                record.args()
+            )
+        })
+        .write_style(env_logger::WriteStyle::Auto)
+        .init();
 }
 
 /**
  * Will get the search positions out of the provided context file
  */
-fn get_search_positions(context: &Mutex<DynamicData>) -> HashMap<String, rusty_weel::dsl_realization::Position> {
+fn get_search_positions(
+    context: &Mutex<DynamicData>,
+) -> HashMap<String, rusty_weel::dsl_realization::Position> {
     // TODO: implement this, for now we do not support it
     return HashMap::new();
 }
@@ -192,18 +215,18 @@ fn set_panic_hook() -> () {
 
 fn setup_signal_handler(weel: &Arc<Weel>) {
     let weel = Arc::clone(weel);
-    
+
     if let Err(err) = ctrlc::set_handler(move || {
-       log::info!("Received SIGINT/SIGTERM/SIGHUP. Set state to stopping...");
-       let res = weel.stop();
-       match res {
-        Ok(_) => (),
-        Err(err) => {
-            log::error!("Error occured when trying to stop: {:?}", err);
-            panic!("Could not stop -> Crash instgead of failing silently")
-        },
+        log::info!("Received SIGINT/SIGTERM/SIGHUP. Set state to stopping...");
+        let res = weel.stop();
+        match res {
+            Ok(_) => (),
+            Err(err) => {
+                log::error!("Error occured when trying to stop: {:?}", err);
+                panic!("Could not stop -> Crash instgead of failing silently")
+            }
         }
-       log::info!("Set state to stopping");
+        log::info!("Set state to stopping");
     }) {
         panic!("Could not setup SIGINT/SIGTERM/SIGHUP handler: {err}")
     }
@@ -212,8 +235,16 @@ fn setup_signal_handler(weel: &Arc<Weel>) {
 /**
  * Creates a new Key value pair by evaluating the key and value expressions (tries to resolve them in rust if they are simple data accessors)
  */
-pub fn new_key_value_pair(key_expression: &'static str, value: &'static str, expression_value: bool) -> KeyValuePair {
+pub fn new_key_value_pair(
+    key_expression: &'static str,
+    value: &'static str,
+    expression_value: bool,
+) -> KeyValuePair {
     let key = key_expression;
     let value = Some(value.to_owned());
-    KeyValuePair { key, value, expression_value }
+    KeyValuePair {
+        key,
+        value,
+        expression_value,
+    }
 }
