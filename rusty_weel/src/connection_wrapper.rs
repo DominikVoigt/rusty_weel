@@ -495,6 +495,7 @@ impl ConnectionWrapper {
             println!("Entered loop in curl");
             // Compute parameters
             let mut params = Vec::new();
+            let activity_label = parameters.label;
             // Params could contain file handles (complex parameters) and thus cannot be cloned -> We cannot clone so we recompute them here
             match parameters.arguments.as_ref() {
                 Some(args) => args.iter().for_each(|arg| {
@@ -543,7 +544,7 @@ impl ConnectionWrapper {
             println!("After call in curl");
 
             status = response.status_code;
-            log::info!("Service call of {:?} returned with status code: {}", this.activity_id, status);
+            log::info!("Service call of {activity_label} returned with status code: {}", , status);
             response_headers = header_map_to_hash_map(&response.headers)?;
             body = response.body;
 
