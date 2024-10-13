@@ -387,6 +387,8 @@ impl ConnectionWrapper {
 
     /**
      * Will cancel an activity via the redis_helper thread
+     * 
+     * May lock redis_notification client due to cancel_callback call on weel
      */
     pub fn activity_stop(&self) -> Result<()> {
         if let Some(passthrough) = &self.handler_passthrough {
@@ -834,6 +836,7 @@ impl ConnectionWrapper {
             self.handler_return_value = Some(recv);
             self.handler_return_options = Some(options.clone());
         }
+        drop(redis);
         println!("After event in handle_callback");
 
         if contains_non_empty(&options, "CPEE_STATUS") {

@@ -396,6 +396,9 @@ impl Weel {
 
     /**
      * Removes a registered callback
+     * 
+     * Locks: 
+     *  - redis_notification_client
      */
     pub fn cancel_callback(&self, key: &str) -> Result<()> {
         self.redis_notifications_client
