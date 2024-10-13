@@ -415,7 +415,6 @@ impl ConnectionWrapper {
             return Err(Error::GeneralError(format!("No endpoint provided for connection wrapper of activity: {}", this.label)));
         }
         this.label = parameters.label.to_owned();
-        println!("Before block in activity_hanlde");
         // We do not model annotations anyway -> Can skip this from the original code
         {
             this.inform_resource_utilization()?;
@@ -433,17 +432,19 @@ impl ConnectionWrapper {
                 weel.get_instance_meta_data(),
             )?
         }
-        println!("After block in activity_hanlde");
         match passthrough {
             Some(passthrough) => {
+                println!("In passthrough in activity handle");
                 let mut content = this.construct_basic_content()?;
                 content.insert("label".to_owned(), this.label.clone());
                 content.remove("endpoint");
                 weel.register_callback(selfy.clone(), passthrough, content)?;
             }
             None => {
+                println!("In none path in activity handle");
                 // Drop to allow relocking in the method
                 drop(this);
+                println!("After drop in activity handle");
                 Self::curl(selfy, &parameters, weel)?
             }
         }
@@ -462,7 +463,9 @@ impl ConnectionWrapper {
      *  - connection_wrapper (provided as selfy)
      */
     pub fn curl(selfy: &Arc<Mutex<Self>>, parameters: &HTTPParams, weel: Arc<Weel>) -> Result<()> {
+        println!("In curl before locking");
         let mut this = selfy.lock().unwrap();
+        println!("In curl after locking");
         let callback_id = generate_random_key();
         this.handler_passthrough = Some(callback_id.clone());
 
@@ -597,11 +600,13 @@ impl ConnectionWrapper {
                             "received".to_owned(),
                             response_headers.get("CPEE_INSTANTIATION").unwrap().clone(),
                         );
+                        println!("Before locking notification client 1");
                         weel.redis_notifications_client.lock().unwrap().notify(
                             "task/instantiation",
                             Some(content.clone()),
                             weel.get_instance_meta_data(),
                         )?;
+                        println!("After locking notification client 1");
                     }
 
                     let event_header_set = match response_headers.get("CPEE_EVENT") {
@@ -613,11 +618,13 @@ impl ConnectionWrapper {
                         let event = response_headers.get("CPEE_EVENT").unwrap();
                         let event = event_regex.replace_all(event, "");
                         let what = format!("task/{event}");
+                        println!("Before locking notification client 2");
                         weel.redis_notifications_client.lock().unwrap().notify(
                             &what,
                             Some(content),
                             weel.get_instance_meta_data(),
                         )?;
+                        println!("After locking notification client 2");
                     }
                 }
             } else {
