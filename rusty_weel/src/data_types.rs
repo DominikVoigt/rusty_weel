@@ -221,8 +221,12 @@ impl<T> BlockingQueue<T> {
     }
     
     pub fn enqueue(&self, element: T) {
+        println!("Before queue locking");
         self.queue.lock().unwrap().push_back(element);
+        println!("After queue locking");
+        println!("Before notify");
         self.signal.notify_one();
+        println!("After notify");
     }
 
     pub fn dequeue(&self) -> T {

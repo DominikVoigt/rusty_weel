@@ -849,10 +849,13 @@ impl ConnectionWrapper {
                 None => log::error!("Received CPEE_UPDATE but handler_continue is empty?"),
             }
         } else {
+            
+            println!("Before passthrough in handle_callback");
             if let Some(passthrough) = &self.handler_passthrough {
                 weel.cancel_callback(passthrough)?;
                 self.handler_passthrough = None;
             }
+            println!("Before salvage in handle_callback");
             if contains_non_empty(&options, "CPEE_SALVAGE") {
                 match &self.handler_continue {
                     Some(x) => x.enqueue(Signal::Salvage),
