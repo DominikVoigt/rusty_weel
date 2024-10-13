@@ -493,6 +493,7 @@ impl ConnectionWrapper {
         };
 
         loop {
+            println!("Entered loop in curl");
             // Compute parameters
             let mut params = Vec::new();
             // Params could contain file handles (complex parameters) and thus cannot be cloned -> We cannot clone so we recompute them here
@@ -506,7 +507,7 @@ impl ConnectionWrapper {
                     });
                 }),
                 None => {
-                    log::info!("Arguments provided to protocurl are empty");
+                    log::info!("Arguments provided to curl are empty");
                 }
             };
 
@@ -555,6 +556,7 @@ impl ConnectionWrapper {
                 break;
             }
         }
+        println!("Left loop in curl");
 
         // If status not okay:
         if status < 200 || status >= 300 {

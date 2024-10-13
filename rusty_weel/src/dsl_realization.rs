@@ -390,7 +390,7 @@ impl Weel {
         self.callback_keys
             .lock()
             .expect("could not acquire Mutex")
-            .insert(key.to_owned(), connection_wrapper.clone());
+            .insert(key.to_owned(), connection_wrapper);
         Ok(())
     }
 
