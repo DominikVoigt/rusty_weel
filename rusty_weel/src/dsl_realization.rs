@@ -608,7 +608,7 @@ impl Weel {
                         drop(connection_wrapper);
                         println!("Before loop inner");
                         'inner: loop {
-                            println!("In loop inner")
+                            println!("In loop inner");
                             let current_thread = thread::current().id();
                             let thread_info_map = self.thread_information.lock().unwrap();
                             // Unwrap as we have precondition that thread info is available on spawning
