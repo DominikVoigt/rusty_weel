@@ -145,7 +145,7 @@ pub fn evaluate_expression(
                 log::info!("Received complex param: name:{name} content:{content}");
                 match name.as_str() {
                     "result" => {
-                        let content = serde_json::from_str(&content)?;
+                        let content = content; //serde_json::from_str(&content)?;
                         expression_result = Some(content);
                     }
                     "changed_dataelements" => {
@@ -158,7 +158,7 @@ pub fn evaluate_expression(
                         changed_status = Some(serde_json::from_str(&content)?);
                     }
                     "dataelements" => {
-                        let content = serde_json::from_str(&content)?;
+                        let content = content; //serde_json::from_str(&content)?;
                         data = Some(content);
                     }
                     "endpoints" => {
