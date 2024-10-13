@@ -566,6 +566,7 @@ impl ConnectionWrapper {
         // If status not okay:
         if status < 200 || status >= 300 {
             response_headers.insert("CPEE_SALVAGE".to_owned(), "true".to_owned());
+            println!("Before handle callback");
             this.handle_callback(Some(status), &body, response_headers)?
         } else {
             let callback_header_set = match response_headers.get("CPEE_CALLBACK") {
@@ -771,10 +772,12 @@ impl ConnectionWrapper {
         options: HashMap<String, String>, // Headers
     ) -> Result<()> {
         let weel = self.weel();
+        println!("Before structurize call");
         let recv =
             eval_helper::structurize_result(&weel.opts.eval_backend_structurize, &options, body)?;
         let mut redis = weel.redis_notifications_client.lock()?;
         let content = self.construct_basic_content()?;
+        println!("After structurize call");
         {
             let mut content = content.clone();
             content.insert("received".to_owned(), recv.clone());
