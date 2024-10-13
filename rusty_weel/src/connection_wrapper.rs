@@ -15,7 +15,6 @@ use std::{
     time::{Duration, SystemTime},
 };
 use urlencoding::encode;
-
 use crate::{
     data_types::{BlockingQueue, DynamicData, HTTPParams, InstanceMetaData, KeyValuePair},
     dsl_realization::{generate_random_key, Error, Result, Signal, Weel},
@@ -536,11 +535,12 @@ impl ConnectionWrapper {
 
             let response = client.execute_raw()?;
 
-            log::debug!("
-            Received response for service call of activity: {}\n
+            log::debug!(indoc::indoc! {
+            "
+            Received response for service call of activity: {}
             Response headers: {:?},
             Response body: {:?}             
-            ", parameters.label, response.headers, response.body);
+            "}, parameters.label, response.headers, response.body);
 
             status = response.status_code;
             log::info!("Service call of {activity_label} returned with status code: {}", status);
