@@ -873,6 +873,8 @@ impl ConnectionWrapper {
             }
         }
 
+        println!("After update in handle_callback");
+
         Ok(())
     }
 
