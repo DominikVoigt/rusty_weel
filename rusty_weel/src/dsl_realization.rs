@@ -589,6 +589,7 @@ impl Weel {
                                 .map(|x| x.as_str()),
                             parameters,
                         )?;
+                        println!("After activity handle");
                         let connection_wrapper = connection_wrapper_mutex.lock().unwrap();
                         weel_position.handler_passthrough =
                             connection_wrapper.handler_passthrough.clone();
@@ -605,7 +606,9 @@ impl Weel {
                             connection_wrapper.inform_position_change(Some(content))?;
                         };
                         drop(connection_wrapper);
+                        println!("Before loop inner");
                         'inner: loop {
+                            println!("In loop inner")
                             let current_thread = thread::current().id();
                             let thread_info_map = self.thread_information.lock().unwrap();
                             // Unwrap as we have precondition that thread info is available on spawning
@@ -624,7 +627,7 @@ impl Weel {
                             // Get reference on the queue to allow us to unlock the rest of the thread info
                             // TODO: Maybe put the blocking queue info into real thread local storage
                             let thread_queue = thread_info.blocking_queue.clone();
-
+                            println!("After thread_queue");
                             // We need to release the locks on the thread_info_map to allow other parallel branches to execute while we wait for the callback (can take long for async case)
                             drop(thread_info);
                             drop(thread_info_map);
