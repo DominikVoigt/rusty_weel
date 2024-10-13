@@ -99,8 +99,8 @@ impl RedisHelper {
         let content = content.unwrap_or("{}");
         let target_worker = self.target_worker();
         let (topic, name) = event
-            .split_once("/")
-            .expect("event does not have correct structure: Misses / separator");
+            // If no separator is contained e.g. in case for callback-end, no topic is provided
+            .split_once("/").unwrap_or(("", event));
         let payload = json!({
             "cpee": cpee_url,
             "instance-url": format!("{}/{}", cpee_url, instance_id),
