@@ -544,6 +544,7 @@ impl ConnectionWrapper {
             println!("After call in curl");
 
             status = response.status_code;
+            log::info!("Service call of {:?} returned with status code: {}", this.label, status);
             response_headers = header_map_to_hash_map(&response.headers)?;
             body = response.body;
 
