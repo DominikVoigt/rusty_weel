@@ -834,12 +834,15 @@ impl ConnectionWrapper {
             self.handler_return_value = Some(recv);
             self.handler_return_options = Some(options.clone());
         }
+        println!("After event in handle_callback");
 
         if contains_non_empty(&options, "CPEE_STATUS") {
             let mut content = content.clone();
             // CPEE::ValueHelper.parse(options['CPEE_INSTANTIATION'])
             content.insert("status".to_owned(), options["CPEE_STATUS"].clone());
         }
+
+        println!("Before update in handle_callback");
         if contains_non_empty(&options, "CPEE_UPDATE") {
             match &self.handler_continue {
                 Some(x) => x.enqueue(Signal::UpdateAgain),
