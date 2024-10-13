@@ -555,7 +555,7 @@ fn parse_multipart(body: &[u8], boundary: &str) -> Result<Vec<Parameter>> {
             }
             multipart::server::ReadEntryResult::End(_) => return Ok(parameters),
             multipart::server::ReadEntryResult::Error(_, error) => {
-                println!("Ran into error during reading of multipart: {}", error);
+                log::error!("Ran into error during reading of multipart: {}", error);
                 return Err(Error::from(error))
             },
         };

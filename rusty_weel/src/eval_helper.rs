@@ -108,7 +108,7 @@ pub fn evaluate_expression(
     let mut result = client.execute()?;
     let status = result.status_code;
     // Error in the provided code
-    println!(
+    log::info!(
         "Received response headers from eval request: {:?}",
         result.headers
     );
@@ -142,9 +142,10 @@ pub fn evaluate_expression(
             } => {
                 let mut content = String::new();
                 content_handle.read_to_string(&mut content)?;
-                println!("Received complex param: name:{name} content:{content}");
+                log::info!("Received complex param: name:{name} content:{content}");
                 match name.as_str() {
                     "result" => {
+                        let content = strip_quotes(content);
                         expression_result = Some(content);
                     }
                     "changed_dataelements" => {
@@ -157,6 +158,7 @@ pub fn evaluate_expression(
                         changed_status = Some(serde_json::from_str(&content)?);
                     }
                     "dataelements" => {
+                        let content = strip_quotes(content);
                         data = Some(content);
                     }
                     "endpoints" => {
@@ -168,6 +170,7 @@ pub fn evaluate_expression(
                         signal = Some(serde_json::from_str(&content)?);
                     }
                     "signal_text" => {
+                        let content = strip_quotes(content);
                         signal_text = Some(content);
                     }
                     x => {
@@ -258,6 +261,12 @@ pub fn evaluate_expression(
             "Response of Eval Service is not 2xx and the body does not contain the evaluation result -> General issue with the service".to_owned())))
         }
     }
+}
+
+fn strip_quotes(content: String) -> String {
+    let str = content.as_str().strip_prefix("\"").unwrap_or(content.as_str());
+    let str = str.strip_suffix("\"").unwrap_or(str);
+    str.to_owned()
 }
 
 /**
