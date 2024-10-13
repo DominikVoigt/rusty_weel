@@ -412,7 +412,6 @@ impl ConnectionWrapper {
     ) -> Result<()> {
         let this = selfy.lock()?;
         let weel = this.weel();
-        println!("Entered activity handle");
         if this.handler_endpoints.is_empty() {
             return Err(Error::GeneralError(format!("No endpoint provided for connection wrapper of activity: {}", this.activity_id)));
         }
@@ -435,17 +434,14 @@ impl ConnectionWrapper {
         }
         match passthrough {
             Some(passthrough) => {
-                println!("In passthrough in activity handle");
                 let mut content = this.construct_basic_content()?;
                 content.insert("label".to_owned(), this.activity_id.clone());
                 content.remove("endpoint");
                 weel.register_callback(selfy.clone(), passthrough, content)?;
             }
             None => {
-                println!("In none path in activity handle");
                 // Drop to allow relocking in the method
                 drop(this);
-                println!("After drop in activity handle");
                 Self::curl(selfy, &parameters, weel)?
             }
         }
@@ -462,11 +458,10 @@ impl ConnectionWrapper {
      * - We explicitly expect the Arc<Mutex> here since we need to add a reference to the callbacks (by cloning the Arc)
      * Locks:
      *  - connection_wrapper (provided as selfy)
+     *  - redis_notification_client (shortly)
      */
     pub fn curl(selfy: &Arc<Mutex<Self>>, parameters: &HTTPParams, weel: Arc<Weel>) -> Result<()> {
-        println!("In curl before locking");
         let mut this = selfy.lock().unwrap();
-        println!("In curl after locking");
         let callback_id = generate_random_key();
         this.handler_passthrough = Some(callback_id.clone());
 
@@ -494,7 +489,6 @@ impl ConnectionWrapper {
         };
 
         loop {
-            println!("Entered loop in curl");
             // Compute parameters
             let mut params = Vec::new();
             let activity_label = parameters.label;
@@ -525,7 +519,6 @@ impl ConnectionWrapper {
                 .map(|x| x.clone())
                 .unwrap_or("".to_owned());
             content_json.insert("activity".to_owned(), position);
-            println!("Before register callback in curl");
             weel.register_callback(Arc::clone(selfy), &callback_id, content_json)?;
             let endpoint = match this.handler_endpoints.get(0) {
                 // TODO: Set method by matched method in url
@@ -540,10 +533,13 @@ impl ConnectionWrapper {
             client.set_request_headers(headers.clone());
             client.add_parameters(params);
 
-
-            println!("Before call in curl");
             let response = client.execute_raw()?;
-            println!("After call in curl");
+
+            log::debug!("
+            Received response for service call of activity: {}\n
+            Response headers: {:?},
+            Response body: {:?}             
+            ", parameters.label, response.headers, response.body);
 
             status = response.status_code;
             log::info!("Service call of {activity_label} returned with status code: {}", status);
@@ -563,12 +559,10 @@ impl ConnectionWrapper {
                 break;
             }
         }
-        println!("After loop in curl");
 
         // If status not okay:
         if status < 200 || status >= 300 {
             response_headers.insert("CPEE_SALVAGE".to_owned(), "true".to_owned());
-            println!("Before handle callback");
             this.handle_callback(Some(status), &body, response_headers)?
         } else {
             let callback_header_set = match response_headers.get("CPEE_CALLBACK") {
@@ -610,13 +604,11 @@ impl ConnectionWrapper {
                             "received".to_owned(),
                             response_headers.get("CPEE_INSTANTIATION").unwrap().clone(),
                         );
-                        println!("Before locking notification client 1");
                         weel.redis_notifications_client.lock().unwrap().notify(
                             "task/instantiation",
                             Some(content.clone()),
                             weel.get_instance_meta_data(),
                         )?;
-                        println!("After locking notification client 1");
                     }
 
                     let event_header_set = match response_headers.get("CPEE_EVENT") {
@@ -628,20 +620,17 @@ impl ConnectionWrapper {
                         let event = response_headers.get("CPEE_EVENT").unwrap();
                         let event = event_regex.replace_all(event, "");
                         let what = format!("task/{event}");
-                        println!("Before locking notification client 2");
                         weel.redis_notifications_client.lock().unwrap().notify(
                             &what,
                             Some(content),
                             weel.get_instance_meta_data(),
                         )?;
-                        println!("After locking notification client 2");
                     }
                 }
             } else {
                 this.handle_callback(Some(status), &body, response_headers)?
             }
         }
-        println!("Leaving curl");
         Ok(())
     }
 
@@ -766,6 +755,9 @@ impl ConnectionWrapper {
      * In case of a synchroneous call, it is called directly (within the curl method)
      * In case of an asynchroneous call, it is called from the callback thread (started when the instance is spun up via the `establish_callback_subscriptions` in the redis_helper)
      * Redis callbacks have no response code -> Optional
+     * 
+     * Locks:
+     * redis_notification_client
      */
     pub fn handle_callback(
         &mut self,
@@ -774,12 +766,10 @@ impl ConnectionWrapper {
         options: HashMap<String, String>, // Headers
     ) -> Result<()> {
         let weel = self.weel();
-        println!("Before structurize call in handle_callback");
         let recv =
             eval_helper::structurize_result(&weel.opts.eval_backend_structurize, &options, body)?;
         let mut redis = weel.redis_notifications_client.lock()?;
         let content = self.construct_basic_content()?;
-        println!("After structurize call in handle_callback");
         {
             let mut content = content.clone();
             content.insert("received".to_owned(), recv.clone());
@@ -808,7 +798,6 @@ impl ConnectionWrapper {
                 weel.get_instance_meta_data(),
             )?;
         }
-        println!("Before event in handle_callback");
 
         if contains_non_empty(&options, "CPEE_EVENT") {
             let event_regex = match regex::Regex::new(r"[^\w_-]") {
@@ -837,7 +826,6 @@ impl ConnectionWrapper {
             self.handler_return_options = Some(options.clone());
         }
         drop(redis);
-        println!("After event in handle_callback");
 
         if contains_non_empty(&options, "CPEE_STATUS") {
             let mut content = content.clone();
@@ -845,21 +833,16 @@ impl ConnectionWrapper {
             content.insert("status".to_owned(), options["CPEE_STATUS"].clone());
         }
 
-        println!("Before update in handle_callback");
         if contains_non_empty(&options, "CPEE_UPDATE") {
             match &self.handler_continue {
                 Some(x) => x.enqueue(Signal::UpdateAgain),
                 None => log::error!("Received CPEE_UPDATE but handler_continue is empty?"),
             }
         } else {
-            
-            println!("Before passthrough in handle_callback");
             if let Some(passthrough) = &self.handler_passthrough {
-                println!("Within passthrough in handle_callback");
                 weel.cancel_callback(passthrough)?;
                 self.handler_passthrough = None;
             }
-            println!("Before salvage in handle_callback");
             if contains_non_empty(&options, "CPEE_SALVAGE") {
                 match &self.handler_continue {
                     Some(x) => x.enqueue(Signal::Salvage),
@@ -879,8 +862,6 @@ impl ConnectionWrapper {
                 }
             }
         }
-
-        println!("After update in handle_callback");
 
         Ok(())
     }
