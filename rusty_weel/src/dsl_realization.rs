@@ -286,8 +286,6 @@ impl Weel {
                 serde_json::to_string(&self.attributes).expect("Could not serialize attributes"),
             );
             content.insert("subscription".to_owned(), client.clone());
-            let content = serde_json::to_string(&content)
-                .expect("Could not serialize content to json string");
             votes.push(vote_id);
             redis_helper.send(
                 "vote",
@@ -376,8 +374,6 @@ impl Weel {
         mut content: HashMap<String, String>,
     ) -> Result<()> {
         content.insert("key".to_owned(), key.to_owned());
-        let content =
-            serde_json::to_string(&content).expect("could not serialize hashmap to string");
         self.redis_notifications_client
             .lock()
             .expect("Could not acquire Mutex")

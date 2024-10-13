@@ -63,13 +63,9 @@ impl RedisHelper {
         content: Option<HashMap<String, String>>,
         instace_meta_data: InstanceMetaData,
     ) -> Result<()> {
-        let mut content: HashMap<String, String> = content.unwrap_or(HashMap::new());
+        let mut content: Value = json!(content.unwrap_or(HashMap::new()));
         // TODO: Original code adds attributes_translated here, do we need to do this?
-        content.insert(
-            "attributes".to_owned(),
-            serde_json::to_string(&instace_meta_data.attributes)
-                .expect("Could not serialize attributes"),
-        );
+        content.as_object_mut().unwrap().insert("attributes".to_owned(), json!(&instace_meta_data.attributes));
         self.send("event", what, instace_meta_data, Some(json!(content)));
         Ok(())
     }
