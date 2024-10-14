@@ -244,7 +244,6 @@ pub fn evaluate_expression(
                                 Ok(res) => res,
                                 Err(err) => {
                                     log::info!("Entered signal");
-                                    log::error!("Deserializing of SyntaxError: {:?}", serde_json::from_str::<Signal>("SyntaxError")?);
                                     log::error!("Encountered error deserializing signal: {:?}, received: {}", err, signal_enum);
                                     return Err(Error::JsonError(err));
                                 }
