@@ -114,7 +114,7 @@ pub fn evaluate_expression(
     );
     // Get the expressions parameter from the parsed response
     let mut expression_result: Option<String> = None;
-    let mut changed_data: Option<HashMap<String, String>> = None;
+    let mut changed_data: Option<HashMap<String, Option<String>>> = None;
     let mut changed_endpoints: Option<HashMap<String, String>> = None;
     let mut changed_status: Option<StatusDTO> = None;
     let mut data: Option<String> = None;
@@ -366,7 +366,7 @@ pub struct EvaluationResult {
     pub expression_result: String,
     pub data: Option<String>,
     pub endpoints: Option<HashMap<String, String>>,
-    pub changed_data: Option<HashMap<String, String>>,
+    pub changed_data: Option<HashMap<String, Option<String>>>,
     pub changed_endpoints: Option<HashMap<String, String>>,
     pub changed_status: Option<StatusDTO>,
 }
