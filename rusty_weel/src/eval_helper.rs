@@ -30,7 +30,7 @@ pub fn evaluate_expression(
     thread_local: &str,
     additional: Value,
     call_result: Option<String>,
-    call_headers: Option<String>,
+    call_headers: Option<HashMap<String, String>>,
     location: &str,
 ) -> Result<EvaluationResult> {
     log::info!("Evaluating expression: {expression}");
@@ -88,7 +88,6 @@ pub fn evaluate_expression(
             )?;
         }
         if let Some(call_result) = call_result {
-            log::info!("Adding call result to evaluation request: {}", call_result);
             client.add_complex_parameter(
                 "call_result",
                 APPLICATION_JSON,
@@ -100,7 +99,7 @@ pub fn evaluate_expression(
             client.add_complex_parameter(
                 "call_headers",
                 APPLICATION_JSON,
-                call_headers.as_bytes(),
+                serde_json::to_string(&call_headers)?.as_bytes(),
             )?;
         }
     }

@@ -311,6 +311,7 @@ impl ConnectionWrapper {
                                 None,
                                 &thread_local,
                                 self.additional(),
+                                // In prepare we do not have access to the call result yet
                                 None,
                                 None,
                                 "prepare",

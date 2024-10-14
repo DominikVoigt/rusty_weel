@@ -536,6 +536,9 @@ impl Weel {
                                 &local,
                                 &connection_wrapper,
                                 &format!("Activity {}", position),
+                                // In a manipulate, we do not have data available from a prior request
+                                None,
+                                None
                             ) {
                                 Ok(res) => res,
                                 // For manipulate, we just pass all signals/errors downward
@@ -738,6 +741,8 @@ impl Weel {
                                     &local,
                                     &connection_wrapper,
                                     &format!("Activity {} {}", position, code_type),
+                                    connection_wrapper.handler_return_value,
+                                    connection_wrapper.handler_return_options
                                 ) // TODO: Even in signal case we need the eval result
                                 {
                                     // When error/signal returned, pass it downwards for handling, except for Signal::Again that has some direct effects 
@@ -930,6 +935,8 @@ impl Weel {
         local: &str,
         connection_wrapper: &ConnectionWrapper,
         location: &str,
+        call_result: Option<String>,
+        call_headers: Option<HashMap<String, String>>
     ) -> Result<eval_helper::EvaluationResult> {
         // We clone the dynamic data and status dto here which is expensive but allows us to not block the whole weel until the eval call returns
         let dynamic_data = self.context.lock().unwrap().clone();
@@ -942,8 +949,8 @@ impl Weel {
                 Some(status),
                 local,
                 connection_wrapper.additional(),
-                None,
-                None,
+                call_result,
+                call_headers,
                 location,
             )?;
             Ok(result)
