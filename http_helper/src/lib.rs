@@ -211,6 +211,7 @@ impl Client {
      * (128-255).
      */
     pub fn add_request_header(&mut self, name: &str, value: &str) -> Result<()> {
+        log::debug!("Setting request header: {}={}", name, value);
         self.headers.remove(name);
         self.headers
             .insert(HeaderName::from_str(name)?, HeaderValue::from_str(value)?);
