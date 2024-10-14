@@ -243,6 +243,7 @@ pub fn evaluate_expression(
                             match serde_json::from_str(&signal_enum) {
                                 Ok(res) => res,
                                 Err(err) => {
+                                    todo!("This is not executed");
                                     log::error!("Deserializing of SyntaxError: {:?}", serde_json::from_str("SyntaxError")?);
                                     log::error!("Correct string: {:?}", serde_json::to_string(&Signal::SyntaxError)?);
                                     log::error!("Encountered error deserializing signal: {:?}, received: {}", err, signal_enum);
