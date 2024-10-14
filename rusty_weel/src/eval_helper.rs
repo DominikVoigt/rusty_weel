@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     fmt::Display,
-    io::{Read, Seek, Write},
+    io::{Read, Seek, Write}, ops::Index,
 };
 
 use http_helper::{Client, Parameter};
@@ -235,11 +235,15 @@ pub fn evaluate_expression(
                     // Handle others based on ruby code
                     "signal" => {
                         signal = {
-                            match serde_json::from_str(&content) {
+                            let signal_enum = if let Some(enum_name) = content.split("::").last() {
+                                enum_name
+                            } else {
+                                &content
+                            };
+                            match serde_json::from_str(&signal_enum) {
                                 Ok(res) => res,
                                 Err(err) => {
-                                    log::error!("Encountered error deserializing signal: {:?}, received: {}", err, content);
-                                    log::info!("Correct style would be: {}", serde_json::to_string(&Signal::SyntaxError)?);
+                                    log::error!("Encountered error deserializing signal: {:?}, received: {}", err, signal_enum);
                                     return Err(Error::JsonError(err));
                                 }
                             }
