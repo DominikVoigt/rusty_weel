@@ -87,8 +87,8 @@ pub fn evaluate_expression(
                 serde_json::to_string(&status)?.as_bytes(),
             )?;
         }
-
         if let Some(call_result) = call_result {
+            log::info!("Adding call result to evaluation request: {}", call_result);
             client.add_complex_parameter(
                 "call_result",
                 APPLICATION_JSON,
