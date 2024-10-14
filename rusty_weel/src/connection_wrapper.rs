@@ -773,6 +773,7 @@ impl ConnectionWrapper {
             eval_helper::structurize_result(&weel.opts.eval_backend_structurize, &options, body)?;
         let mut redis = weel.redis_notifications_client.lock()?;
         let content = self.construct_basic_content()?;
+        log::debug!("Recv is: {}", recv);
         {
             let mut content = content.clone();
             content.insert("received".to_owned(), recv.clone());

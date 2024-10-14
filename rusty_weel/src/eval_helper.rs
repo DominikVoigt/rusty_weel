@@ -404,7 +404,6 @@ pub fn structurize_result(
     body: &[u8],
 ) -> Result<String> {
     let mut client = http_helper::Client::new(eval_backend_structurize_url, Method::PUT)?;
-    println!("Adding headers from service response: {:?}", options);
     let mut body_file = tempfile()?;
     body_file.write_all(body)?;
     body_file.rewind()?;
