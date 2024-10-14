@@ -428,6 +428,7 @@ impl Weel {
      *  - redis_notification_client
      */
     pub fn cancel_callback(&self, key: &str) -> Result<()> {
+        log::info!("Remove callback: {key}");
         self.redis_notifications_client
             .lock()
             .expect("Could not acquire Mutex for notifications RedisHelper")
