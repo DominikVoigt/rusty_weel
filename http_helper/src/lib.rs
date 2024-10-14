@@ -308,7 +308,6 @@ impl Client {
         request_builder = self.generate_body(request_builder)?;
         request_builder = self.set_headers(request_builder);
         let request = request_builder.build()?;
-        log::debug!("Headers just before the request: {:?}", request.headers());
         let response = self.reqwest_client.execute(request)?;
 
         Ok(RawResponse {
@@ -333,7 +332,6 @@ impl Client {
      */
     fn set_headers(&mut self, request_builder: RequestBuilder) -> RequestBuilder {
         let headers: HeaderMap = std::mem::replace(&mut self.headers, HeaderMap::new());
-        log::debug!("Headers 4: {:?}", headers);
         request_builder.headers(headers)
     }
 
