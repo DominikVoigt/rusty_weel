@@ -306,6 +306,7 @@ impl Client {
         request_builder = self.set_headers(request_builder);
         request_builder = self.generate_body(request_builder)?;
         let request = request_builder.build()?;
+        log::debug!("Headers just before the request: {:?}", request.headers());
         let response = self.reqwest_client.execute(request)?;
 
         Ok(RawResponse {
