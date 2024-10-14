@@ -309,7 +309,6 @@ pub fn structurize_result(
 ) -> Result<String> {
     let mut client = http_helper::Client::new(eval_backend_structurize_url, Method::PUT)?;
     println!("Adding headers from service response: {:?}", options);
-    client.add_request_headers(options.clone())?;
     let mut body_file = tempfile()?;
     body_file.write_all(body)?;
     body_file.rewind()?;
@@ -318,6 +317,7 @@ pub fn structurize_result(
         mime_type: TEXT_PLAIN_UTF_8,
         content_handle: body_file,
     });
+    client.add_request_headers(options.clone())?;
     let response = client.execute()?;
     let status = response.status_code;
     let mut content = response.content;

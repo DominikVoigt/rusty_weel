@@ -404,9 +404,12 @@ fn construct_singular_body(
             mime_type,
             content_handle,
             ..
-        } => request_builder
+        } => {
+            log::debug!("Set content type to {}", mime::APPLICATION_WWW_FORM_URLENCODED.to_string());
+            request_builder
             .header(CONTENT_TYPE, mime_type.to_string())
-            .body(content_handle),
+            .body(content_handle)
+        },
     }
 }
 
