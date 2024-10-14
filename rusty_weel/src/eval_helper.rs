@@ -131,7 +131,13 @@ pub fn evaluate_expression(
         match parameter {
             Parameter::SimpleParameter { name, value, .. } => {
                 if name == "result" {
-                    expression_result = Some(serde_json::from_str(&value)?);
+                    expression_result = if value.starts_with("\"") {
+                        // In case we have a string, strip them
+                        Some(serde_json::from_str(&value)?)
+                    } else {
+                        // In case we have a hash
+                        Some(value)
+                    };
                 } else {
                     continue;
                 }
@@ -146,7 +152,13 @@ pub fn evaluate_expression(
                 log::info!("Received complex param: name:{name} content:{content}");
                 match name.as_str() {
                     "result" => {
-                        expression_result = Some(serde_json::from_str(&content)?);
+                        expression_result = if content.starts_with("\"") {
+                            // In case we have a string, strip them
+                            Some(serde_json::from_str(&content)?)
+                        } else {
+                            // In case we have a hash
+                            Some(content)
+                        };
                     }
                     "changed_dataelements" => {
                         changed_data = Some(serde_json::from_str(&content)?);
@@ -175,7 +187,13 @@ pub fn evaluate_expression(
                         signal = Some(serde_json::from_str(&content)?);
                     }
                     "signal_text" => {
-                        signal_text = Some(serde_json::from_str(&content)?);
+                        signal_text = if content.starts_with("\"") {
+                            // In case we have a string, strip them
+                            Some(serde_json::from_str(&content)?)
+                        } else {
+                            // In case we have a hash
+                            Some(content)
+                        };
                     }
                     x => {
                         log::info!("Eval endpoint send unexpected part: {x}");
