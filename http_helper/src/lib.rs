@@ -447,6 +447,7 @@ pub fn header_map_to_hash_map(headers: &HeaderMap) -> Result<HashMap<String, Str
     for (name, value) in headers.into_iter() {
         header_map.insert(name.as_str().to_owned(), value.to_str()?.to_owned());
     }
+    log::debug!("Transformed headers into map: {:?}", header_map);
     Ok(header_map)
 }
 
