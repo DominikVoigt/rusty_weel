@@ -229,8 +229,7 @@ impl Client {
      */
     pub fn add_request_headers(&mut self, headers: HashMap<String, String>) -> Result<()> {
         for (name, value) in headers.into_iter() {
-            self.headers
-                .insert(HeaderName::from_str(&name)?, HeaderValue::from_str(&value)?);
+            self.add_request_header(&name, &value);
         }
         Ok(())
     }
