@@ -317,7 +317,9 @@ pub fn structurize_result(
         mime_type: TEXT_PLAIN_UTF_8,
         content_handle: body_file,
     });
+    log::debug!("Headers 1: {:?}", &client.headers);
     client.add_request_headers(options.clone())?;
+    log::debug!("Headers 2: {:?}", &client.headers);
     let response = client.execute()?;
     let status = response.status_code;
     let mut content = response.content;
