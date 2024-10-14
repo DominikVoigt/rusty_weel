@@ -845,6 +845,7 @@ impl ConnectionWrapper {
             }
         } else {
             if let Some(passthrough) = &self.handler_passthrough {
+                log::debug!("Before cancel callback, value is: {:?}", self.handler_return_value);
                 weel.cancel_callback(passthrough)?;
                 self.handler_passthrough = None;
             }
