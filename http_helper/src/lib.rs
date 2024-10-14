@@ -86,7 +86,7 @@ pub struct Client {
     method: Method,
     reqwest_client: reqwest::blocking::Client,
     base_url: Url,
-    headers: HeaderMap,
+    pub headers: HeaderMap,
     parameters: Vec<Parameter>,
 }
 
