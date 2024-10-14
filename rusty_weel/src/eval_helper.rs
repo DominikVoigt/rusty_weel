@@ -240,11 +240,12 @@ pub fn evaluate_expression(
                             } else {
                                 &content
                             };
+                            // Enums are serialized as strings!
+                            let signal_enum = format!("\"{signal_enum}\"");
                             match serde_json::from_str(&signal_enum) {
                                 Ok(res) => res,
                                 Err(err) => {
-                                    log::info!("Entered signal");
-                                    log::error!("Encountered error deserializing signal: {:?}, received: {}", err, signal_enum);
+                                    log::error!("Encountered error deserializing signal: {:?}, received: {}", err, content);
                                     return Err(Error::JsonError(err));
                                 }
                             }
