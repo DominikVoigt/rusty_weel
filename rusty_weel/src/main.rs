@@ -223,10 +223,12 @@ fn setup_signal_handler(weel: &Arc<Weel>) {
         log::info!("Received SIGINT/SIGTERM/SIGHUP. Set state to stopping...");
         let res = weel.stop();
         match res {
-            Ok(_) => (),
+            Ok(_) => {
+                log::info!("Successfuly executed stop function on weel")
+            },
             Err(err) => {
                 log::error!("Error occured when trying to stop: {:?}", err);
-                panic!("Could not stop -> Crash instgead of failing silently")
+                panic!("Could not stop -> Crash instead of failing silently")
             }
         }
         log::info!("Set state to stopping");

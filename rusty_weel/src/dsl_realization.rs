@@ -241,6 +241,7 @@ impl Weel {
 
     pub fn stop(&self) -> Result<()> {
         {
+            log::info!("Entered stop function of weel");
             let mut state = self.state.lock().expect("Could not lock state mutex");
             match *state {
                 State::Ready => *state = State::Stopped,
@@ -258,6 +259,7 @@ impl Weel {
                     *state
                 ),
             }
+            log::info!("Exit stop function of weel");
         }
 
         let mut redis = self
