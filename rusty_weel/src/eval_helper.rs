@@ -236,7 +236,7 @@ pub fn evaluate_expression(
                     "signal" => {
                         signal = {
                             let signal_enum = if let Some(enum_name) = content.split("::").last() {
-                                enum_name
+                                enum_name.trim()
                             } else {
                                 &content
                             };
