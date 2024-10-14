@@ -321,7 +321,6 @@ pub fn structurize_result(
     client.add_request_headers(options.clone())?;
     log::debug!("Headers 2: {:?}", &client.headers);
     let response = client.execute()?;
-    log::debug!("Headers 3: {:?}", &client.headers);
     let status = response.status_code;
     let mut content = response.content;
     if status == 200 {
