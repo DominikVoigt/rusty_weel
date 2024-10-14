@@ -801,7 +801,6 @@ impl ConnectionWrapper {
                 weel.get_instance_meta_data(),
             )?;
         }
-        log::debug!("Recv is: {}", recv);
 
         if contains_non_empty(&options, "CPEE_EVENT") {
             log::info!("Was event callback");
@@ -826,8 +825,7 @@ impl ConnectionWrapper {
                 weel.get_instance_meta_data(),
             )?;
         } else {
-            log::debug!("Recv is: {}", recv);
-            log::info!("Setting handler return value");
+            log::info!("Setting handler return value to: {recv}");
             self.handler_return_status = status;
             self.handler_return_value = Some(recv);
             self.handler_return_options = Some(options.clone());
