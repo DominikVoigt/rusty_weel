@@ -33,11 +33,11 @@ fn main() {
             "bookAir",
             HTTPParams {
                 label: "Book Airline 1",
-                method: Method::POST,
+                method: Method::GET,
                 arguments: Some(vec![
-                    new_key_value_pair("from", "data.from", true),
-                    new_key_value_pair("to", "data.to", true),
-                    new_key_value_pair("persons", "data.persons", true),
+                    //new_key_value_pair("from", "data.from", true),
+                    //new_key_value_pair("to", "data.to", true),
+                    //new_key_value_pair("persons", "data.persons", true),
                 ]),
             },
             Option::None,
