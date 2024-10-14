@@ -371,6 +371,7 @@ mod test {
 
     #[test]
     fn test_evaluation() {
+        init_logger();
         env_logger::Builder::from_default_env().init();
         let endpoints = HashMap::new();
         let mut data = HashMap::new();
@@ -421,6 +422,7 @@ mod test {
 
     #[test]
     fn test_structurize_result() {
+        init_logger();
         let test_endpoint = "http://gruppe.wst.univie.ac.at/~mangler/services/airline.php";
         let params = vec![
             Parameter::SimpleParameter {
@@ -453,5 +455,26 @@ mod test {
         .unwrap();
         println!("Result: {result}");
         assert!(false)
+    }
+
+
+    fn init_logger() -> () {
+        env_logger::Builder::from_default_env()
+            .filter_level(log::LevelFilter::Debug)
+            .format(|buf, record| {
+                let style = buf.default_level_style(record.level());
+                //buf.default_level_style(record.level());
+                writeln!(
+                    buf,
+                    "{}:{} {} {style}[{}]{style:#} - {}",
+                    record.file().unwrap_or("unknown"),
+                    record.line().unwrap_or(0),
+                    chrono::Local::now().format("%Y-%m-%dT%H:%M:%S"),
+                    record.level(),
+                    record.args()
+                )
+            })
+            .write_style(env_logger::WriteStyle::Auto)
+            .init();
     }
 }
