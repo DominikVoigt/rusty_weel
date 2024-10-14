@@ -731,7 +731,6 @@ impl Weel {
 
                             connection_wrapper.inform_activity_manipulate()?;
                             if let Some(code) = code {
-                                // TODO: I do not get this line in the original with the catch Signal::Again and the the Signal::Proceed
                                 let mut signaled_again = false;
                                 let result = match self.execute_code(
                                     false,
