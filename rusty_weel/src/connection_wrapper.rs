@@ -120,9 +120,9 @@ impl ConnectionWrapper {
         };
     }
 
-    pub fn inform_state_change(&self, new_state: &str) -> Result<()> {
+    pub fn inform_state_change(&self, new_state: crate::data_types::State) -> Result<()> {
         let mut content = HashMap::new();
-        content.insert("state".to_owned(), new_state.to_owned());
+        content.insert("state".to_owned(), serde_json::to_string(&new_state)?);
 
         self.inform("state/change", Some(content))
     }

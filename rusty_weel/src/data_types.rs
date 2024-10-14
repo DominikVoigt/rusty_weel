@@ -60,6 +60,7 @@ pub enum State {
     Stopping,
     Stopped,
     Finishing,
+    Finished,
 }
 
 /**

@@ -184,15 +184,39 @@ impl Weel {
                     }
 
                     match result {
-                        Ok(result) => {
-                            match *self.state.lock().unwrap() {
-                                State::Running | State::Finishing => todo!(),
-                                State::Stopping => {}
+                        // TODO: Implement __weel_control_flow completely
+                        Ok(()) => {
+                            let mut state = self.state.lock().unwrap();
+                            match *state {
+                                State::Running | State::Finishing => {
+                                    let mut ipc = HashMap::new();
+                                    ipc.insert("unmark".to_owned(), serde_json::to_string(&(*self.positions.lock().unwrap())).unwrap());
+                                    match ConnectionWrapper::new(self.clone(), None, None).inform_position_change(Some(ipc)) {
+                                        Ok(()) => {
+                                            *state = State::Finished; 
+                                        },
+                                        Err(err) => {
+                                            self.handle_error(err);
+                                        },
+                                    };
+
+                                }
+                                State::Stopping => {
+                                    self.recursive_join();
+                                    *state = State::Stopped;
+                                    match ConnectionWrapper::new(self.clone(), None, None).inform_state_change(State::Stopped) {
+                                        Ok(()) => {},
+                                        Err(err) => {
+                                            self.handle_error(err);
+                                        },
+                                    };
+                                }
                                 _ => {
+                                    log::error!("Recached end of process in state: {:?}", state)
                                     //Do nothing
                                 }
                             }
-                        },
+                        }
                         Err(err) => self.handle_error(err),
                     }
                 } else {
@@ -201,6 +225,11 @@ impl Weel {
             }
             Err(err) => self.handle_error(err),
         }
+    }
+
+    fn recursive_join(&self) {
+        todo!("Implement recursive join")
+        
     }
 
     fn abort_start(&self) {
@@ -392,8 +421,8 @@ impl Weel {
 
     /**
      * Removes a registered callback
-     * 
-     * Locks: 
+     *
+     * Locks:
      *  - redis_notification_client
      */
     pub fn cancel_callback(&self, key: &str) -> Result<()> {
@@ -969,7 +998,9 @@ impl Weel {
             Ok(activity_id)
         } else {
             *self.state.lock().unwrap() = State::Stopping;
-            Err(Error::GeneralError(format!("position: {activity_id} not valid")))
+            Err(Error::GeneralError(format!(
+                "position: {activity_id} not valid"
+            )))
         }
     }
 
@@ -1319,7 +1350,7 @@ mod test {
             redis_url: None,
             redis_path: Some(format!("unix:///home/mangler/run/flow/redis.sock")),
             redis_db: 0,
-            redis_workers: 2,
+            redis_workers: 1,
             executionhandlers: "/home/mangler/run/flow/executionhandlers".to_owned(),
             executionhandler: "rust".to_owned(),
             eval_language: "rust".to_owned(),
@@ -1340,10 +1371,7 @@ mod test {
             }
         };
         let mut test_endpoints = HashMap::new();
-        test_endpoints.insert(
-            "bookAir".to_owned(),
-            "http://localhost:7777".to_owned(),
-        );
+        test_endpoints.insert("bookAir".to_owned(), "http://localhost:7777".to_owned());
 
         let mut test_data = HashMap::new();
         test_data.insert("from".to_owned(), "Vienna".to_owned());

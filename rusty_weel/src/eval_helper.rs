@@ -299,7 +299,7 @@ impl Display for EvalError {
 }
 
 /**
- * Sends the raw response body and headers to an external ruby service for evaluation
+ * Sends the raw response body and headers to an external ruby service for structurization
  * Receives back an application/json
  */
 pub fn structurize_result(
@@ -308,10 +308,6 @@ pub fn structurize_result(
     body: &[u8],
 ) -> Result<String> {
     let mut client = http_helper::Client::new(eval_backend_structurize_url, Method::PUT)?;
-    client.add_request_header(
-        CONTENT_TYPE.as_str(),
-        APPLICATION_OCTET_STREAM.essence_str(),
-    )?;
     client.add_request_headers(options.clone())?;
     let mut body_file = tempfile()?;
     body_file.write_all(body)?;

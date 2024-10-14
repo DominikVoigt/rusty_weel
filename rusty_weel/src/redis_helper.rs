@@ -35,7 +35,7 @@ impl RedisHelper {
      * connection_name: Name of the connection displayed within the redis instance
      */
     pub fn new(static_data: &StaticData, connection_name: &str) -> Result<Self> {
-        let number_workers = static_data.redis_workers;
+        let number_workers = if static_data.redis_workers > 99 { 99 } else { static_data.redis_workers };
         let connection = connect_to_redis(static_data, connection_name)?;
 
         Ok(Self {
@@ -92,6 +92,11 @@ impl RedisHelper {
         let info = instace_meta_data.info;
         let content = content.unwrap_or(Value::Null);
         let target_worker = self.target_worker();
+        let target_worker = if target_worker < 10 {
+            format!("0{target_worker}")
+        } else {
+            target_worker.to_string()
+        };
         let (topic, name) = event
             // If no separator is contained e.g. in case for callback-end, no topic is provided
             .split_once("/").unwrap_or(("", event));
@@ -303,13 +308,13 @@ fn connect_to_redis(
         .expect("Configuration contains neither a redis_url nor a redis_path")
         .clone();
     let mut connection = redis::Client::open(url)?.get_connection()?;
-    let connection_name = connection_name.replace(" ", "_");
+    let connection_name = connection_name.replace(" ", "-");
     match redis::cmd("CLIENT")
         .arg("SETNAME")
         .arg(&connection_name)
         .query::<String>(&mut connection)
     {
-        Ok(resp) => log::info!("Setting Client Name to {connection_name} Response: {}", resp),
+        Ok(resp) => log::debug!("Setting Client Name to {connection_name} Response: {}", resp),
         Err(err) => log::error!("Error occured when setting client name: {}", err),
     };
     Ok(connection)
