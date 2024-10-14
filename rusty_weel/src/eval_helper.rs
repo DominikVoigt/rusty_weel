@@ -239,6 +239,7 @@ pub fn evaluate_expression(
                                 Ok(res) => res,
                                 Err(err) => {
                                     log::error!("Encountered error deserializing signal: {:?}, received: {}", err, content);
+                                    log::info!("Correct style would be: {}", serde_json::to_string(&Signal::SyntaxError)?);
                                     return Err(Error::JsonError(err));
                                 }
                             }
