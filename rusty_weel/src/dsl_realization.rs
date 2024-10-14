@@ -743,8 +743,8 @@ impl Weel {
                                     &local,
                                     &connection_wrapper,
                                     &format!("Activity {} {}", position, code_type),
-                                    connection_wrapper.handler_return_value,
-                                    connection_wrapper.handler_return_options
+                                    connection_wrapper.handler_return_value.clone(),
+                                    connection_wrapper.handler_return_options.clone()
                                 ) // TODO: Even in signal case we need the eval result
                                 {
                                     // When error/signal returned, pass it downwards for handling, except for Signal::Again that has some direct effects 
