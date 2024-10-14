@@ -737,6 +737,7 @@ impl Weel {
                                 finalize_code
                             };
 
+                            log::debug!("Later, handler value is: {:?}", connection_wrapper.handler_return_value);
                             connection_wrapper.inform_activity_manipulate()?;
                             if let Some(code) = code {
                                 let mut signaled_again = false;
