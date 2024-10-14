@@ -42,11 +42,7 @@ fn main() {
             },
             Option::None,
             Option::None,
-            Some(indoc! {r###"
-                data.airline = result.value(\'id')
-                data.costs += result.value('costs').to_f
-                status.update 1, 'Hotel'
-            "###}),
+            None,
             Option::None,
         )?;
         /*
