@@ -211,7 +211,6 @@ impl Client {
      * (128-255).
      */
     pub fn add_request_header(&mut self, name: &str, value: &str) -> Result<()> {
-        log::debug!("Setting request header: {}={}", name, value);
         self.headers.remove(name);
         self.headers
             .insert(HeaderName::from_str(name)?, HeaderValue::from_str(value)?);
@@ -358,10 +357,6 @@ impl Client {
                 if self.headers.contains_key(CONTENT_TYPE.as_str()) {
                     request_builder
                 } else {
-                    log::debug!(
-                        "Set content-type to {}",
-                        mime::APPLICATION_WWW_FORM_URLENCODED.to_string()
-                    );
                     // Only set default header if no header is provided
                     request_builder.header(
                         CONTENT_TYPE,
@@ -379,10 +374,6 @@ impl Client {
                 if self.headers.contains_key(CONTENT_TYPE.as_str()) {
                     request_builder
                 } else {
-                    log::debug!(
-                        "Set content-type to {}",
-                        mime_type.to_string()
-                    );
                     // Only set default header if no header is provided
                     request_builder.header(
                         CONTENT_TYPE,
@@ -472,7 +463,6 @@ pub fn header_map_to_hash_map(headers: &HeaderMap) -> Result<HashMap<String, Str
     for (name, value) in headers.into_iter() {
         header_map.insert(name.as_str().to_owned(), value.to_str()?.to_owned());
     }
-    log::debug!("Transformed headers into map: {:?}", header_map);
     Ok(header_map)
 }
 
