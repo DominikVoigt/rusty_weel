@@ -160,6 +160,7 @@ impl ConnectionWrapper {
     pub fn inform_activity_failed(&self, err: Error) -> Result<()> {
         let mut content: HashMap<String, String> = self.construct_basic_content()?;
         self.add_error_information(&mut content, err);
+        log::debug!("Content before sending it via redis: {:?}", content);
         self.inform("activity/failed", Some(content))
     }
 
