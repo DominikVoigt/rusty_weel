@@ -143,21 +143,16 @@ impl Client {
                 name,
                 value,
                 param_type,
-            } =>
-            match param_type {
-                ParameterType::Query => {
-                    Parameter::SimpleParameter {
-                        name: encode(&name).to_string(),
-                        value: encode(&value).to_string(),
-                        param_type,
-                    }
+            } => match param_type {
+                ParameterType::Query => Parameter::SimpleParameter {
+                    name: encode(&name).to_string(),
+                    value: encode(&value).to_string(),
+                    param_type,
                 },
-                ParameterType::Body => {
-                    Parameter::SimpleParameter {
-                        name,
-                        value,
-                        param_type,
-                    }
+                ParameterType::Body => Parameter::SimpleParameter {
+                    name,
+                    value,
+                    param_type,
                 },
             },
             Parameter::ComplexParameter {
@@ -177,11 +172,16 @@ impl Client {
      * Will add the parameter to the client parameters for the request
      * If the parameter is a simple parameter, it will be URL encoded
      */
-    pub fn add_complex_parameter(&mut self, name: &str, mime_type: Mime, data: &[u8]) -> Result<()> {
+    pub fn add_complex_parameter(
+        &mut self,
+        name: &str,
+        mime_type: Mime,
+        data: &[u8],
+    ) -> Result<()> {
         let mut file = tempfile()?;
         file.write_all(data)?;
         file.rewind()?;
-            
+
         self.add_parameter(Parameter::ComplexParameter {
             name: name.to_owned(),
             mime_type,
@@ -286,11 +286,13 @@ impl Client {
             })
             .collect();
         if body_parameters.len() == 1 {
-            Ok(construct_singular_body(
+            Ok(self.construct_singular_body(
                 body_parameters.pop().expect("Cannot fail"),
                 request_builder,
             ))
         } else {
+            // For multipart we set a multipart content type => Remove custom content type
+            self.headers.remove(CONTENT_TYPE.as_str());
             Ok(construct_multipart(body_parameters, request_builder)?)
         }
     }
@@ -303,8 +305,8 @@ impl Client {
         // For now: Explicitly passing simple parameters of desired type self.mark_query_parameters();
         let url = self.generate_url();
         let mut request_builder = self.reqwest_client.request(self.method.clone(), url);
-        request_builder = self.set_headers(request_builder);
         request_builder = self.generate_body(request_builder)?;
+        request_builder = self.set_headers(request_builder);
         let request = request_builder.build()?;
         log::debug!("Headers just before the request: {:?}", request.headers());
         let response = self.reqwest_client.execute(request)?;
@@ -333,6 +335,64 @@ impl Client {
         let headers: HeaderMap = std::mem::replace(&mut self.headers, HeaderMap::new());
         log::debug!("Headers 4: {:?}", headers);
         request_builder.headers(headers)
+    }
+
+    /**
+     * called when only a single simple body parameter or a single complex parameter is passed to the client (after transforming simple parameters into query parameters for GET calls)
+     * If a simple parameter is provided, its name and value (if set) have to be url encoded
+     *
+     * This will also set the corresponding content headers, if none was set
+     */
+    fn construct_singular_body(
+        &mut self,
+        parameter: Parameter,
+        request_builder: RequestBuilder,
+    ) -> RequestBuilder {
+        match parameter {
+            Parameter::SimpleParameter { name, value, .. } => {
+                let text = if value.len() == 0 {
+                    name
+                } else {
+                    format!("{}={}", name, value)
+                };
+                let request_builder = request_builder.body(text);
+                // Need to provide content_type but not content-length
+                if self.headers.contains_key(CONTENT_TYPE.as_str()) {
+                    request_builder
+                } else {
+                    log::debug!(
+                        "Set content-type to {}",
+                        mime::APPLICATION_WWW_FORM_URLENCODED.to_string()
+                    );
+                    // Only set default header if no header is provided
+                    request_builder.header(
+                        CONTENT_TYPE,
+                        mime::APPLICATION_WWW_FORM_URLENCODED.to_string(),
+                    )
+                }
+            }
+            Parameter::ComplexParameter {
+                mime_type,
+                content_handle,
+                ..
+            } => {
+                let request_builder = request_builder.body(content_handle);
+                // Need to provide content_type but not content-length
+                if self.headers.contains_key(CONTENT_TYPE.as_str()) {
+                    request_builder
+                } else {
+                    log::debug!(
+                        "Set content-type to {}",
+                        mime_type.to_string()
+                    );
+                    // Only set default header if no header is provided
+                    request_builder.header(
+                        CONTENT_TYPE,
+                        mime_type.to_string(),
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -375,45 +435,6 @@ fn parse_query_string(query: &str) -> Vec<Parameter> {
             }
         })
         .collect()
-}
-
-/**
- * called when only a single simple body parameter or a single complex parameter is passed to the client (after transforming simple parameters into query parameters for GET calls)
- * If a simple parameter is provided, its name and value (if set) have to be url encoded
- *
- * This will also set the corresponding content headers
- */
-fn construct_singular_body(
-    parameter: Parameter,
-    request_builder: RequestBuilder,
-) -> RequestBuilder {
-    match parameter {
-        Parameter::SimpleParameter { name, value, .. } => {
-            let text = if value.len() == 0 {
-                name
-            } else {
-                format!("{}={}", name, value)
-            };
-            log::debug!("Set content type to {}", mime::APPLICATION_WWW_FORM_URLENCODED.to_string());
-            request_builder
-                .body(text)
-                // Need to provide content_type but not content-length
-                .header(
-                    CONTENT_TYPE,
-                    mime::APPLICATION_WWW_FORM_URLENCODED.to_string(),
-                )
-        }
-        Parameter::ComplexParameter {
-            mime_type,
-            content_handle,
-            ..
-        } => {
-            log::debug!("Set content type to {}", mime::APPLICATION_WWW_FORM_URLENCODED.to_string());
-            request_builder
-            .header(CONTENT_TYPE, mime_type.to_string())
-            .body(content_handle)
-        },
-    }
 }
 
 fn construct_multipart(
@@ -564,8 +585,8 @@ fn parse_multipart(body: &[u8], boundary: &str) -> Result<Vec<Parameter>> {
             multipart::server::ReadEntryResult::End(_) => return Ok(parameters),
             multipart::server::ReadEntryResult::Error(_, error) => {
                 log::error!("Ran into error during reading of multipart: {}", error);
-                return Err(Error::from(error))
-            },
+                return Err(Error::from(error));
+            }
         };
     }
 }
