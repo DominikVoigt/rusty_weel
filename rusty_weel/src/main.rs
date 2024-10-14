@@ -42,9 +42,14 @@ fn main() {
             },
             Option::None,
             Option::None,
-            None,
+            Some(indoc! {r###"
+            data.airline = result.value(\'id')
+            data.costs += result.value('costs').to_f
+            status.update 1, 'Hotel'
+            "###}),
             Option::None,
         )?;
+        println!("Weel data after call: {:?}", weel().context.lock().unwrap());
         /*
         weel().parallel_do(Option::None, "last", move || -> Result<()> {
             weel().loop_exec(weel().pre_test("data.persons > 0"), || -> Result<()> {
