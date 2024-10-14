@@ -90,6 +90,7 @@ fn main() {
 
     // Executes the code and blocks until it is finished
     local_weel.start(model, stop_signal_sender);
+    log::info!("At the end of main");
 }
 
 fn startup(stop_signal_receiver: mpsc::Receiver<()>) -> Arc<Weel> {
