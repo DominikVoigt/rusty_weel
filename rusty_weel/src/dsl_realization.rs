@@ -737,7 +737,6 @@ impl Weel {
                                 if signaled_again {
                                     continue 'again;
                                 }
-                                // TODO: What would this ma.nil? result in rust?
                             }
                             if !signaled_update_again {
                                 // If wait result was not UpdateAgain -> Break out, otherwise continue inner loop
@@ -755,6 +754,7 @@ impl Weel {
                             ConnectionWrapper::new(self.clone(), None, None)
                                 .inform_position_change(Some(content))?;
                         }
+                        break 'again;
                     }
                 }
             }

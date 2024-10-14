@@ -794,7 +794,7 @@ impl ConnectionWrapper {
             );
 
             redis.notify(
-                "activity/receiving",
+                "task/instantiation",
                 Some(content),
                 weel.get_instance_meta_data(),
             )?;
