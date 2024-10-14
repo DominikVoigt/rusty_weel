@@ -133,7 +133,13 @@ pub fn evaluate_expression(
                 if name == "result" {
                     expression_result = if value.starts_with("\"") {
                         // In case we have a string, strip them
-                        Some(serde_json::from_str(&value)?)
+                        match serde_json::from_str(&value) {
+                            Ok(res) => {res},
+                            Err(err) => {
+                                log::error!("Encountered error deserializing expression: {:?}, received: {}", err, value);
+                                return Err(Error::JsonError(err));
+                            },
+                        }
                     } else {
                         // In case we have a hash
                         Some(value)
@@ -154,42 +160,100 @@ pub fn evaluate_expression(
                     "result" => {
                         expression_result = if content.starts_with("\"") {
                             // In case we have a string, strip them
-                            Some(serde_json::from_str(&content)?)
+                            match serde_json::from_str(&content) {
+                                Ok(res) => res,
+                                Err(err) => {
+                                    log::error!("Encountered error deserializing expression: {:?}, received: {}", err, content);
+                                    return Err(Error::JsonError(err));
+                                }
+                            }
                         } else {
                             // In case we have a hash
                             Some(content)
                         };
                     }
                     "changed_dataelements" => {
-                        changed_data = Some(serde_json::from_str(&content)?);
+                        changed_data = {
+                            match serde_json::from_str(&content) {
+                                Ok(res) => res,
+                                Err(err) => {
+                                    log::error!("Encountered error deserializing changed data elements: {:?}, received: {}", err, content);
+                                    return Err(Error::JsonError(err));
+                                }
+                            }
+                        };
                     }
                     "changed_endpoints" => {
-                        changed_endpoints = Some(serde_json::from_str(&content)?);
+                        changed_endpoints = {
+                            match serde_json::from_str(&content) {
+                                Ok(res) => res,
+                                Err(err) => {
+                                    log::error!("Encountered error deserializing changed data elements: {:?}, received: {}", err, content);
+                                    return Err(Error::JsonError(err));
+                                }
+                            }
+                        };
                     }
                     "changed_status" => {
-                        changed_status = Some(serde_json::from_str(&content)?);
+                        changed_status = {
+                            match serde_json::from_str(&content) {
+                                Ok(res) => res,
+                                Err(err) => {
+                                    log::error!("Encountered error deserializing changed data elements: {:?}, received: {}", err, content);
+                                    return Err(Error::JsonError(err));
+                                }
+                            }
+                        };
                     }
                     "dataelements" => {
                         data = if content.starts_with("\"") {
                             // In case we have a string, strip them
-                            Some(serde_json::from_str(&content)?)
+                            match serde_json::from_str(&content) {
+                                Ok(res) => res,
+                                Err(err) => {
+                                    log::error!("Encountered error deserializing data elements: {:?}, received: {}", err, content);
+                                    return Err(Error::JsonError(err));
+                                }
+                            }
                         } else {
                             // In case we have a hash
                             Some(content)
                         };
                     }
                     "endpoints" => {
-                        endpoints = serde_json::from_str(&content)?;
+                        endpoints = {
+                            match serde_json::from_str(&content) {
+                                Ok(res) => res,
+                                Err(err) => {
+                                    log::error!("Encountered error deserializing endpoints: {:?}, received: {}", err, content);
+                                    return Err(Error::JsonError(err));
+                                }
+                            }
+                        };
                     }
                     // If this is set -> loop and try again on Signal::Again
                     // Handle others based on ruby code
                     "signal" => {
-                        signal = Some(serde_json::from_str(&content)?);
+                        signal = {
+                            match serde_json::from_str(&content) {
+                                Ok(res) => res,
+                                Err(err) => {
+                                    log::error!("Encountered error deserializing signal: {:?}, received: {}", err, content);
+                                    return Err(Error::JsonError(err));
+                                }
+                            }
+                        };
                     }
                     "signal_text" => {
                         signal_text = if content.starts_with("\"") {
                             // In case we have a string, strip them
-                            Some(serde_json::from_str(&content)?)
+                            match serde_json::from_str(&content) {
+                                Ok(res) => res,
+                                Err(err) => {
+                                    log::error!("Encountered error deserializing signal_text: {:?}, received: {}", err, content);
+                                    return Err(Error::JsonError(err));
+                                }
+                            }
                         } else {
                             // In case we have a hash
                             Some(content)
@@ -390,8 +454,8 @@ mod test {
     use http_helper::Parameter;
     use reqwest::Method;
 
-    use std::io::Write;
     use crate::data_types::{DynamicData, StaticData, Status};
+    use std::io::Write;
 
     use super::{evaluate_expression, structurize_result};
 
@@ -480,7 +544,6 @@ mod test {
         .unwrap();
         println!("Result: {result}");
     }
-
 
     fn init_logger() -> () {
         env_logger::Builder::from_default_env()
