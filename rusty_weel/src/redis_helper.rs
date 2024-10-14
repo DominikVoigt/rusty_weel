@@ -306,7 +306,7 @@ fn connect_to_redis(
     let connection_name = connection_name.replace(" ", "");
     match redis::cmd("CLIENT")
         .arg("SETNAME")
-        .arg(connection_name)
+        .arg(&connection_name)
         .query::<String>(&mut connection)
     {
         Ok(resp) => log::info!("Setting Client Name to {connection_name} Response: {}", resp),
