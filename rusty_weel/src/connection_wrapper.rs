@@ -773,7 +773,6 @@ impl ConnectionWrapper {
             eval_helper::structurize_result(&weel.opts.eval_backend_structurize, &options, body)?;
         let mut redis = weel.redis_notifications_client.lock()?;
         let content = self.construct_basic_content()?;
-        log::debug!("Recv is: {}", recv);
         {
             let mut content = content.clone();
             content.insert("received".to_owned(), recv.clone());
@@ -802,6 +801,7 @@ impl ConnectionWrapper {
                 weel.get_instance_meta_data(),
             )?;
         }
+        log::debug!("Recv is: {}", recv);
 
         if contains_non_empty(&options, "CPEE_EVENT") {
             log::info!("Was event callback");
@@ -826,6 +826,7 @@ impl ConnectionWrapper {
                 weel.get_instance_meta_data(),
             )?;
         } else {
+            log::debug!("Recv is: {}", recv);
             log::info!("Setting handler return value");
             self.handler_return_status = status;
             self.handler_return_value = Some(recv);
