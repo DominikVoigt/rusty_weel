@@ -662,7 +662,9 @@ impl Weel {
                             drop(connection_wrapper);
 
                             if should_block {
+                                log::info!("Waiting...");
                                 wait_result = Some(thread_queue.dequeue());
+                                log::info!("Waited")
                             };
 
                             // Reacquire locks after waiting
@@ -672,6 +674,7 @@ impl Weel {
                             let thread_info =
                                 thread_info_map.get(&current_thread).unwrap().borrow();
                             let connection_wrapper = connection_wrapper_mutex.lock().unwrap();
+                            log::debug!("After wait, handler value is: {:?}", connection_wrapper.handler_return_value);
 
                             if thread_info.no_longer_necessary {
                                 // TODO: Definition of this method is basically empty?

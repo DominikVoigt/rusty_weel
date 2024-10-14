@@ -230,6 +230,7 @@ impl<T> BlockingQueue<T> {
         let mut queue = self.queue.lock().unwrap();
         // Even though can wake up spuriously, not a problem if we check the condition repeatedly on whether the queue is non-empty
         while queue.is_empty() {
+            log::info!("Queue empty, have to wait...");
             queue = self.signal.wait(queue).unwrap();
         }
         // Only leave queue if it contains an item -> can pop it off
