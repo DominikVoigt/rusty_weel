@@ -365,6 +365,7 @@ mod test {
     use http_helper::Parameter;
     use reqwest::Method;
 
+    use std::io::Write;
     use crate::data_types::{DynamicData, StaticData, Status};
 
     use super::{evaluate_expression, structurize_result};
