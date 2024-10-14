@@ -257,7 +257,7 @@ impl ConnectionWrapper {
         // Execute the prepare code and use the modified context for the rest of this metod (prepare_result) (Note: This context can differ as the prepare will not modify the global context)
         let contex_snapshot = match prepare_code {
             Some(code) => {
-                let result = weel.execute_code(true, code, &thread_local, self, "prepare")?;
+                let result = weel.execute_code(true, code, &thread_local, self, "prepare", None, None)?;
                 // Create snapshot of the context after the code is executed, if nothing changes, use the current dynamic data
                 DynamicData {
                     data: result.data.unwrap_or(weel.context.lock().unwrap().data.clone()),
