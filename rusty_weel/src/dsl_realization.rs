@@ -661,7 +661,6 @@ impl Weel {
                             drop(connection_wrapper);
 
                             if should_block {
-                                // TODO: issue this will block the whole thread -> We need to have no instance level mutexed locked at this point or the whole instance will block!
                                 wait_result = Some(thread_queue.dequeue());
                             };
 

@@ -767,6 +767,7 @@ impl ConnectionWrapper {
         body: &[u8],
         options: HashMap<String, String>, // Headers
     ) -> Result<()> {
+        log::info!("Handling callback");
         let weel = self.weel();
         let recv =
             eval_helper::structurize_result(&weel.opts.eval_backend_structurize, &options, body)?;
@@ -802,6 +803,7 @@ impl ConnectionWrapper {
         }
 
         if contains_non_empty(&options, "CPEE_EVENT") {
+            log::info!("Was event callback");
             let event_regex = match regex::Regex::new(r"[^\w_-]") {
                 Ok(regex) => regex,
                 Err(err) => {
@@ -823,6 +825,7 @@ impl ConnectionWrapper {
                 weel.get_instance_meta_data(),
             )?;
         } else {
+            log::info!("Setting handler return value");
             self.handler_return_status = status;
             self.handler_return_value = Some(recv);
             self.handler_return_options = Some(options.clone());
