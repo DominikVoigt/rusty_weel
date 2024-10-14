@@ -115,7 +115,7 @@ impl RedisHelper {
             instance_id,
             serde_json::to_string_pretty(&payload).expect("Could not deserialize payload")
         );
-        log::debug!("Publishing on channel {} the message: {}", channel, payload);
+        log::debug!("Publishing on channel {}", channel);
         let publish_result: RedisResult<()> = self.connection.publish(channel, payload);
         match publish_result {
             Ok(()) => Ok(()),
