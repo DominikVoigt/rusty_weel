@@ -306,7 +306,6 @@ impl Client {
         request_builder = self.set_headers(request_builder);
         request_builder = self.generate_body(request_builder)?;
         let request = request_builder.build()?;
-        log::debug!("Headers just before the request: {:?}", request.headers());
         let response = self.reqwest_client.execute(request)?;
 
         Ok(RawResponse {
@@ -395,13 +394,10 @@ fn construct_singular_body(
                 format!("{}={}", name, value)
             };
             log::debug!("Set content type to {}", mime::APPLICATION_WWW_FORM_URLENCODED.to_string());
+            
             request_builder
                 .body(text)
                 // Need to provide content_type but not content-length
-                .header(
-                    CONTENT_TYPE,
-                    mime::APPLICATION_WWW_FORM_URLENCODED.to_string(),
-                )
         }
         Parameter::ComplexParameter {
             mime_type,
@@ -410,7 +406,6 @@ fn construct_singular_body(
         } => {
             log::debug!("Set content type to {}", mime::APPLICATION_WWW_FORM_URLENCODED.to_string());
             request_builder
-            .header(CONTENT_TYPE, mime_type.to_string())
             .body(content_handle)
         },
     }
