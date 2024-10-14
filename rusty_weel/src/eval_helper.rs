@@ -158,7 +158,13 @@ pub fn evaluate_expression(
                         changed_status = Some(serde_json::from_str(&content)?);
                     }
                     "dataelements" => {
-                        data = Some(serde_json::from_str(&content)?);
+                        data = if content.starts_with("\"") {
+                            // In case we have a string, strip them
+                            Some(serde_json::from_str(&content)?)
+                        } else {
+                            // In case we have a hash
+                            Some(content)
+                        };
                     }
                     "endpoints" => {
                         endpoints = serde_json::from_str(&content)?;
@@ -318,9 +324,7 @@ pub fn structurize_result(
         mime_type: TEXT_PLAIN_UTF_8,
         content_handle: body_file,
     });
-    log::debug!("Headers 1: {:?}", &client.headers);
     client.add_request_headers(options.clone())?;
-    log::debug!("Headers 2: {:?}", &client.headers);
     let response = client.execute()?;
     let status = response.status_code;
     let mut content = response.content;
