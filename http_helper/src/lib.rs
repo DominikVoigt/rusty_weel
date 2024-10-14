@@ -330,6 +330,7 @@ impl Client {
      */
     fn set_headers(&mut self, request_builder: RequestBuilder) -> RequestBuilder {
         let headers: HeaderMap = std::mem::replace(&mut self.headers, HeaderMap::new());
+        log::debug!("Headers 4: {:?}", headers);
         request_builder.headers(headers)
     }
 }
@@ -392,6 +393,7 @@ fn construct_singular_body(
             } else {
                 format!("{}={}", name, value)
             };
+            log::debug!("Set content type to {}", mime::APPLICATION_WWW_FORM_URLENCODED.to_string());
             request_builder
                 .body(text)
                 // Need to provide content_type but not content-length
