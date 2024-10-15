@@ -6,9 +6,9 @@ use std::{
 
 use http_helper::{Client, Parameter};
 use log;
-use mime::{APPLICATION_JSON, APPLICATION_OCTET_STREAM, TEXT_PLAIN, TEXT_PLAIN_UTF_8};
+use mime::{APPLICATION_JSON, APPLICATION_OCTET_STREAM, JSON, TEXT_PLAIN, TEXT_PLAIN_UTF_8};
 use reqwest::{header::CONTENT_TYPE, Method};
-use serde_json::Value;
+use serde_json::{json, Value};
 use tempfile::tempfile;
 
 use crate::{
@@ -47,7 +47,8 @@ pub fn evaluate_expression(
             value: expression.to_owned(),
             param_type: http_helper::ParameterType::Body,
         });
-        let data_map: HashMap<String, String> = match serde_yaml::from_str(&dynamic_context.data) {
+        let data_map = json!(dynamic_context.data);
+        /* {
             Ok(res) => res,
             Err(err) => {
                 log::error!(
@@ -59,7 +60,7 @@ pub fn evaluate_expression(
                     err
                 )
             }
-        };
+        }; */
         log::info!("For evaluation, sending data: {:?}", data_map);
         client.add_complex_parameter(
             "dataelements",
