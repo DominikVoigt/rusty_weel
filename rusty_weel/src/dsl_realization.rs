@@ -1385,16 +1385,18 @@ mod test {
         let mut test_endpoints = HashMap::new();
         test_endpoints.insert("bookAir".to_owned(), "http://gruppe.wst.univie.ac.at/~mangler/services/airline.php".to_owned());
 
-        let mut test_data = HashMap::new();
-        test_data.insert("from".to_owned(), "Vienna".to_owned());
-        test_data.insert("to".to_owned(), "Prague".to_owned());
-        test_data.insert("persons".to_owned(), "3".to_owned());
-        test_data.insert("costs".to_owned(), "0".to_owned());
+
+        let test_data = json!({
+            "from": "Vienna",
+            "to": "Prague",
+            "persons": 3,
+            "costs": 0
+        });
         let dynamic = DynamicData {
             endpoints: test_endpoints,
-            data: serde_yaml::to_string(&test_data).unwrap(),
+            data: test_data,
         };
         file.write("---\n".as_bytes()).unwrap();
-        serde_yaml::to_writer(file, &dynamic).unwrap();
+        serde_json::to_writer(file, &dynamic).unwrap();
     }
 }

@@ -1,7 +1,8 @@
 use std::{
     collections::HashMap,
     fmt::Display,
-    io::{Read, Seek, Write}, ops::Index,
+    io::{Read, Seek, Write},
+    ops::Index,
 };
 
 use http_helper::{Client, Parameter};
@@ -114,11 +115,11 @@ pub fn evaluate_expression(
         result.headers
     );
     // Get the expressions parameter from the parsed response
-    let mut expression_result: Option<String> = None;
-    let mut changed_data: Option<HashMap<String, Option<String>>> = None;
+    let expression_result: Option<Value> = None;
+    let mut changed_data: Option<Value> = None;
     let mut changed_endpoints: Option<HashMap<String, Option<String>>> = None;
     let mut changed_status: Option<StatusDTO> = None;
-    let mut data: Option<String> = None;
+    let mut data: Option<Value> = None;
     let mut endpoints: Option<HashMap<String, String>> = None;
     let mut signal: Option<Signal> = None;
     let mut signal_text: Option<String> = None;
@@ -132,19 +133,18 @@ pub fn evaluate_expression(
         match parameter {
             Parameter::SimpleParameter { name, value, .. } => {
                 if name == "result" {
-                    expression_result = if value.starts_with("\"") {
-                        // In case we have a string, strip them
-                        match serde_json::from_str(&value) {
-                            Ok(res) => {res},
-                            Err(err) => {
-                                log::error!("Encountered error deserializing expression: {:?}, received: {}", err, value);
-                                return Err(Error::JsonError(err));
-                            },
+                    // In case we have a string, strip them
+                    match serde_json::from_str(&value) {
+                        Ok(res) => res,
+                        Err(err) => {
+                            log::error!(
+                                "Encountered error deserializing expression: {:?}, received: {}",
+                                err,
+                                value
+                            );
+                            return Err(Error::JsonError(err));
                         }
-                    } else {
-                        // In case we have a hash
-                        Some(value)
-                    };
+                    }
                 } else {
                     continue;
                 }
@@ -159,19 +159,14 @@ pub fn evaluate_expression(
                 log::info!("Received complex param: name:{name} content:{content}");
                 match name.as_str() {
                     "result" => {
-                        expression_result = if content.starts_with("\"") {
-                            // In case we have a string, strip them
-                            match serde_json::from_str(&content) {
-                                Ok(res) => res,
-                                Err(err) => {
-                                    log::error!("Encountered error deserializing expression: {:?}, received: {}", err, content);
-                                    return Err(Error::JsonError(err));
-                                }
+                        // In case we have a string, strip them
+                        match serde_json::from_str(&content) {
+                            Ok(res) => res,
+                            Err(err) => {
+                                log::error!("Encountered error deserializing expression: {:?}, received: {}", err, content);
+                                return Err(Error::JsonError(err));
                             }
-                        } else {
-                            // In case we have a hash
-                            Some(content)
-                        };
+                        }
                     }
                     "changed_dataelements" => {
                         changed_data = {
@@ -207,19 +202,13 @@ pub fn evaluate_expression(
                         };
                     }
                     "dataelements" => {
-                        data = if content.starts_with("\"") {
-                            // In case we have a string, strip them
-                            match serde_json::from_str(&content) {
-                                Ok(res) => res,
-                                Err(err) => {
-                                    log::error!("Encountered error deserializing data elements: {:?}, received: {}", err, content);
-                                    return Err(Error::JsonError(err));
-                                }
+                        data = match serde_json::from_str(&content) {
+                            Ok(res) => res,
+                            Err(err) => {
+                                log::error!("Encountered error deserializing data elements: {:?}, received: {}", err, content);
+                                return Err(Error::JsonError(err));
                             }
-                        } else {
-                            // In case we have a hash
-                            Some(content)
-                        };
+                        }
                     }
                     "endpoints" => {
                         endpoints = {
@@ -364,10 +353,10 @@ pub fn evaluate_expression(
  */
 #[derive(Debug)]
 pub struct EvaluationResult {
-    pub expression_result: String,
-    pub data: Option<String>,
+    pub expression_result: Value,
+    pub data: Option<Value>,
     pub endpoints: Option<HashMap<String, String>>,
-    pub changed_data: Option<HashMap<String, Option<String>>>,
+    pub changed_data: Option<Value>,
     pub changed_endpoints: Option<HashMap<String, Option<String>>>,
     pub changed_status: Option<StatusDTO>,
 }
@@ -461,6 +450,7 @@ mod test {
     use base64::Engine;
     use http_helper::Parameter;
     use reqwest::Method;
+    use serde_json::json;
 
     use crate::data_types::{DynamicData, StaticData, Status};
     use std::io::Write;
@@ -471,14 +461,12 @@ mod test {
     fn test_evaluation() {
         init_logger();
         let endpoints = HashMap::new();
-        let mut data = HashMap::new();
-        data.insert("name".to_owned(), "Testhodor".to_owned());
-        data.insert("age".to_owned(), "29".to_owned());
-        let data = serde_json::to_string(&data).unwrap();
-
         let dynamic_data = DynamicData {
             endpoints,
-            data: data,
+            data: json!({
+                "name": "Testhodor",
+                "age": 29
+            }),
         };
 
         let static_data = StaticData {

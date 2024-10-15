@@ -330,7 +330,7 @@ impl ConnectionWrapper {
                             });
                             Some(KeyValuePair {
                                 key: argument.key,
-                                value: evaluated_expression,
+                                value: Some(serde_json::to_string(&evaluated_expression).expect("We can always serialize a JSON value struct to a valid object")),
                                 expression_value: false,
                             })
                         } else { // Expression but empty -> Empty value

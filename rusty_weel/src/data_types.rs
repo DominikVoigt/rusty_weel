@@ -5,6 +5,7 @@ use std::thread::ThreadId;
 use std::{collections::HashMap, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use crate::dsl_realization::{Position, Signal};
 
@@ -88,7 +89,7 @@ pub struct StaticData {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DynamicData {
     pub endpoints: HashMap<String, String>,
-    pub data: String,
+    pub data: Value,
 }
 
 #[derive(Debug, Default)]
