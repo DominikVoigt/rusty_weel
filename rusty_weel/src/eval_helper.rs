@@ -60,6 +60,7 @@ pub fn evaluate_expression(
                 )
             }
         };
+        log::info!("For evaluation, sending data: {:?}", data_map);
         client.add_complex_parameter(
             "dataelements",
             APPLICATION_JSON,
