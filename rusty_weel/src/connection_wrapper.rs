@@ -197,6 +197,8 @@ impl ConnectionWrapper {
         &self,
         evaluation_result: eval_helper::EvaluationResult,
     ) -> Result<()> {
+        log::debug!("Changed dataelements: {:?}", evaluation_result.changed_data);
+        log::debug!("Changed endpoints: {:?}", evaluation_result.changed_endpoints);
         let content = self.construct_basic_content()?;
         if let Some(changed_status) = evaluation_result.changed_status {
             let mut content = content.clone();
@@ -206,8 +208,6 @@ impl ConnectionWrapper {
         }
         if let Some(changed_data) = evaluation_result.changed_data {
             let mut content = content.clone();
-            // TODO For us, we need the direct pairs of changed data: (name, new value)
-            // In the ManipulateStructure implementation, the values where changed directly via the instance_eval => Changed data/endpoints just contained the names
             content.insert("changed".to_owned(), serde_json::to_string(&changed_data)?);
             self.inform("dataelements/change", Some(content))?;
         }
@@ -672,7 +672,6 @@ impl ConnectionWrapper {
                 }
             };
 
-            // TODO: Very unsure about the semantics of the original code and the usage
             let mut array = json!(body);
             assert!(array.is_array());
             if let Some(array) = array.as_array_mut() {
