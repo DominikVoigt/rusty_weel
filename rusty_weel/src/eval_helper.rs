@@ -2,13 +2,11 @@ use std::{
     collections::HashMap,
     fmt::Display,
     io::{Read, Seek, Write},
-    ops::Index,
 };
 
 use http_helper::{Client, Parameter};
 use log;
-use mime::{APPLICATION_JSON, APPLICATION_OCTET_STREAM, JSON, TEXT_PLAIN, TEXT_PLAIN_UTF_8};
-use reqwest::{header::CONTENT_TYPE, Method};
+use mime::{APPLICATION_JSON, TEXT_PLAIN_UTF_8};
 use serde_json::{json, Value};
 use tempfile::tempfile;
 
@@ -393,7 +391,7 @@ pub fn structurize_result(
     options: &HashMap<String, String>,
     body: &[u8],
 ) -> Result<String> {
-    let mut client = http_helper::Client::new(eval_backend_structurize_url, Method::PUT)?;
+    let mut client = http_helper::Client::new(eval_backend_structurize_url, http_helper::Method::PUT)?;
     let mut body_file = tempfile()?;
     body_file.write_all(body)?;
     body_file.rewind()?;
@@ -447,9 +445,7 @@ mod test {
     use core::str;
     use std::collections::HashMap;
 
-    use base64::Engine;
     use http_helper::Parameter;
-    use reqwest::Method;
     use serde_json::json;
 
     use crate::data_types::{DynamicData, StaticData, Status};
@@ -527,7 +523,7 @@ mod test {
             },
         ];
 
-        let mut client = http_helper::Client::new(test_endpoint, Method::POST).unwrap();
+        let mut client = http_helper::Client::new(test_endpoint, http_helper::Method::POST).unwrap();
         client.add_parameters(params);
         let response = client.execute_raw().unwrap();
         let body = str::from_utf8(&response.body).unwrap();

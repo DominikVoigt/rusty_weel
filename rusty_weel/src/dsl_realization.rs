@@ -1,4 +1,5 @@
 use derive_more::From;
+use redis::Value;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::any::{Any, TypeId};
@@ -165,8 +166,9 @@ impl Weel {
         model: impl FnOnce() -> Result<()> + Send + 'static,
         stop_signal_sender: Sender<()>,
     ) {
-        let mut content = HashMap::new();
-        content.insert("state".to_owned(), "running".to_owned());
+        let content = json!({
+            "state": "running"
+        });
         match self.vote("state/change", content) {
             Ok(voted_start) => {
                 if voted_start {
@@ -189,26 +191,31 @@ impl Weel {
                             let mut state = self.state.lock().unwrap();
                             match *state {
                                 State::Running | State::Finishing => {
-                                    let mut ipc = HashMap::new();
-                                    ipc.insert("unmark".to_owned(), serde_json::to_string(&(*self.positions.lock().unwrap())).unwrap());
-                                    match ConnectionWrapper::new(self.clone(), None, None).inform_position_change(Some(ipc)) {
+                                    let positions= self.positions.lock().unwrap().clone();
+                                    let ipc = json!({
+                                        "unmark": positions
+                                    });
+                                    match ConnectionWrapper::new(self.clone(), None, None)
+                                        .inform_position_change(Some(ipc))
+                                    {
                                         Ok(()) => {
-                                            *state = State::Finished; 
-                                        },
+                                            *state = State::Finished;
+                                        }
                                         Err(err) => {
                                             self.handle_error(err);
-                                        },
+                                        }
                                     };
-
                                 }
                                 State::Stopping => {
                                     self.recursive_join();
                                     *state = State::Stopped;
-                                    match ConnectionWrapper::new(self.clone(), None, None).inform_state_change(State::Stopped) {
-                                        Ok(()) => {},
+                                    match ConnectionWrapper::new(self.clone(), None, None)
+                                        .inform_state_change(State::Stopped)
+                                    {
+                                        Ok(()) => {}
                                         Err(err) => {
                                             self.handle_error(err);
-                                        },
+                                        }
                                     };
                                 }
                                 _ => {
@@ -229,7 +236,6 @@ impl Weel {
 
     fn recursive_join(&self) {
         todo!("Implement recursive join")
-        
     }
 
     fn abort_start(&self) {
@@ -290,7 +296,7 @@ impl Weel {
      * Locks:
      *  - open_votes
      */
-    pub fn vote(&self, vote_topic: &str, mut content: HashMap<String, String>) -> Result<bool> {
+    pub fn vote(&self, vote_topic: &str, mut content_node: serde_json::Value) -> Result<bool> {
         let static_data = &self.opts;
         let (topic, name) = vote_topic
             .split_once("/")
@@ -304,19 +310,20 @@ impl Weel {
                 static_data.instance_id, vote_topic
             ),
         )?;
+        let content = content_node.as_object_mut().expect("content has to be an object");
         for client in redis_helper
             .extract_handler(&static_data.instance_id, &handler)
             .iter()
         {
             // Generate random ASCII string of length VOTE_KEY_LENGTH
             let vote_id: String = generate_random_key();
-            content.insert("key".to_owned(), vote_id.to_string());
+            content.insert("key".to_owned(), json!(vote_id));
             content.insert(
                 "attributes".to_owned(),
                 // TODO: Check whether these are already "translated"
-                serde_json::to_string(&self.attributes).expect("Could not serialize attributes"),
+                json!(self.attributes),
             );
-            content.insert("subscription".to_owned(), client.clone());
+            content.insert("subscription".to_owned(), json!(client));
             votes.push(vote_id);
             redis_helper.send(
                 "vote",
@@ -378,7 +385,7 @@ impl Weel {
      * vote_sync_after of controller
      */
     fn vote_sync_after(&self, connection_wrapper: &ConnectionWrapper) -> Result<bool> {
-        let content = connection_wrapper.construct_basic_content()?;
+        let content = connection_wrapper.construct_basic_content();
         self.vote("activity/syncing_after", content)
     }
 
@@ -390,9 +397,12 @@ impl Weel {
         connection_wrapper: &ConnectionWrapper,
         parameters: Option<HashMap<String, String>>,
     ) -> Result<bool> {
-        let mut content = connection_wrapper.construct_basic_content()?;
-        content.insert("parameters".to_owned(), serde_json::to_string(&parameters)?);
-        self.vote("activity/syncing_before", content)
+        let mut content_node = connection_wrapper.construct_basic_content();
+        let content = content_node
+            .as_object_mut()
+            .expect("Construct basic content has to return a json object");
+        content.insert("parameters".to_owned(), json!(parameters));
+        self.vote("activity/syncing_before", content_node)
     }
 
     /**
@@ -402,9 +412,10 @@ impl Weel {
         &self,
         connection_wrapper: Arc<Mutex<ConnectionWrapper>>,
         key: &str,
-        mut content: HashMap<String, String>,
+        mut content_node: serde_json::Value,
     ) -> Result<()> {
-        content.insert("key".to_owned(), key.to_owned());
+        let content = content_node.as_object_mut().expect("Construct basic content has to return json object");
+        content.insert("key".to_owned(), serde_json::Value::String(key.to_owned()));
         self.redis_notifications_client
             .lock()
             .expect("Could not acquire Mutex")
@@ -541,7 +552,7 @@ impl Weel {
                                 &format!("Activity {}", position),
                                 // In a manipulate, we do not have data available from a prior request
                                 None,
-                                None
+                                None,
                             ) {
                                 Ok(res) => res,
                                 // For manipulate, we just pass all signals/errors downward
@@ -553,8 +564,9 @@ impl Weel {
                     };
                     connection_wrapper.inform_activity_done()?;
                     weel_position.detail = Mark::After;
-                    let mut ipc = HashMap::new();
-                    ipc.insert("after".to_owned(), serde_json::to_string(&weel_position)?);
+                    let ipc = json!({
+                        "after": weel_position
+                    });
                     ConnectionWrapper::new(self.clone(), None, None)
                         .inform_position_change(Some(ipc))?;
                 }
@@ -629,9 +641,9 @@ impl Weel {
                                 None,
                                 None,
                             );
-                            let mut content = HashMap::new();
-                            content
-                                .insert("wait".to_owned(), serde_json::to_string(&weel_position)?);
+                            let mut content = json!({
+                                "wait": weel_position
+                            });
                             connection_wrapper.inform_position_change(Some(content))?;
                         };
                         drop(connection_wrapper);
@@ -785,9 +797,10 @@ impl Weel {
                             connection_wrapper.inform_activity_done()?;
                             weel_position.handler_passthrough = None;
                             weel_position.detail = Mark::After;
-                            let mut content = HashMap::new();
-                            content
-                                .insert("after".to_owned(), serde_json::to_string(&weel_position)?);
+                            let mut content = json!({
+                                "after": weel_position
+                            });
+
                             ConnectionWrapper::new(self.clone(), None, None)
                                 .inform_position_change(Some(content))?;
                         }
@@ -830,11 +843,9 @@ impl Weel {
                         thread_info.branch_position = None;
                         weel_position.handler_passthrough = None;
                         weel_position.detail = Mark::Unmark;
-                        let mut ipc = HashMap::new();
-                        ipc.insert(
-                            "unmark".to_owned(),
-                            serde_json::to_string(&vec![weel_position])?,
-                        );
+                        let ipc = json!({
+                            "unmark": [weel_position]
+                        });
                         ConnectionWrapper::new(self.clone(), None, None)
                             .inform_position_change(Some(ipc))?;
                     }
@@ -940,7 +951,7 @@ impl Weel {
         connection_wrapper: &ConnectionWrapper,
         location: &str,
         call_result: Option<String>,
-        call_headers: Option<HashMap<String, String>>
+        call_headers: Option<HashMap<String, String>>,
     ) -> Result<eval_helper::EvaluationResult> {
         log::info!("Execute code got called with code: {code}");
         log::info!("With call result: {:?}", call_result);
@@ -1078,7 +1089,10 @@ impl Weel {
         skip: bool,
     ) -> Result<Position> {
         // TODO: We could also guard the thread_info with a mutex again
-        let mut ipc = HashMap::new();
+        let mut ipc_node = json!({});
+        let mut ipc = ipc_node
+            .as_object_mut()
+            .expect("Has to be object as just created");
         let current_thread = thread::current();
         let thread_info_map = self.thread_information.lock().unwrap();
         let (parent_thread_id, weel_position) = {
@@ -1098,9 +1112,7 @@ impl Weel {
                     .lock()
                     .unwrap()
                     .retain(|x| *x != *branch_position);
-                let mut set = HashSet::new();
-                set.insert(branch_position.clone());
-                ipc.insert("unmark".to_owned(), set);
+                ipc.insert("unmark".to_owned(), json!([branch_position]));
             };
             let mut search_positions = self.search_positions.lock().unwrap();
             let search_position = search_positions.remove(&position);
@@ -1121,23 +1133,23 @@ impl Weel {
                     None,
                 )
             };
-            let mut set = HashSet::new();
             if skip {
-                set.insert(weel_position.clone());
-                ipc.insert("after".to_owned(), set);
+                ipc.insert("after".to_owned(), json!([weel_position]));
             } else {
-                set.insert(weel_position.clone());
-                ipc.insert("at".to_owned(), set);
+                ipc.insert("at".to_owned(), json!([weel_position]));
             }
 
             if !search_positions.is_empty() {
-                ipc.insert("unmark".to_owned(), HashSet::new());
+                if !ipc.contains_key("unmark") {
+                    ipc.insert("unmark".to_owned(), json!([]));
+                } 
+                search_positions.iter().for_each(|(_, value)| {
+                    ipc.get_mut("unmark")
+                        .expect("we added unmark above")
+                        .as_array_mut().expect("has to be array")
+                        .push(json!(value));
+                });
             }
-            search_positions.iter().for_each(|(_, value)| {
-                ipc.get_mut("unmark")
-                    .expect("we added unmark above")
-                    .insert(value.clone());
-            });
             self.positions.lock().unwrap().push(weel_position.clone());
             current_thread_info.branch_position = Some(weel_position.clone());
 
@@ -1160,16 +1172,13 @@ impl Weel {
                     .unwrap()
                     .retain(|x| *x != branch_position);
                 // TODO: Probably clone here right?
-                let mut set = HashSet::new();
-                set.insert(branch_position);
-                ipc.insert("unmark".to_owned(), set);
+                if !ipc.contains_key("unmark") {
+                    ipc.insert("unmark".to_owned(), json!([]));
+                }
+                ipc.get_mut("unmark").expect("has to be present").as_array_mut().expect("Has to be array").push(json!(branch_position));
             };
         };
-        let ipc: HashMap<String, String> = ipc
-            .into_iter()
-            .map(|(k, v)| (k, serde_json::to_string(&v).unwrap()))
-            .collect();
-        ConnectionWrapper::new(self.clone(), None, None).inform_position_change(Some(ipc))?;
+        ConnectionWrapper::new(self.clone(), None, None).inform_position_change(Some(ipc_node))?;
         Ok(weel_position)
     }
 
@@ -1383,8 +1392,10 @@ mod test {
             }
         };
         let mut test_endpoints = HashMap::new();
-        test_endpoints.insert("bookAir".to_owned(), "http://gruppe.wst.univie.ac.at/~mangler/services/airline.php".to_owned());
-
+        test_endpoints.insert(
+            "bookAir".to_owned(),
+            "http://gruppe.wst.univie.ac.at/~mangler/services/airline.php".to_owned(),
+        );
 
         let test_data = json!({
             "from": "Vienna",

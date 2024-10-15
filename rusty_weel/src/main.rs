@@ -15,7 +15,7 @@ use rusty_weel::dsl::DSL;
 use rusty_weel::dsl_realization::{Result, Weel};
 use rusty_weel::redis_helper::RedisHelper;
 // Needed for inject!
-use reqwest::Method;
+use http_helper::Method;
 use rusty_weel_macro::inject;
 use std::io::Write;
 

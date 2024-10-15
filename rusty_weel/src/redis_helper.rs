@@ -60,13 +60,13 @@ impl RedisHelper {
     pub fn notify(
         &mut self,
         what: &str,
-        content: Option<HashMap<String, String>>,
+        content: Option<Value>,
         instace_meta_data: InstanceMetaData,
     ) -> Result<()> {
-        let mut content: Value = json!(content.unwrap_or(HashMap::new()));
+        let mut content = content.unwrap_or(json!({}));
         // TODO: Original code adds attributes_translated here, do we need to do this?
         content.as_object_mut().unwrap().insert("attributes".to_owned(), json!(&instace_meta_data.attributes));
-        self.send("event", what, instace_meta_data, Some(json!(content)));
+        self.send("event", what, instace_meta_data, Some(content));
         Ok(())
     }
 

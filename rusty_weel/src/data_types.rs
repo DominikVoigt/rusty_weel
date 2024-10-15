@@ -9,10 +9,11 @@ use serde_json::Value;
 
 use crate::dsl_realization::{Position, Signal};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct HTTPParams {
     pub label: &'static str,
-    pub method: reqwest::Method,
+    
+    pub method: http_helper::Method,
     pub arguments: Option<Vec<KeyValuePair>>,
 }
 
@@ -22,7 +23,7 @@ impl TryInto<String> for HTTPParams {
     fn try_into(self) -> Result<String, Self::Error> {
         let mut hash_rep = HashMap::new();
         hash_rep.insert("label", self.label.to_owned());
-        hash_rep.insert("method", self.method.to_string());
+        hash_rep.insert("method", format!("{:?}", self.method));
         let args = match self.arguments {
             Some(args) => {
                 let args_map: HashMap<_, _>;
@@ -46,7 +47,7 @@ impl TryInto<String> for HTTPParams {
 /*
 * Represents KVs with optional values
 */
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct KeyValuePair {
     pub key: &'static str,
     pub value: Option<String>,

@@ -1,10 +1,7 @@
 use http_helper::{header_map_to_hash_map, Parameter};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use regex::Regex;
-use reqwest::{
-    header::{HeaderMap, HeaderName, HeaderValue},
-    Method,
-};
+use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde_json::{json, Value};
 use std::{
     collections::HashMap,
@@ -121,44 +118,44 @@ impl ConnectionWrapper {
     }
 
     pub fn inform_state_change(&self, new_state: crate::data_types::State) -> Result<()> {
-        let mut content = HashMap::new();
-        content.insert("state".to_owned(), serde_json::to_string(&new_state)?);
-
+        let content = json!({
+            "state": new_state
+        });
         self.inform("state/change", Some(content))
     }
 
     pub fn inform_syntax_error(&self, err: Error, _code: Option<&str>) -> Result<()> {
-        let mut content = HashMap::new();
+        let mut content = json!({});
         self.add_error_information(&mut content, err);
 
         self.inform("description/error", Some(content))
     }
 
     pub fn inform_connectionwrapper_error(&self, err: Error) -> Result<()> {
-        let mut content = HashMap::new();
+        let mut content = json!({});
         self.add_error_information(&mut content, err);
 
         self.inform("executionhandler/error", Some(content))
     }
 
-    pub fn inform_position_change(&self, ipc: Option<HashMap<String, String>>) -> Result<()> {
+    pub fn inform_position_change(&self, ipc: Option<Value>) -> Result<()> {
         self.inform("position/change", ipc)
     }
 
     pub fn inform_activity_manipulate(&self) -> Result<()> {
-        let mut content = self.construct_basic_content()?;
-        content.insert("label".to_owned(), self.activity_id.clone());
+        let mut content: Value = self.construct_basic_content();
+        content.as_object_mut().unwrap().insert("label".to_owned(), json!(self.activity_id));
         self.inform("activity/manipulating", Some(content))
     }
 
     pub fn inform_activity_done(&self) -> Result<()> {
-        let content = self.construct_basic_content()?;
+        let content = self.construct_basic_content();
         self.inform("activity/done", Some(content))?;
         self.inform_resource_utilization()
     }
 
     pub fn inform_activity_failed(&self, err: Error) -> Result<()> {
-        let mut content: HashMap<String, String> = self.construct_basic_content()?;
+        let mut content = self.construct_basic_content();
         self.add_error_information(&mut content, err);
         self.inform("activity/failed", Some(content))
     }
@@ -189,7 +186,7 @@ impl ConnectionWrapper {
             },
         );
 
-        self.inform("status/resource_utilization", Some(content))?;
+        self.inform("status/resource_utilization", Some(json!(content)))?;
         Ok(())
     }
 
@@ -197,25 +194,28 @@ impl ConnectionWrapper {
         &self,
         evaluation_result: eval_helper::EvaluationResult,
     ) -> Result<()> {
-        let content = self.construct_basic_content()?;
+        let content_node = self.construct_basic_content();
         if let Some(changed_status) = evaluation_result.changed_status {
-            let mut content = content.clone();
-            content.insert("id".to_owned(), changed_status.id.to_string());
-            content.insert("message".to_owned(), changed_status.message);
-            self.inform("status/change", Some(content))?;
+            let mut content_node = content_node.clone();
+            let content = content_node.as_object_mut().expect("Construct basic content has to return json object");
+            content.insert("id".to_owned(), serde_json::Value::String(changed_status.id.to_string()));
+            content.insert("message".to_owned(), serde_json::Value::String(changed_status.message));
+            self.inform("status/change", Some(content_node))?;
         }
         if let Some(changed_data) = evaluation_result.changed_data {
-            let mut content = content.clone();
-            content.insert("changed".to_owned(), serde_json::to_string(&changed_data)?);
-            self.inform("dataelements/change", Some(content))?;
+            let mut content_node = content_node.clone();
+            let content = content_node.as_object_mut().expect("Construct basic content has to return json object");
+            content.insert("changed".to_owned(), changed_data);
+            self.inform("dataelements/change", Some(content_node))?;
         }
         if let Some(changed_endpoints) = evaluation_result.changed_endpoints {
-            let mut content = content.clone();
+            let mut content_node = content_node.clone();
+            let content = content_node.as_object_mut().expect("Construct basic content has to return json object");
             content.insert(
                 "changed".to_owned(),
-                serde_json::to_string(&changed_endpoints)?,
+                json!(changed_endpoints),
             );
-            self.inform("endpoints/change", Some(content))?;
+            self.inform("endpoints/change", Some(content_node))?;
         }
         Ok(())
     }
@@ -224,7 +224,7 @@ impl ConnectionWrapper {
      * Locks:
      *  - Locks the redis_notification_client (shortly)
      */
-    fn inform(&self, what: &str, content: Option<HashMap<String, String>>) -> Result<()> {
+    fn inform(&self, what: &str, content: Option<Value>) -> Result<()> {
         let weel = self.weel();
         weel.redis_notifications_client
             .lock()
@@ -415,26 +415,28 @@ impl ConnectionWrapper {
         // We do not model annotations anyway -> Can skip this from the original code
         {
             this.inform_resource_utilization()?;
-            let mut content = this.construct_basic_content()?;
-            content.insert("label".to_owned(), this.activity_id.clone());
+            let mut content_node = this.construct_basic_content();
+            let content = content_node.as_object_mut().expect("Construct basic content should return json object");
+            content.insert("label".to_owned(), json!(this.activity_id));
             content.insert(
                 "passthrough".to_owned(),
-                passthrough.unwrap_or("").to_owned(),
+                json!(passthrough),
             );
             // parameters do not look exactly like in the original (string representation looks different):
-            content.insert("parameters".to_owned(), parameters.clone().try_into()?);
+            content.insert("parameters".to_owned(), json!(parameters));
             weel.redis_notifications_client.lock()?.notify(
                 "activity/calling",
-                Some(content),
+                Some(content_node),
                 weel.get_instance_meta_data(),
             )?
         }
         match passthrough {
             Some(passthrough) => {
-                let mut content = this.construct_basic_content()?;
-                content.insert("label".to_owned(), this.activity_id.clone());
+                let mut content_node = this.construct_basic_content();
+                let content = content_node.as_object_mut().expect("Construct basic content has to return json object");
+                content.insert("label".to_owned(), serde_json::Value::String(this.activity_id.clone()));
                 content.remove("endpoint");
-                weel.register_callback(selfy.clone(), passthrough, content)?;
+                weel.register_callback(selfy.clone(), passthrough, content_node)?;
             }
             None => {
                 // Drop to allow relocking in the method
@@ -504,19 +506,18 @@ impl ConnectionWrapper {
                 }
             };
 
-            let mut content_json = HashMap::new();
-            content_json.insert(
-                "activity_uuid".to_owned(),
-                this.handler_activity_uuid.clone(),
-            );
-            content_json.insert("label".to_owned(), this.activity_id.clone());
+            let mut content_node = json!({
+                "activity_uuid": this.handler_activity_uuid,
+                "label": this.activity_id
+            });
+            let content = content_node.as_object_mut().expect("Cannot fail");
             let position = this
                 .handler_position
                 .as_ref()
                 .map(|x| x.clone())
                 .unwrap_or("".to_owned());
-            content_json.insert("activity".to_owned(), position);
-            weel.register_callback(Arc::clone(selfy), &callback_id, content_json)?;
+            content.insert("activity".to_owned(), serde_json::Value::String(position));
+            weel.register_callback(Arc::clone(selfy), &callback_id, content_node)?;
             let endpoint = match this.handler_endpoints.get(0) {
                 // TODO: Set method by matched method in url
                 Some(endpoint) => protocol_regex.replace_all(&endpoint, r"http\\1:"),
@@ -576,22 +577,13 @@ impl ConnectionWrapper {
                     this.handle_callback(Some(status), &body, response_headers)?
                 } else {
                     // In this case we have an asynchroneous task
-                    let mut content = HashMap::new();
-                    {
-                        content.insert(
-                            "activity_uuid".to_owned(),
-                            this.handler_activity_uuid.clone(),
-                        );
-                        content.insert("label".to_owned(), this.activity_id.clone());
-                        content.insert(
-                            "activity".to_owned(),
-                            this.handler_position.clone().unwrap_or("".to_owned()),
-                        );
-                        content.insert(
-                            "endpoint".to_owned(),
-                            serde_json::to_string(&this.handler_endpoints)?,
-                        );
-                    }
+                    let mut content_node = json!({
+                        "activity_uuid": this.handler_activity_uuid,
+                        "label": this.activity_id,
+                        "activity": this.handler_position,
+                        "endpoint": this.handler_endpoints
+                    });
+                    let content = content_node.as_object_mut().expect("Cannot fail");
 
                     let instantiation_header_set = match response_headers.get("CPEE_INSTANTION") {
                         Some(instantiation_header) => !instantiation_header.is_empty(),
@@ -602,11 +594,11 @@ impl ConnectionWrapper {
                         // TODO What about value_helper
                         content.insert(
                             "received".to_owned(),
-                            response_headers.get("CPEE_INSTANTIATION").unwrap().clone(),
+                            serde_json::Value::String(response_headers.get("CPEE_INSTANTIATION").unwrap().clone())
                         );
                         weel.redis_notifications_client.lock().unwrap().notify(
                             "task/instantiation",
-                            Some(content.clone()),
+                            Some(content_node.clone()),
                             weel.get_instance_meta_data(),
                         )?;
                     }
@@ -622,7 +614,7 @@ impl ConnectionWrapper {
                         let what = format!("task/{event}");
                         weel.redis_notifications_client.lock().unwrap().notify(
                             &what,
-                            Some(content),
+                            Some(content_node),
                             weel.get_instance_meta_data(),
                         )?;
                     }
@@ -639,7 +631,7 @@ impl ConnectionWrapper {
         headers: &mut HeaderMap,
         this: &mut std::sync::MutexGuard<ConnectionWrapper>,
     ) -> Result<()> {
-        let client = http_helper::Client::new(&twin_translate_url, Method::GET)?;
+        let client = http_helper::Client::new(&twin_translate_url, http_helper::Method::GET)?;
         let result = client.execute()?;
         let status = result.status_code;
         let result_headers = result.headers;
@@ -769,32 +761,34 @@ impl ConnectionWrapper {
         let recv =
             eval_helper::structurize_result(&weel.opts.eval_backend_structurize, &options, body)?;
         let mut redis = weel.redis_notifications_client.lock()?;
-        let content = self.construct_basic_content()?;
+        let content = self.construct_basic_content();
         {
-            let mut content = content.clone();
-            content.insert("received".to_owned(), recv.clone());
+            let mut content_node = content.clone();
+            let content = content_node.as_object_mut().expect("Construct basic content has to return json object");
+            content.insert("received".to_owned(), serde_json::Value::String(recv.clone()));
             content.insert(
                 "annotations".to_owned(),
-                self.annotations.clone().unwrap_or("".to_owned()),
+                serde_json::Value::String(self.annotations.clone().unwrap_or("".to_owned())),
             );
 
             redis.notify(
                 "activity/receiving",
-                Some(content),
+                Some(content_node),
                 weel.get_instance_meta_data(),
             )?;
         }
 
         if contains_non_empty(&options, "CPEE_INSTANTIATION") {
-            let mut content = content.clone();
+            let mut content_node = content.clone();
+            let content = content_node.as_object_mut().expect("Construct basic content has to return json object");
             content.insert(
                 "received".to_owned(),
-                options.get("CPEE_INSTANTIATION").unwrap().clone(),
+                serde_json::Value::String(options.get("CPEE_INSTANTIATION").unwrap().clone()),
             );
 
             redis.notify(
                 "task/instantiation",
-                Some(content),
+                Some(content_node),
                 weel.get_instance_meta_data(),
             )?;
         }
@@ -813,12 +807,13 @@ impl ConnectionWrapper {
             let event = options["CPEE_EVENT"].clone();
             let event = event_regex.replace_all(&event, "");
 
-            let mut content = content.clone();
-            content.insert("received".to_owned(), recv.clone());
+            let mut content_node = content.clone();
+            let content = content_node.as_object_mut().expect("Construct basic content has to return json object");
+            content.insert("received".to_owned(), serde_json::Value::String(recv.clone()));
 
             redis.notify(
                 &format!("task/{event}"),
-                Some(content),
+                Some(content_node),
                 weel.get_instance_meta_data(),
             )?;
         } else {
@@ -830,9 +825,10 @@ impl ConnectionWrapper {
         drop(redis);
 
         if contains_non_empty(&options, "CPEE_STATUS") {
-            let mut content = content.clone();
+            let mut content_node = content.clone();
+            let content = content_node.as_object_mut().expect("Construct basic content has to return json object");
             // CPEE::ValueHelper.parse(options['CPEE_INSTANTIATION'])
-            content.insert("status".to_owned(), options["CPEE_STATUS"].clone());
+            content.insert("status".to_owned(), serde_json::Value::String(options["CPEE_STATUS"].clone()));
         }
 
         if contains_non_empty(&options, "CPEE_UPDATE") {
@@ -876,25 +872,18 @@ impl ConnectionWrapper {
      *  - activity
      *  - endpoint
      */
-    pub fn construct_basic_content(&self) -> Result<HashMap<String, String>> {
-        let mut content = HashMap::new();
-        content.insert(
-            "activity-uuid".to_owned(),
-            self.handler_activity_uuid.clone(),
-        );
-        content.insert("label".to_owned(), self.activity_id.clone());
-        content.insert(
-            "activity".to_owned(),
-            self.handler_position
-                .clone()
-                .map(|e| e.clone())
-                .unwrap_or("".to_owned()),
-        );
-        content.insert(
-            "endpoint".to_owned(),
-            serde_json::to_string(&self.handler_endpoints)?,
-        );
-        Ok(content)
+    pub fn construct_basic_content(&self) -> Value {
+        let position = 
+        self.handler_position
+            .clone()
+            .map(|e| e.clone())
+            .unwrap_or("".to_owned());
+        json!({
+            "activity-uuid": self.handler_activity_uuid,
+            "label": self.activity_id,
+            "activity": position,
+            "endpoint": self.handler_endpoints
+        })
     }
 
     fn construct_headers(&self, data: InstanceMetaData, callback_id: &str) -> Result<HeaderMap> {
@@ -957,15 +946,16 @@ impl ConnectionWrapper {
         true
     }
 
-    fn add_error_information(&self, content: &mut HashMap<String, String>, err: Error) {
+    fn add_error_information(&self, content: &mut Value, err: Error) {
+        let content = content.as_object_mut().unwrap();
         match self.extract_info_from_message(err) {
             Ok((message, line, location)) => {
-                content.insert("line".to_owned(), line);
-                content.insert("location".to_owned(), location);
-                content.insert("message".to_owned(), message);
+                content.insert("line".to_owned(), json!(line));
+                content.insert("location".to_owned(), json!(location));
+                content.insert("message".to_owned(), json!(message));
             }
             Err(message) => {
-                content.insert("message".to_owned(), message);
+                content.insert("message".to_owned(), json!(message));
             }
         }
     }
