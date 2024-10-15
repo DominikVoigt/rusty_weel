@@ -326,7 +326,7 @@ pub fn evaluate_expression(
                     }
                     None => {
                         Err(Error::EvalError(EvalError::GeneralEvalError(
-                            "Response of Eval Service is not 2xx, eval result was returned but signal is missing".to_owned())))
+                            format!("Response of Eval Service is {}, eval result was returned but signal is missing", status))))
                     }
                 }
             } else {
@@ -352,7 +352,7 @@ pub fn evaluate_expression(
                 changed_status
             );
             Err(Error::EvalError(EvalError::GeneralEvalError(
-            "Response of Eval Service is not 2xx and the body does not contain the evaluation result -> General issue with the service".to_owned())))
+            format!("Response of Eval Service is {} and the body does not contain the evaluation result -> General issue with the service", status))))
         }
     }
 }
