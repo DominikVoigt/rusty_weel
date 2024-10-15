@@ -115,7 +115,7 @@ pub fn evaluate_expression(
         result.headers
     );
     // Get the expressions parameter from the parsed response
-    let expression_result: Option<Value> = None;
+    let mut expression_result: Option<Value> = None;
     let mut changed_data: Option<Value> = None;
     let mut changed_endpoints: Option<HashMap<String, Option<String>>> = None;
     let mut changed_status: Option<StatusDTO> = None;
@@ -160,7 +160,7 @@ pub fn evaluate_expression(
                 match name.as_str() {
                     "result" => {
                         // In case we have a string, strip them
-                        match serde_json::from_str(&content) {
+                        expression_result = match serde_json::from_str(&content) {
                             Ok(res) => res,
                             Err(err) => {
                                 log::error!("Encountered error deserializing expression: {:?}, received: {}", err, content);
