@@ -5,7 +5,8 @@ edition = "2021"
 
 
 [dependencies]
-reqwest = {version="0.12.4", features = ["blocking", "charset", "multipart"]}
+reqwest = {version="0.12.4", features = ["blocking", "multipart"]}
+serde ={ version = "*"}
 log = "0.4.21"
 base64 = "0.22.1"
 multipart = "0.18.0"

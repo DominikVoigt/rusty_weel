@@ -9,6 +9,7 @@ use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue, ToStrError, CONTENT_TYPE},
     Url,
 };
+use serde::Serialize;
 use tempfile::tempfile;
 
 use std::{
@@ -19,7 +20,6 @@ use std::{
 };
 
 pub use mime::*;
-pub use reqwest::Method;
 
 use urlencoding::encode;
 
@@ -303,7 +303,8 @@ impl Client {
     pub fn execute_raw(mut self) -> Result<RawResponse> {
         // For now: Explicitly passing simple parameters of desired type self.mark_query_parameters();
         let url = self.generate_url();
-        let mut request_builder = self.reqwest_client.request(self.method.clone(), url);
+        let method: reqwest::Method = self.method.clone().into();
+        let mut request_builder = self.reqwest_client.request(method.clone(), url);
         request_builder = self.generate_body(request_builder)?;
         request_builder = self.set_headers(request_builder);
         let request = request_builder.build()?;
@@ -579,6 +580,29 @@ fn parse_multipart(body: &[u8], boundary: &str) -> Result<Vec<Parameter>> {
     }
 }
 
+#[derive(Serialize, Debug, Clone)]
+pub enum Method {
+    GET,
+    PUT,
+    POST,
+    HEAD,
+    DELETE,
+    PATCH
+}
+
+impl Into<reqwest::Method> for Method {
+    fn into(self) -> reqwest::Method {
+        match self {
+            Method::GET => reqwest::Method::GET,
+            Method::PUT => reqwest::Method::PUT,
+            Method::POST => reqwest::Method::POST,
+            Method::HEAD => reqwest::Method::HEAD,
+            Method::DELETE => reqwest::Method::DELETE,
+            Method::PATCH => reqwest::Method::PATCH,
+        }
+    }
+}
+
 #[cfg(test)]
 mod testing {
     use super::*;
@@ -652,7 +676,7 @@ mod testing {
                 value: "simple_value".to_owned(),
                 param_type: ParameterType::Body,
             });
-            let mut request_builder = client.reqwest_client.request(Method::POST, test_url);
+            let mut request_builder = client.reqwest_client.request(Method::POST.into(), test_url);
             request_builder = client.generate_body(request_builder)?;
             let request = request_builder.build()?;
             assert_eq!(
@@ -686,7 +710,7 @@ mod testing {
                 mime_type: mime::TEXT_XML,
                 content_handle: file,
             });
-            let mut request_builder = client.reqwest_client.request(Method::POST, test_url);
+            let mut request_builder = client.reqwest_client.request(Method::POST.into(), test_url);
             request_builder = client.generate_body(request_builder)?;
             let request = request_builder.build()?;
             assert_eq!(
@@ -720,7 +744,7 @@ mod testing {
                 mime_type: mime::IMAGE_JPEG,
                 content_handle: file,
             });
-            let mut request_builder = client.reqwest_client.request(Method::POST, test_url);
+            let mut request_builder = client.reqwest_client.request(Method::POST.into(), test_url);
             request_builder = client.generate_body(request_builder)?;
             let request = request_builder.build()?;
 
@@ -756,7 +780,7 @@ mod testing {
                 value: "simple_value2".to_owned(),
                 param_type: ParameterType::Body,
             });
-            let mut request_builder = client.reqwest_client.request(Method::POST, test_url);
+            let mut request_builder = client.reqwest_client.request(Method::POST.into(), test_url);
             request_builder = client.generate_body(request_builder)?;
             let request = request_builder.build()?;
             let response = client.reqwest_client.execute(request)?;
@@ -796,7 +820,7 @@ mod testing {
                 param_type: ParameterType::Body,
             });
 
-            let mut request_builder = client.reqwest_client.request(Method::POST, test_url);
+            let mut request_builder = client.reqwest_client.request(Method::POST.into(), test_url);
             request_builder = client.generate_body(request_builder)?;
             let request = request_builder.build()?;
             let response = client.reqwest_client.execute(request)?;
