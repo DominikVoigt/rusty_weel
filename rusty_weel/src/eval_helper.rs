@@ -466,7 +466,7 @@ mod test {
         };
 
         let static_data = StaticData {
-            instance_id: "1".to_owned(),
+            instance_id: 1,
             host: "".to_owned(),
             cpee_base_url: "".to_owned(),
             redis_url: None,

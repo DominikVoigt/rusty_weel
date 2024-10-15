@@ -894,7 +894,7 @@ impl ConnectionWrapper {
             .unwrap_or("");
         let mut headers = HeaderMap::new();
         headers.append("CPEE-BASE", HeaderValue::from_str(&data.cpee_base_url)?);
-        headers.append("CPEE-Instance", HeaderValue::from_str(&data.instance_id)?);
+        headers.append("CPEE-Instance", HeaderValue::from_str(&data.instance_id.to_string())?);
         headers.append(
             "CPEE-Instance-URL",
             HeaderValue::from_str(&data.instance_url)?,

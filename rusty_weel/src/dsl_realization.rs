@@ -312,7 +312,7 @@ impl Weel {
         )?;
         let content = content_node.as_object_mut().expect("content has to be an object");
         for client in redis_helper
-            .extract_handler(&static_data.instance_id, &handler)
+            .extract_handler(static_data.instance_id, &handler)
             .iter()
         {
             // Generate random ASCII string of length VOTE_KEY_LENGTH
@@ -1365,7 +1365,7 @@ mod test {
             }
         };
         let stat = StaticData {
-            instance_id: 127.to_string(),
+            instance_id: 127,
             host: "localhost".to_owned(),
             cpee_base_url: "http://echo.bpm.in.tum.de/flow/engine".to_owned(),
             redis_url: None,
