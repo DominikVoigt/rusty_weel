@@ -1367,7 +1367,7 @@ mod test {
         let stat = StaticData {
             instance_id: 127,
             host: "localhost".to_owned(),
-            cpee_base_url: "http://echo.bpm.in.tum.de/flow/engine".to_owned(),
+            cpee_base_url: "https://echo.bpm.in.tum.de/flow/engine".to_owned(),
             redis_url: None,
             redis_path: Some(format!("unix:///home/mangler/run/flow/redis.sock")),
             redis_db: 0,
