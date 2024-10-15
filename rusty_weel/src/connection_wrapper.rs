@@ -860,6 +860,7 @@ impl ConnectionWrapper {
                     None => log::error!("Received CPEE_STOP but handler_continue is empty?"),
                 }
             } else {
+                log::info!("Unblock thread");
                 match &self.handler_continue {
                     Some(x) => x.enqueue(Signal::None),
                     None => log::error!(
