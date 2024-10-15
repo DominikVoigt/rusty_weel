@@ -944,6 +944,7 @@ impl Weel {
         call_result: Option<String>,
         call_headers: Option<HashMap<String, String>>
     ) -> Result<eval_helper::EvaluationResult> {
+        log::info!("Execute code got called with code: {code}");
         // We clone the dynamic data and status dto here which is expensive but allows us to not block the whole weel until the eval call returns
         let dynamic_data = self.context.lock().unwrap().clone();
         let status = self.status.lock().unwrap().to_dto();
