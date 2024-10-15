@@ -276,7 +276,7 @@ impl RedisHelper {
         Ok(())
     }
 
-    pub fn get_attributes(&mut self, instance_id: &str) -> Result<HashMap<String, String>> {
+    pub fn get_attributes(&mut self, instance_id: u32) -> Result<HashMap<String, String>> {
         let attributes_key = format!("instance:{instance_id}/attributes");
         let attribute_names: Vec<String> = self.connection.zrange(&attributes_key, 0, -1)?;
         let mut attributes = HashMap::with_capacity(attribute_names.len());
