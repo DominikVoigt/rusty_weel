@@ -538,7 +538,8 @@ impl ConnectionWrapper {
 
             log::debug!(indoc::indoc! {
             "
-            Received response for service call of activity: {}
+            Received response for service call of activity: 
+            Name: {}
             Response headers: {:?},
             Response body: {:?}             
             "}, parameters.label, response.headers, response.body);
@@ -845,7 +846,6 @@ impl ConnectionWrapper {
             }
         } else {
             if let Some(passthrough) = &self.handler_passthrough {
-                log::debug!("Before cancel callback, value is: {:?}", self.handler_return_value);
                 weel.cancel_callback(passthrough)?;
                 self.handler_passthrough = None;
             }

@@ -674,7 +674,6 @@ impl Weel {
                             let thread_info =
                                 thread_info_map.get(&current_thread).unwrap().borrow();
                             let connection_wrapper = connection_wrapper_mutex.lock().unwrap();
-                            log::debug!("After wait, handler value is: {:?}", connection_wrapper.handler_return_value);
 
                             if thread_info.no_longer_necessary {
                                 // TODO: Definition of this method is basically empty?
@@ -737,7 +736,6 @@ impl Weel {
                                 finalize_code
                             };
 
-                            log::debug!("Later, handler value is: {:?}", connection_wrapper.handler_return_value);
                             connection_wrapper.inform_activity_manipulate()?;
                             if let Some(code) = code {
                                 let mut signaled_again = false;
@@ -971,8 +969,8 @@ impl Weel {
                 Some(status),
                 local,
                 connection_wrapper.additional(),
-                None,
-                None,
+                call_result,
+                call_headers,
                 location,
             )?;
             // Apply changes to instance
