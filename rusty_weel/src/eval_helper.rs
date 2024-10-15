@@ -558,6 +558,7 @@ mod test {
                 )
             })
             .write_style(env_logger::WriteStyle::Auto)
+            .filter_module("multipart", log::LevelFilter::Info)
             .init();
     }
 }
