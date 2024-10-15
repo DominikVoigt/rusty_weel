@@ -1375,10 +1375,10 @@ mod test {
 
     #[test]
     fn create_context() {
-        let mut file = match fs::File::create("./context.yaml") {
+        let mut file = match fs::File::create("./context.json") {
             Ok(file) => file,
             Err(err) => {
-                log::error!("Error creating the context.yaml file: {:?}", err);
+                log::error!("Error creating the context.json file: {:?}", err);
                 panic!("Could not create context.yaml file")
             }
         };
@@ -1396,7 +1396,6 @@ mod test {
             endpoints: test_endpoints,
             data: test_data,
         };
-        file.write("---\n".as_bytes()).unwrap();
-        serde_json::to_writer(file, &dynamic).unwrap();
+        serde_json::to_writer_pretty(file, &dynamic).unwrap();
     }
 }

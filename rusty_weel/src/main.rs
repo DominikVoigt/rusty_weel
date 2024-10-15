@@ -99,7 +99,7 @@ fn startup(stop_signal_receiver: mpsc::Receiver<()>) -> Arc<Weel> {
     set_panic_hook();
 
     let opts = StaticData::load("opts.yaml");
-    let context = Mutex::new(DynamicData::load("context.yaml"));
+    let context = Mutex::new(DynamicData::load("context.json"));
     let callback_keys: Arc<Mutex<HashMap<String, Arc<Mutex<ConnectionWrapper>>>>> =
         Arc::new(Mutex::new(HashMap::new()));
     let redis_helper = match RedisHelper::new(&opts, "notifications") {
