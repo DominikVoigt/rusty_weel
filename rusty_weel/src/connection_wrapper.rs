@@ -217,8 +217,7 @@ impl ConnectionWrapper {
             );
             self.inform("endpoints/change", Some(content))?;
         }
-
-        todo!()
+        Ok(())
     }
 
     /*
