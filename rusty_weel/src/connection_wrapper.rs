@@ -197,10 +197,6 @@ impl ConnectionWrapper {
         &self,
         evaluation_result: eval_helper::EvaluationResult,
     ) -> Result<()> {
-        log::debug!("Changed dataelements: {:?}", evaluation_result.changed_data);
-        log::debug!("Changed endpoints: {:?}", evaluation_result.changed_endpoints);
-        log::debug!("Changed dataelements string: {}", serde_json::to_string_pretty(&evaluation_result.changed_data).unwrap());
-        log::debug!("Changed endpoints string: {}", serde_json::to_string_pretty(&evaluation_result.changed_endpoints).unwrap());
         let content = self.construct_basic_content()?;
         if let Some(changed_status) = evaluation_result.changed_status {
             let mut content = content.clone();
