@@ -92,7 +92,7 @@ pub fn test_condition(
                 },
                 Parameter::ComplexParameter { name, mut content_handle, .. } => {
                     p_name = name;
-                    content_handle.read_to_string(&mut p_content);
+                    content_handle.read_to_string(&mut p_content)?;
                 },
             };
             match p_name.as_str() {

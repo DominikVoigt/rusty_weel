@@ -153,15 +153,15 @@ impl DSL for Weel {
         condition: &str,
         lambda: impl Fn() -> Result<()> + Sync,
     ) -> Result<()> {
-        let error_message =
-            "Should be present as alternative is called within a choose that pushes element in";
         if matches!(
             *self.state.lock().unwrap(),
             State::Stopping | State::Finishing | State::Stopped
         ) {
             return Ok(());
         }
-
+        
+        let error_message =
+            "Should be present as alternative is called within a choose that pushes element in";
         let current_thread = thread::current().id();
         let thread_info_map = self.thread_information.lock().unwrap();
         // Unwrap as we have precondition that thread info is available on spawning
@@ -210,6 +210,22 @@ impl DSL for Weel {
         Ok(())
     }
 
+    fn otherwise(self: Arc<Self>, lambda: impl Fn() -> Result<()> + Sync) {
+        if matches!(
+            *self.state.lock().unwrap(),
+            State::Stopping | State::Finishing | State::Stopped
+        ) {
+            return;
+        };
+        let current_thread = thread::current().id();
+        let thread_info_map = self.thread_information.lock().unwrap();
+        // Unwrap as we have precondition that thread info is available on spawning
+        let thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
+        if self.in_search_mode(None) || !thread_info.alternative_executed.last().expect("Should be present as alternative is called within a choose that pushes element in") {
+            self.execute_lambda(lambda);
+        }
+    }
+
     fn loop_exec(
         &self,
         condition: Result<bool>,
@@ -228,15 +244,55 @@ impl DSL for Weel {
         todo!()
     }
 
-    fn stop(&self, label: &str) -> Result<()> {
-        println!("Stopping... just kidding");
-        todo!()
-    }
-
     fn critical_do(&self, mutex_id: &str, lambda: impl Fn() -> Result<()> + Sync) -> Result<()> {
         println!("in critical do");
         lambda();
         todo!()
+    }
+
+    fn stop(self: Arc<Self>, id: &str) -> Result<()> {
+        let in_search_mode = self.in_search_mode(None);
+        if in_search_mode {
+            return Ok(());
+        }
+        let current_thread = thread::current().id();
+        let thread_info_map = self.thread_information.lock().unwrap();
+        let thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
+        let no_longer_necessary = thread_info.no_longer_necessary;
+        // Unwrap as we have precondition that thread info is available on spawning
+        if matches!(*self.state.lock().unwrap(), State::Stopping | State::Stopped | State::Finishing) || no_longer_necessary {
+            return Ok(());
+        }
+
+        //TODO:gather traces in threads...
+        if let Some(parent) = &thread_info.parent {
+            let mut parent_thread_info = thread_info_map.get(parent).expect("Since we have a reference, threadinfo of parent has to exist").borrow_mut();
+            if !parent_thread_info.branch_traces.contains_key(&thread_info.branch_id) {
+                parent_thread_info.branch_traces.insert(thread_info.branch_id, Vec::new());
+            }
+            parent_thread_info.branch_traces.get_mut(&thread_info.branch_id).unwrap().push(id.to_owned());
+        }
+        self.weel_progress(id.to_owned(), "0".to_owned(), true)?;
+        *self.state.lock().unwrap() = State::Stopping;
+        Ok(())
+    }
+    
+    fn terminate(self: Arc<Self>) -> Result<()> {
+        let in_search_mode = self.in_search_mode(None);
+        if in_search_mode {
+            return Ok(());
+        }
+        let current_thread = thread::current().id();
+        let thread_info_map = self.thread_information.lock().unwrap();
+        let thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
+        let no_longer_necessary = thread_info.no_longer_necessary;
+        // Unwrap as we have precondition that thread info is available on spawning
+        if matches!(*self.state.lock().unwrap(), State::Stopping | State::Stopped | State::Finishing) || no_longer_necessary {
+            return Ok(());
+        }
+
+        *self.state.lock().unwrap() = State::Finishing;
+        Ok(())
     }
 }
 
@@ -329,7 +385,7 @@ impl Weel {
         *state = State::Stopped;
     }
 
-    pub fn stop(&self) -> Result<()> {
+    pub fn stop_weel(&self) -> Result<()> {
         {
             log::info!("Entered stop function of weel");
             let mut state = self.state.lock().expect("Could not lock state mutex");

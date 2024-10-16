@@ -75,7 +75,8 @@ pub trait DSL {
      * Implements otherwise branch of the BPMN choice
      * lambda will be executed none of the `alternative` branch conditions are true, or if search mode is true (as the start position might be in any branch)
      */
-    fn otherwise(self: Arc<Self>, lambda: impl Fn() -> Result<()> + Sync) -> Result<()>;
+    fn otherwise(self: Arc<Self>, lambda: impl Fn() -> Result<()> + Sync);
 
-    fn stop(&self, label: &str) -> Result<()>;
+    fn stop(self: Arc<Self>, id: &str) -> Result<()>;
+    fn terminate(self: Arc<Self>) -> Result<()>;
 }
