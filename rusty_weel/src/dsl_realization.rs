@@ -707,7 +707,7 @@ impl Weel {
                         None => (),
                     };
                     connection_wrapper.inform_activity_done()?;
-                    weel_position.detail = Mark::After;
+                    weel_position.detail = "after".to_owned();
                     let ipc = json!({
                         "after": weel_position
                     });
@@ -940,7 +940,7 @@ impl Weel {
                         if connection_wrapper.activity_passthrough_value().is_none() {
                             connection_wrapper.inform_activity_done()?;
                             weel_position.handler_passthrough = None;
-                            weel_position.detail = Mark::After;
+                            weel_position.detail = "after".to_owned();
                             let content = json!({
                                 "after": weel_position
                             });
@@ -970,7 +970,7 @@ impl Weel {
                             && !self.vote_sync_after(&connection_wrapper)?
                         {
                             *self.state.lock().unwrap() = State::Stopping;
-                            weel_position.detail = Mark::Unmark;
+                            weel_position.detail = "unmark".to_owned();
                         }
                     }
                     Signal::NoLongerNecessary => {
@@ -986,7 +986,7 @@ impl Weel {
                             thread_info_map.get(&current_thread).unwrap().borrow_mut();
                         thread_info.branch_position = None;
                         weel_position.handler_passthrough = None;
-                        weel_position.detail = Mark::Unmark;
+                        weel_position.detail = "unmark".to_owned();
                         let ipc = json!({
                             "unmark": [weel_position]
                         });
@@ -1256,7 +1256,7 @@ impl Weel {
                     .get(activity_id)
                     .unwrap()
                     .detail
-                    == Mark::After
+                    == "after"
             } else {
                 true
             }
@@ -1312,14 +1312,14 @@ impl Weel {
                 Position::new(
                     position.clone(),
                     uuid,
-                    if skip { Mark::After } else { Mark::At },
+                    if skip { "after".to_owned() } else { "at".to_owned() },
                     passthrough,
                 )
             } else {
                 Position::new(
                     position.clone(),
                     uuid,
-                    if skip { Mark::After } else { Mark::At },
+                    if skip { "after".to_owned() } else { "at".to_owned() },
                     None,
                 )
             };
@@ -1475,14 +1475,14 @@ pub enum ActivityType {
 pub struct Position {
     position: String,
     uuid: String,
-    detail: Mark,
+    detail: String,
     handler_passthrough: Option<String>,
 }
 impl Position {
     fn new(
         position: String,
         uuid: String,
-        detail: Mark,
+        detail: String,
         handler_passthrough: Option<String>,
     ) -> Self {
         Self {
@@ -1492,13 +1492,6 @@ impl Position {
             handler_passthrough,
         }
     }
-}
-
-#[derive(PartialEq, Eq, Debug, Clone, Hash, Serialize)]
-pub enum Mark {
-    At,
-    After,
-    Unmark,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
