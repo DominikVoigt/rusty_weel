@@ -4,3 +4,11 @@ members = [
     "rusty_weel_macro",
     "http_helper"
 ]
+
+
+[profile.release]
+strip = true # Strips symbols from the binary
+opt-level = "z" #optimize for size
+lto = true # Link time optimization
+panic = "abort"
+codegen-units = 1
