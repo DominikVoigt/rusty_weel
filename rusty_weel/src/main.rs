@@ -195,7 +195,7 @@ fn init_logger() -> () {
             )
         })
         .write_style(env_logger::WriteStyle::Auto)
-        .filter_module("multipart", log::LevelFilter::Info)
+        .filter_module("multipart", log::LevelFilter::Error)
         .init();
 }
 
