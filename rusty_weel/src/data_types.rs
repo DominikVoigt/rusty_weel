@@ -191,6 +191,7 @@ pub struct ThreadInfo {
     pub branch_position: Option<Position>,
     pub branch_wait_count_cancel_condition: CancelCondition,
     pub branch_wait_count_cancel_active: bool,
+
     // Counts the number of already canceled branches
     pub branch_wait_count_cancel: i32,
     pub branch_wait_count: i32,
@@ -198,13 +199,22 @@ pub struct ThreadInfo {
     pub branch_event: Option<BlockingQueue<()>>,
     pub local: String,
     // Thread IDs of all spawned children threads (are branches)
-    pub branches: Vec<ThreadId>
+    pub branches: Vec<ThreadId>,
+
+    // For choose -> Might be truly thread local
+    pub alternative_executed: Vec<bool>,
+    pub alternative_mode: Vec<ChooseVariant>,
 }
 
 #[derive(PartialEq, Eq)]
 pub enum CancelCondition {
     First,
     Last
+}
+
+pub enum ChooseVariant {
+    Inclusive,
+    Exclusive
 }
 
 /**

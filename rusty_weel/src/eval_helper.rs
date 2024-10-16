@@ -15,6 +15,168 @@ use crate::{
     dsl_realization::{Error, Result, Signal},
 };
 
+pub fn test_condition(
+    dynamic_context: &DynamicData,
+    static_context: &StaticData,
+    condition: &str,
+    thread_local: &str,
+    additional: Value,
+) -> Result<bool> {
+    let mut client = Client::new(
+        &static_context.eval_backend_exec_full,
+        http_helper::Method::PUT,
+    )?;
+    // Construct multipart request
+    client.add_parameter(Parameter::SimpleParameter {
+        name: "code".to_owned(),
+        value: condition.to_owned(),
+        param_type: http_helper::ParameterType::Body,
+    });
+    let data_map = json!(dynamic_context.data);
+    log::info!("For evaluation, sending data: {:?}", data_map);
+    client.add_complex_parameter(
+        "dataelements",
+        APPLICATION_JSON,
+        serde_json::to_string_pretty(&data_map)?.as_bytes(),
+    )?;
+
+    if !thread_local.is_empty() {
+        client.add_complex_parameter("local", APPLICATION_JSON, thread_local.as_bytes())?;
+    }
+
+    let endpoints = serde_json::to_string(&dynamic_context.endpoints)?;
+    client.add_complex_parameter("endpoints", APPLICATION_JSON, endpoints.as_bytes())?;
+
+    let additional = if additional.is_null() {
+        "{}".to_owned()
+    } else {
+        serde_json::to_string(&additional)?
+    };
+    client.add_complex_parameter("additional", APPLICATION_JSON, additional.as_bytes())?;
+
+    let mut result = client.execute()?;
+
+    let status = result.status_code;
+    // Error in the provided code
+    log::info!(
+        "Received response headers from eval request: {:?}",
+        result.headers
+    );
+
+    let status_ok = status >= 200 || status < 300;
+
+    if status_ok {
+        let condition = match result.content.pop().expect(
+            "The return code of condition_eval call was 2xx but no parameters where returned",
+        ) {
+            Parameter::SimpleParameter {  value, .. } => serde_json::from_str(&value)?,
+            Parameter::ComplexParameter {
+                mut content_handle, ..
+            } => {
+                let mut content = String::new();
+                content_handle.read_to_string(&mut content)?;
+                serde_json::from_str(&content)?
+            }
+        };
+        Ok(condition)
+    } else {
+        let mut signal: Option<Signal> = None;
+        let mut signal_text: Option<String> = None;
+        while let Some(param) = result.content.pop() {
+            let p_name: String;
+            let mut p_content = String::new();
+            match param {
+                Parameter::SimpleParameter { name, value, .. } => {
+                    p_name = name;
+                    p_content = value;
+                },
+                Parameter::ComplexParameter { name, mut content_handle, .. } => {
+                    p_name = name;
+                    content_handle.read_to_string(&mut p_content);
+                },
+            };
+            match p_name.as_str() {
+                // If this is set -> loop and try again on Signal::Again
+                    // Handle others based on ruby code
+                    "signal" => {
+                        signal = {
+                            let signal_enum = if let Some(enum_name) = p_content.split("::").last() {
+                                enum_name.trim()
+                            } else {
+                                &p_content
+                            };
+                            // Enums are serialized as strings!
+                            let signal_enum = format!("\"{signal_enum}\"");
+                            match serde_json::from_str(&signal_enum) {
+                                Ok(res) => res,
+                                Err(err) => {
+                                    log::error!("Encountered error deserializing signal: {:?}, received: {}", err, p_content);
+                                    return Err(Error::JsonError(err));
+                                }
+                            }
+                        };
+                    }
+                    "signal_text" => {
+                        signal_text = if p_content.starts_with("\"") {
+                            // In case we have a string, strip them
+                            match serde_json::from_str(&p_content) {
+                                Ok(res) => res,
+                                Err(err) => {
+                                    log::error!("Encountered error deserializing signal_text: {:?}, received: {}", err, p_content);
+                                    return Err(Error::JsonError(err));
+                                }
+                            }
+                        } else {
+                            // In case we have a hash
+                            Some(p_content)
+                        };
+                    }
+                    x => {
+                        log::info!("Eval endpoint send unexpected part: {x}");
+                        log::info!("Content: {}", p_content);
+                        continue;
+                    }
+            }
+        };
+        let signal_text = match signal_text {
+            Some(text) => text,
+            None => "".to_owned(),
+        };
+        match signal.as_ref() {
+            Some(signal) => {
+                match signal {
+                    // Actual signals are handed over as Signals (different from Error::Signal as the eval result will be required here)
+                    Signal::Error => Err(Error::EvalError(EvalError::RuntimeError(
+                        format!("{} {}", "Condition", signal_text),
+                    ))),
+                    // The code related error signals are converted to actual errors and handled separately
+                    Signal::SyntaxError => {
+                        Err(Error::EvalError(EvalError::SyntaxError(signal_text)))
+                    }
+                    x => {
+                        log::error!(
+                            "Got signaled: {:?} with text: {} when evaluating {}",
+                            x,
+                            signal_text,
+                            condition
+                        );
+                        Err(Error::EvalError(EvalError::GeneralEvalError(
+                            format!(
+                                "Got signaled: {:?} with text: {} when evaluating {}",
+                                x,
+                                signal_text,
+                                condition))))
+                    }
+                }
+            }
+            None => {
+                Err(Error::EvalError(EvalError::GeneralEvalError(
+                    format!("Response of Eval Service is {}, eval result was returned but signal is missing", status))))
+            }
+        }
+    }
+}
+
 /**
  * Sends an expression and the context to evaluate it in to the evaluation backend
  * Returns an error if:
@@ -40,26 +202,12 @@ pub fn evaluate_expression(
     )?;
     {
         // Construct multipart request
-        //let expression = encode(expression);
         client.add_parameter(Parameter::SimpleParameter {
             name: "code".to_owned(),
             value: expression.to_owned(),
             param_type: http_helper::ParameterType::Body,
         });
         let data_map = json!(dynamic_context.data);
-        /* {
-            Ok(res) => res,
-            Err(err) => {
-                log::error!(
-                    "Failed to deserialize data to send in JSON format: {:?}",
-                    err
-                );
-                panic!(
-                    "Failed to deserialize data to send in JSON format: {:?}",
-                    err
-                )
-            }
-        }; */
         log::info!("For evaluation, sending data: {:?}", data_map);
         client.add_complex_parameter(
             "dataelements",
@@ -144,6 +292,7 @@ pub fn evaluate_expression(
                         }
                     }
                 } else {
+                    log::error!("Received simple parameter with name {}. We ignore these currently", name);
                     continue;
                 }
             }
@@ -391,7 +540,8 @@ pub fn structurize_result(
     options: &HashMap<String, String>,
     body: &[u8],
 ) -> Result<String> {
-    let mut client = http_helper::Client::new(eval_backend_structurize_url, http_helper::Method::PUT)?;
+    let mut client =
+        http_helper::Client::new(eval_backend_structurize_url, http_helper::Method::PUT)?;
     let mut body_file = tempfile()?;
     body_file.write_all(body)?;
     body_file.rewind()?;
@@ -523,7 +673,8 @@ mod test {
             },
         ];
 
-        let mut client = http_helper::Client::new(test_endpoint, http_helper::Method::POST).unwrap();
+        let mut client =
+            http_helper::Client::new(test_endpoint, http_helper::Method::POST).unwrap();
         client.add_parameters(params);
         let response = client.execute_raw().unwrap();
         let body = str::from_utf8(&response.body).unwrap();

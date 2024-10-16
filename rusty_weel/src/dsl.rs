@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::{data_types::HTTPParams, dsl_realization::Result};
+use crate::{data_types::{ChooseVariant, HTTPParams}, dsl_realization::Result};
 
 pub trait DSL {
     /**
@@ -61,11 +61,21 @@ pub trait DSL {
     fn critical_do(&self, mutex_id: &str, lambda: impl Fn() -> Result<()> + Sync) -> Result<()>;
 
     /**
-     * Implements
+     * Implements the BPMN choice in the dsl
      */
-    fn choose(&self, variant: &str, lambda: impl Fn() -> Result<()> + Sync) -> Result<()>;
+    fn choose(self: Arc<Self>, variant: ChooseVariant, lambda: impl Fn() -> Result<()> + Sync) -> Result<()>;
 
-    fn alternative(&self, condition: &str, lambda: impl Fn() -> Result<()> + Sync) -> Result<()>;
+    /**
+     * Implements a single branch of the BPMN choice
+     * lambda will be executed if the provided condition is true, or if search mode is true (as the start position might be in any branch)
+     */
+    fn alternative(self: Arc<Self>, condition: &str, lambda: impl Fn() -> Result<()> + Sync) -> Result<()>;
+
+    /**
+     * Implements otherwise branch of the BPMN choice
+     * lambda will be executed none of the `alternative` branch conditions are true, or if search mode is true (as the start position might be in any branch)
+     */
+    fn otherwise(self: Arc<Self>, lambda: impl Fn() -> Result<()> + Sync) -> Result<()>;
 
     fn stop(&self, label: &str) -> Result<()>;
 }

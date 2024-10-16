@@ -1028,6 +1028,25 @@ impl ConnectionWrapper {
             }
         )
     }
+    
+    pub fn split_branches(&self, branches: &HashMap<i32, Vec<String>>) -> Result<()> {
+        let content = 
+            json!({
+                "instance_uuid": self.weel().uuid(),
+                "branches": branches
+            });
+        self.inform("gateway/split", Some(content))
+    }
+
+
+    pub fn join_branches(&self, branches: HashMap<i32, Vec<String>>) -> Result<()> {
+        let content = 
+            json!({
+                "instance_uuid": self.weel().uuid(),
+                "branches": branches
+            });
+        self.inform("gateway/join", Some(content))
+    }
 }
 
 fn contains_non_empty(options: &HashMap<String, String>, key: &str) -> bool {

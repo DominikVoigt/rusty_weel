@@ -164,6 +164,8 @@ fn startup(stop_signal_receiver: mpsc::Receiver<()>) -> Arc<Weel> {
             // to here
             local: String::new(),
             branches: Vec::new(),
+            alternative_mode: Vec::new(),
+            alternative_executed: Vec::new()
         }),
     );
 

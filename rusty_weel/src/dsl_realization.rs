@@ -16,10 +16,10 @@ use rand::Rng;
 use reqwest::header::ToStrError;
 use rusty_weel_macro::get_str_from_value;
 
-use crate::connection_wrapper::ConnectionWrapper;
+use crate::connection_wrapper::{self, ConnectionWrapper};
 use crate::data_types::{
-    BlockingQueue, CancelCondition, DynamicData, HTTPParams, InstanceMetaData, State, StaticData,
-    Status, ThreadInfo,
+    BlockingQueue, CancelCondition, ChooseVariant, DynamicData, HTTPParams, InstanceMetaData,
+    State, StaticData, Status, ThreadInfo,
 };
 use crate::dsl::DSL;
 use crate::eval_helper::{self, EvalError};
@@ -114,16 +114,100 @@ impl DSL for Weel {
         todo!()
     }
 
-    fn choose(&self, variant: &str, lambda: impl Fn() -> Result<()> + Sync) -> Result<()> {
-        println!("Executing choose");
-        lambda();
-        todo!()
+    fn choose(
+        self: Arc<Self>,
+        variant: ChooseVariant,
+        lambda: impl Fn() -> Result<()> + Sync,
+    ) -> Result<()> {
+        if matches!(
+            *self.state.lock().unwrap(),
+            State::Stopping | State::Finishing | State::Stopped
+        ) {
+            return Ok(());
+        }
+
+        let current_thread = thread::current().id();
+        let thread_info_map = self.thread_information.lock().unwrap();
+        // Unwrap as we have precondition that thread info is available on spawning
+        let mut thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
+        thread_info.alternative_executed.push(false);
+        thread_info.alternative_mode.push(variant);
+
+        let connection_wrapper = ConnectionWrapper::new(self.clone(), None, None);
+        connection_wrapper.split_branches(&thread_info.branch_traces)?;
+        drop(thread_info);
+        drop(thread_info_map);
+        self.clone().execute_lambda(lambda);
+        let current_thread = thread::current().id();
+        let thread_info_map = self.thread_information.lock().unwrap();
+        // Unwrap as we have precondition that thread info is available on spawning
+        let mut thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
+
+        thread_info.alternative_executed.pop();
+        thread_info.alternative_mode.pop();
+        Ok(())
     }
 
-    fn alternative(&self, condition: &str, lambda: impl Fn() -> Result<()> + Sync) -> Result<()> {
-        println!("Executing alternative, ignoring condition: {}", condition);
-        lambda();
-        todo!()
+    fn alternative(
+        self: Arc<Self>,
+        condition: &str,
+        lambda: impl Fn() -> Result<()> + Sync,
+    ) -> Result<()> {
+        let error_message =
+            "Should be present as alternative is called within a choose that pushes element in";
+        if matches!(
+            *self.state.lock().unwrap(),
+            State::Stopping | State::Finishing | State::Stopped
+        ) {
+            return Ok(());
+        }
+
+        let current_thread = thread::current().id();
+        let thread_info_map = self.thread_information.lock().unwrap();
+        // Unwrap as we have precondition that thread info is available on spawning
+        let mut thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
+
+        let choice_is_exclusive = matches!(
+            thread_info.alternative_mode.last().expect(error_message,),
+            ChooseVariant::Exclusive
+        );
+        // Ot
+        let other_branch_executed = *thread_info
+            .alternative_executed
+            .last()
+            .expect(error_message);
+        if choice_is_exclusive && other_branch_executed {
+            return Ok(());
+        }
+
+        let condition = self.clone().evaluate_condition(condition);
+        // Make sure only one thread is executed for choice
+        if condition {
+            *thread_info
+                .alternative_executed
+                .last_mut()
+                .expect(error_message) = true;
+        }
+        drop(thread_info);
+        drop(thread_info_map);
+
+        let in_search_mode = self.in_search_mode(None);
+
+        if condition || in_search_mode {
+            self.execute_lambda(lambda);
+        }
+
+        let current_thread = thread::current().id();
+        let thread_info_map = self.thread_information.lock().unwrap();
+        // Unwrap as we have precondition that thread info is available on spawning
+        let mut thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
+        if in_search_mode != self.in_search_mode(None) {
+            *thread_info
+                .alternative_executed
+                .last_mut()
+                .expect(error_message) = true;
+        }
+        Ok(())
     }
 
     fn loop_exec(
@@ -191,7 +275,7 @@ impl Weel {
                             let mut state = self.state.lock().unwrap();
                             match *state {
                                 State::Running | State::Finishing => {
-                                    let positions= self.positions.lock().unwrap().clone();
+                                    let positions = self.positions.lock().unwrap().clone();
                                     let ipc = json!({
                                         "unmark": positions
                                     });
@@ -310,7 +394,9 @@ impl Weel {
                 static_data.instance_id, vote_topic
             ),
         )?;
-        let content = content_node.as_object_mut().expect("content has to be an object");
+        let content = content_node
+            .as_object_mut()
+            .expect("content has to be an object");
         for client in redis_helper
             .extract_handler(&static_data.instance_id, &handler)
             .iter()
@@ -414,7 +500,9 @@ impl Weel {
         key: &str,
         mut content_node: serde_json::Value,
     ) -> Result<()> {
-        let content = content_node.as_object_mut().expect("Construct basic content has to return json object");
+        let content = content_node
+            .as_object_mut()
+            .expect("Construct basic content has to return json object");
         content.insert("key".to_owned(), serde_json::Value::String(key.to_owned()));
         self.redis_notifications_client
             .lock()
@@ -641,7 +729,7 @@ impl Weel {
                                 None,
                                 None,
                             );
-                            let mut content = json!({
+                            let content = json!({
                                 "wait": weel_position
                             });
                             connection_wrapper.inform_position_change(Some(content))?;
@@ -797,7 +885,7 @@ impl Weel {
                             connection_wrapper.inform_activity_done()?;
                             weel_position.handler_passthrough = None;
                             weel_position.detail = Mark::After;
-                            let mut content = json!({
+                            let content = json!({
                                 "after": weel_position
                             });
 
@@ -1013,6 +1101,52 @@ impl Weel {
         }
     }
 
+    fn evaluate_condition(self: Arc<Self>, condition: &str) -> bool {
+        let connection_wrapper = ConnectionWrapper::new(self.clone(), None, None);
+        let current_thread = thread::current();
+        let thread_info_map = self.thread_information.lock().unwrap();
+        let thread_info = thread_info_map.get(&current_thread.id()).unwrap().borrow();
+        let thread_local = thread_info.local.clone();
+        drop(thread_info);
+        drop(thread_info_map);
+        let result = eval_helper::test_condition(
+            &self.context.lock().unwrap(),
+            &self.opts,
+            condition,
+            &thread_local,
+            connection_wrapper.additional(),
+        );
+        match result {
+            Ok(cond) => cond,
+            Err(err) => {
+                *self.state.lock().unwrap() = State::Stopping;
+                log::error!(
+                    "Encountered error when evaluating condition {condition}: {:?}",
+                    err
+                );
+                match ConnectionWrapper::new(self.clone(), None, None).inform_syntax_error(err, Some(condition)) {
+                    Ok(_) => {},
+                    Err(c_err) => log::error!("Error occured when evaluating condition, but informing CPEE failed: {:?}", c_err),
+                }
+                false
+            }
+        }
+    }
+
+    fn execute_lambda(self: &Arc<Self>, lambda: impl Fn() -> Result<()> + Sync) {
+        let result = lambda();
+        match result {
+            Ok(()) => {}
+            Err(err) => {
+                *self.state.lock().unwrap() = State::Stopping;
+                match ConnectionWrapper::new(self.clone(), None, None).inform_syntax_error(err, None) {
+                    Ok(_) => {},
+                    Err(c_err) => log::error!("Error occured when executing lambda, but informing CPEE failed: {:?}", c_err),
+                }
+            }
+        }
+    }
+
     /**
      * Checks whether the provided label is valid
      */
@@ -1090,7 +1224,7 @@ impl Weel {
     ) -> Result<Position> {
         // TODO: We could also guard the thread_info with a mutex again
         let mut ipc_node = json!({});
-        let mut ipc = ipc_node
+        let ipc = ipc_node
             .as_object_mut()
             .expect("Has to be object as just created");
         let current_thread = thread::current();
@@ -1142,11 +1276,12 @@ impl Weel {
             if !search_positions.is_empty() {
                 if !ipc.contains_key("unmark") {
                     ipc.insert("unmark".to_owned(), json!([]));
-                } 
+                }
                 search_positions.iter().for_each(|(_, value)| {
                     ipc.get_mut("unmark")
                         .expect("we added unmark above")
-                        .as_array_mut().expect("has to be array")
+                        .as_array_mut()
+                        .expect("has to be array")
                         .push(json!(value));
                 });
             }
@@ -1175,7 +1310,11 @@ impl Weel {
                 if !ipc.contains_key("unmark") {
                     ipc.insert("unmark".to_owned(), json!([]));
                 }
-                ipc.get_mut("unmark").expect("has to be present").as_array_mut().expect("Has to be array").push(json!(branch_position));
+                ipc.get_mut("unmark")
+                    .expect("has to be present")
+                    .as_array_mut()
+                    .expect("Has to be array")
+                    .push(json!(branch_position));
             };
         };
         ConnectionWrapper::new(self.clone(), None, None).inform_position_change(Some(ipc_node))?;
