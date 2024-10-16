@@ -46,12 +46,13 @@ impl RedisHelper {
     }
 
     fn target_worker(&mut self) -> u32 {
-        self.last = if self.last >= self.number_workers {
-            0
-        } else {
-            self.last + 1
-        };
-        self.last
+        let mut next = self.last + 1;
+        // If we have 2 workers, our worker ids should be (0)0 and (0)1 
+        if next > (self.number_workers - 1) {
+            next = 0;
+        }
+        self.last = next;
+        next
     }
 
     /**
@@ -104,7 +105,7 @@ impl RedisHelper {
         let mut payload = HashMap::new();
         payload.insert("cpee",                Value::String(cpee_url.clone()));      
         payload.insert("instance-url",        Value::String(format!("{}/{}", cpee_url, instance_id.clone())));          
-        payload.insert("instance",            Value::String(instance_id.clone())) ;      
+        payload.insert("instance",            Value::Number(instance_id.into())) ;      
         payload.insert("topic",               Value::String(topic.to_owned()));  
         payload.insert("type",                Value::String(message_type.to_owned()));  
         payload.insert("name",                Value::String(name.to_owned()));  
@@ -128,7 +129,7 @@ impl RedisHelper {
         }
     }
 
-    pub fn extract_handler(&mut self, instance_id: &str, key: &str) -> HashSet<String> {
+    pub fn extract_handler(&mut self, instance_id: u32, key: &str) -> HashSet<String> {
         self.connection
             .smembers(format!("instance:{}/handlers/{})", instance_id, key))
             .expect("Could not extract handlers")
@@ -275,7 +276,7 @@ impl RedisHelper {
         Ok(())
     }
 
-    pub fn get_attributes(&mut self, instance_id: &str) -> Result<HashMap<String, String>> {
+    pub fn get_attributes(&mut self, instance_id: u32) -> Result<HashMap<String, String>> {
         let attributes_key = format!("instance:{instance_id}/attributes");
         let attribute_names: Vec<String> = self.connection.zrange(&attributes_key, 0, -1)?;
         let mut attributes = HashMap::with_capacity(attribute_names.len());
@@ -620,7 +621,7 @@ mod test {
         attributes.insert("info".to_owned(), "test_info".to_owned());
 
         StaticData {
-            instance_id: "test_id".to_owned(),
+            instance_id: 12,
             host: "localhost".to_owned(),
             cpee_base_url: "localhost/cpee".to_owned(),
             redis_url: None,
@@ -637,7 +638,7 @@ mod test {
 
     fn get_tcp_configuration() -> StaticData {
         StaticData {
-            instance_id: "test_id".to_owned(),
+            instance_id: 12,
             host: "localhost".to_owned(),
             cpee_base_url: "localhost/cpee".to_owned(),
             // Default port

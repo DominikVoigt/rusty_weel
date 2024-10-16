@@ -110,7 +110,7 @@ fn startup(stop_signal_receiver: mpsc::Receiver<()>) -> Arc<Weel> {
         }
     };
     let attributes = match RedisHelper::new(&opts, "attributes") {
-        Ok(mut redis) => match redis.get_attributes(&opts.instance_id) {
+        Ok(mut redis) => match redis.get_attributes(opts.instance_id) {
             Ok(attributes) => attributes,
             Err(err) => {
                 log::error!("Error during startup when connecting to redis: {:?}", err);
