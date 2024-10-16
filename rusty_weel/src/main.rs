@@ -181,7 +181,7 @@ fn startup(stop_signal_receiver: mpsc::Receiver<()>) -> Arc<Weel> {
 
 fn init_logger() -> () {
     env_logger::Builder::from_default_env()
-        .filter_level(log::LevelFilter::Debug)
+        .filter_level(log::LevelFilter::Error)
         .format(|buf, record| {
             let style = buf.default_level_style(record.level());
             //buf.default_level_style(record.level());
