@@ -1,5 +1,4 @@
 use http_helper::{header_map_to_hash_map, Parameter};
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use regex::Regex;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde_json::{json, Value};
@@ -296,7 +295,7 @@ impl ConnectionWrapper {
             let error: Mutex<Option<Error>> = Mutex::new(None);
             // Only translate arguments that are expressions and that have actual expressions in them (expression_value should imply value is not empty)
             let mapped_arguments: Vec<KeyValuePair> = arguments
-                .into_par_iter()
+                .into_iter()
                 .filter(|argument| argument.expression_value && argument.value.is_some())
                 .filter_map(|argument| {
                     if argument.expression_value {
