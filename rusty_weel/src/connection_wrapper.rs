@@ -32,7 +32,7 @@ pub struct ConnectionWrapper {
     // We keep them as arrays to be flexible but will only contain one element for now
     // Contains the actual endpoint URL
     handler_endpoints: Vec<String>,
-    // Original endpoint without the twintranslate
+    // Original endpoint without the sim_translate
     handler_endpoint_origin: Vec<String>,
     // Unique identifier (randomly created)
     pub handler_activity_uuid: String,
@@ -270,19 +270,19 @@ impl ConnectionWrapper {
             }
         };
 
-        // Resolve the endpoint name to the actual correct endpoint (incl. twin_translate)
+        // Resolve the endpoint name to the actual correct endpoint (incl. sim_translate)
         if endpoint_names.len() > 0 {
             self.resolve_endpoints(&contex_snapshot.endpoints, endpoint_names);
 
-            match weel.attributes.get("twin_engine") {
-                Some(twin_engine_url) => {
-                    if !twin_engine_url.is_empty() {
+            match weel.attributes.get("sim_engine") {
+                Some(sim_engine_url) => {
+                    if !sim_engine_url.is_empty() {
                         self.handler_endpoint_origin = self.handler_endpoints.clone();
 
                         let endpoint = encode(self.handler_endpoints.get(0).expect(""));
                         self.handler_endpoints = vec![format!(
                             "{}?original_endpoint={}",
-                            twin_engine_url, endpoint
+                            sim_engine_url, endpoint
                         )];
                     }
                 }
@@ -548,9 +548,9 @@ impl ConnectionWrapper {
             body = response.body;
 
             if status == 561 {
-                match weel.attributes.get("twin_translate") {
-                    Some(twin_translate) => {
-                        Self::handle_twin_translate(twin_translate, &mut headers, &mut this)?;
+                match weel.attributes.get("sim_translate") {
+                    Some(sim_translate) => {
+                        Self::handle_sim_translate(sim_translate, &mut headers, &mut this)?;
                     }
                     None => this.handler_endpoints = this.handler_endpoint_origin.clone(),
                 }
@@ -626,18 +626,18 @@ impl ConnectionWrapper {
         Ok(())
     }
 
-    fn handle_twin_translate(
-        twin_translate_url: &String,
+    fn handle_sim_translate(
+        sim_translate_url: &String,
         headers: &mut HeaderMap,
         this: &mut std::sync::MutexGuard<ConnectionWrapper>,
     ) -> Result<()> {
-        let client = http_helper::Client::new(&twin_translate_url, http_helper::Method::GET)?;
+        let client = http_helper::Client::new(&sim_translate_url, http_helper::Method::GET)?;
         let result = client.execute()?;
         let status = result.status_code;
         let result_headers = result.headers;
         let mut content = result.content;
         Ok(if status >= 200 && status < 300 {
-            let translation_type = match headers.get("CPEE-TWIN-TASKTYPE") {
+            let translation_type = match headers.get("CPEE-SIM-TASKTYPE") {
                 Some(transl_type) => match transl_type.to_str()? {
                     "i" => "instantiation",
                     "ir" => "ipc-receive",
@@ -914,9 +914,9 @@ impl ConnectionWrapper {
         headers.append("CPEE-ACTIVITY", HeaderValue::from_str(&position)?);
         headers.append("CPEE-LABEL", HeaderValue::from_str(&self.activity_id)?);
 
-        let twin_target = data.attributes.get("twin_target");
-        if let Some(twin_target) = twin_target {
-            headers.append("CPEE-TWIN-TARGET", HeaderValue::from_str(twin_target)?);
+        let sim_target = data.attributes.get("sim_target");
+        if let Some(sim_target) = sim_target {
+            headers.append("CPEE-SIM-TARGET", HeaderValue::from_str(sim_target)?);
         }
 
         for attribute in data.attributes.iter() {
