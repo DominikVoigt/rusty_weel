@@ -396,6 +396,7 @@ impl Weel {
                     // TODO: Where will this be set to stopped?
                     *state = State::Stopping;
                     // Wait for instance to stop
+                    drop(state);
                     let rec_result = self.stop_signal_receiver.lock().unwrap().recv();
                     if matches!(rec_result, Err(_)) {
                         log::error!("Error receiving termination signal for model thread. Sender must have been dropped.")
