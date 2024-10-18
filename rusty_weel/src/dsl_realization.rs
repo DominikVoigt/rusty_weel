@@ -375,7 +375,8 @@ impl Weel {
     }
 
     fn recursive_join(&self) {
-        todo!("Implement recursive join")
+        // TODO: Implement recursive join, this should not be required?
+        log::error!("Recursive join not yet impemented/removed")
     }
 
     fn abort_start(&self) {
