@@ -223,6 +223,7 @@ fn setup_signal_handler(weel: &Arc<Weel>) {
 
     if let Err(err) = ctrlc::set_handler(move || {
         log::info!("Received SIGINT/SIGTERM/SIGHUP. Set state to stopping...");
+        log::info!("Handling signal on thread: {:?}", thread::current().id());
         let res = weel.stop_weel();
         match res {
             Ok(_) => {
