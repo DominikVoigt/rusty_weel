@@ -49,7 +49,6 @@ fn main() {
             "###}),
             Option::None,
         )?;
-        println!("Weel data after call: {:?}", weel().context.lock().unwrap());
         /*
         weel().parallel_do(Option::None, "last", move || -> Result<()> {
             weel().loop_exec(weel().pre_test("data.persons > 0"), || -> Result<()> {
@@ -181,7 +180,7 @@ fn startup(stop_signal_receiver: mpsc::Receiver<()>) -> Arc<Weel> {
 
 fn init_logger() -> () {
     env_logger::Builder::from_default_env()
-        .filter_level(log::LevelFilter::Off)
+        .filter_level(log::LevelFilter::Info)
         .format(|buf, record| {
             let style = buf.default_level_style(record.level());
             //buf.default_level_style(record.level());

@@ -7,9 +7,9 @@ members = [
 
 
 [profile.release]
-#trip = true # Strips symbols from the binary
+trip = true # Strips symbols from the binary
 opt-level = "z" #optimize for size
 lto = true # Link time optimization
-#panic = "abort"
+panic = "abort"
 codegen-units = 1
 debug = 1
