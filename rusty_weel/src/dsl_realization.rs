@@ -389,6 +389,7 @@ impl Weel {
         {
             log::info!("Entered stop function of weel");
             let mut state = self.state.lock().expect("Could not lock state mutex");
+            log::info!("Acquired lock for state");
             match *state {
                 State::Ready => *state = State::Stopped,
                 State::Running => {
