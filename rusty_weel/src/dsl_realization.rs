@@ -185,13 +185,14 @@ impl DSL for Weel {
 
         drop(thread_info);
         drop(thread_info_map);
-        let condition = self.clone().evaluate_condition(condition)?;
+        let condition_res = self.clone().evaluate_condition(condition)?;
+        log::info!("Condition {condition}, was evaluated to: {}", condition_res);
         // Make sure only one thread is executed for choice
         
         let thread_info_map = self.thread_information.lock().unwrap();
         // Unwrap as we have precondition that thread info is available on spawning
         let mut thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
-        if condition {
+        if condition_res {
             *thread_info
                 .alternative_executed
                 .last_mut()
@@ -203,7 +204,7 @@ impl DSL for Weel {
 
         let in_search_mode = self.in_search_mode(None);
 
-        if condition || in_search_mode {
+        if condition_res || in_search_mode {
             self.execute_lambda(lambda)?;
         }
 
