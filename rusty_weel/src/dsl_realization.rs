@@ -155,7 +155,6 @@ impl DSL for Weel {
         condition: &str,
         lambda: impl Fn() -> Result<()> + Sync,
     ) -> Result<()> {
-        log::debug!("in alternative");
         if matches!(
             *self.state.lock().unwrap(),
             State::Stopping | State::Finishing | State::Stopped
@@ -167,28 +166,23 @@ impl DSL for Weel {
             "Should be present as alternative is called within a choose that pushes element in";
         let current_thread = thread::current().id();
 
-        log::debug!("in alternative2");
         let thread_info_map = self.thread_information.lock().unwrap();
         // Unwrap as we have precondition that thread info is available on spawning
         let thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
 
-        log::debug!("in alternative3");
         let choice_is_exclusive = matches!(
             thread_info.alternative_mode.last().expect(error_message,),
             ChooseVariant::Exclusive
         );
         
-        log::debug!("in alternative4");
         let other_branch_executed = *thread_info
             .alternative_executed
             .last()
             .expect(error_message);
         if choice_is_exclusive && other_branch_executed {
-            log::debug!("in alternative ret");
             return Ok(());
         }
 
-        log::debug!("in alternative eval");
         drop(thread_info);
         drop(thread_info_map);
         let condition = self.clone().evaluate_condition(condition)?;
@@ -204,7 +198,6 @@ impl DSL for Weel {
                 .expect(error_message) = true;
         }
 
-        log::debug!("in alternative5");
         drop(thread_info);
         drop(thread_info_map);
 
@@ -214,12 +207,10 @@ impl DSL for Weel {
             self.execute_lambda(lambda)?;
         }
 
-        log::debug!("in alternative6");
         let current_thread = thread::current().id();
         let thread_info_map = self.thread_information.lock().unwrap();
         // Unwrap as we have precondition that thread info is available on spawning
         let mut thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
-        log::debug!("in alternative7");
         if in_search_mode != self.in_search_mode(None) {
             *thread_info
                 .alternative_executed
