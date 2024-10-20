@@ -137,7 +137,11 @@ fn main() {
     };
 
     // Executes the code and blocks until it is finished
-    local_weel.start(model, stop_signal_sender);
+    let res = local_weel.clone().start(model, stop_signal_sender);
+    match res {
+        Ok(_) => {},
+        Err(err) => local_weel.handle_error(err),
+    }
     log::info!("At the end of main");
 }
 
@@ -229,7 +233,7 @@ fn startup(stop_signal_receiver: mpsc::Receiver<()>) -> Arc<Weel> {
 
 fn init_logger() -> () {
     env_logger::Builder::from_default_env()
-        .filter_level(log::LevelFilter::Info)
+        .filter_level(log::LevelFilter::Debug)
         .format(|buf, record| {
             let style = buf.default_level_style(record.level());
             //buf.default_level_style(record.level());

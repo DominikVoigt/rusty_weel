@@ -137,7 +137,9 @@ impl DSL for Weel {
         connection_wrapper.split_branches(&thread_info.branch_traces)?;
         drop(thread_info);
         drop(thread_info_map);
-        self.clone().execute_lambda(lambda);
+        log::debug!("before lambda");
+        self.clone().execute_lambda(lambda)?;
+        log::debug!("after lambda");
         let current_thread = thread::current().id();
         let thread_info_map = self.thread_information.lock().unwrap();
         // Unwrap as we have precondition that thread info is available on spawning
@@ -1428,7 +1430,7 @@ impl Weel {
         Ok(weel_position)
     }
 
-    fn handle_error(self: &Arc<Self>, err: Error) {
+    pub fn handle_error(self: &Arc<Self>, err: Error) {
         // TODO implement error handling that adheres to the handling in __weel_control_flow
         match self.clone().set_state(State::Stopping) {
             Ok(_) => {}
