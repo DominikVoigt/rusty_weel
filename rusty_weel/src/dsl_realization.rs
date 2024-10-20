@@ -207,6 +207,7 @@ impl DSL for Weel {
         if condition_res || in_search_mode {
             self.execute_lambda(lambda)?;
         }
+        log::debug!("at end of alternative1");
 
         let current_thread = thread::current().id();
         let thread_info_map = self.thread_information.lock().unwrap();
@@ -218,6 +219,7 @@ impl DSL for Weel {
                 .last_mut()
                 .expect(error_message) = true;
         }
+        log::debug!("at end of alternative2");
         Ok(())
     }
 
