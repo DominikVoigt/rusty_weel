@@ -104,7 +104,7 @@ pub struct DynamicData {
 pub struct Status {
     pub id: u32,
     pub message: String,
-    pub nudge: BlockingQueue<State>,
+    pub nudge: BlockingQueue<()>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Default)]
@@ -190,6 +190,7 @@ pub struct ThreadInfo {
     pub in_search_mode: bool,
     pub switched_to_execution: bool,
     pub no_longer_necessary: bool,
+    // Continue structure
     pub blocking_queue: Arc<Mutex<BlockingQueue<Signal>>>,
 
     // ID of this thread relative to its parent (not globaly unique), used mainly for debugging), this id is used within the branch_traces
