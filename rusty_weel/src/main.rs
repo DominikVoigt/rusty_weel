@@ -4,6 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{mpsc, Arc, Mutex};
 
 use indoc::indoc;
+use rusty_weel::data_types::ChooseVariant::Exclusive;
 
 use std::{panic, thread};
 
@@ -49,6 +50,54 @@ fn main() {
             "###}),
             Option::None,
         )?;
+
+        weel().choose(Exclusive, || {
+            weel().alternative("data.flag == true", || {
+                weel().call(
+                    "a2",
+                    "timeout",
+                    HTTPParams {
+                        label: "Timeout 1",
+                        method: Method::GET,
+                        arguments: Some(vec![
+                            new_key_value_pair("timeout", "3", false),
+                        ]),
+                    },
+                    Option::None,
+                    Option::None,
+                    Some(indoc! {r###"
+                    data.airline = result.value('id')
+                    data.costs += result.value('costs').to_f
+                    status.update 1, 'Hotel'
+                    "###}),
+                    Option::None,
+                )?;
+                Ok(())
+            })?;
+            weel().otherwise(|| {
+                weel().call(
+                    "a3",
+                    "timeout",
+                    HTTPParams {
+                        label: "Timeout 2",
+                        method: Method::GET,
+                        arguments: Some(vec![
+                            new_key_value_pair("timeout", "5", false),
+                        ]),
+                    },
+                    Option::None,
+                    Option::None,
+                    Some(indoc! {r###"
+                    data.airline = result.value('id')
+                    data.costs += result.value('costs').to_f
+                    status.update 1, 'Hotel'
+                    "###}),
+                    Option::None,
+                )?;
+                Ok(())
+            })?;
+            Ok(())
+        })?;
         /*
         weel().parallel_do(Option::None, "last", move || -> Result<()> {
             weel().loop_exec(weel().pre_test("data.persons > 0"), || -> Result<()> {
