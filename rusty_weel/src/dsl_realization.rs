@@ -137,9 +137,7 @@ impl DSL for Weel {
         connection_wrapper.split_branches(&thread_info.branch_traces)?;
         drop(thread_info);
         drop(thread_info_map);
-        log::debug!("before lambda");
         self.clone().execute_lambda(lambda)?;
-        log::debug!("after lambda");
         let current_thread = thread::current().id();
         let thread_info_map = self.thread_information.lock().unwrap();
         // Unwrap as we have precondition that thread info is available on spawning
@@ -191,12 +189,10 @@ impl DSL for Weel {
         drop(thread_info);
         drop(thread_info_map);
         let condition_res = self.clone().evaluate_condition(condition)?;
-        log::info!("Condition {condition}, was evaluated to: {}", condition_res);
         
         let thread_info_map = self.thread_information.lock().unwrap();
         let mut thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
         if condition_res {
-            log::debug!("Set alternative 1");
             // Make sure only one thread is executed for choice
             *thread_info
                 .alternative_executed
@@ -209,14 +205,11 @@ impl DSL for Weel {
         let in_search_mode = self.in_search_mode(None);
 
         if condition_res || in_search_mode {
-            log::debug!("Execute alternative lambda");
             self.execute_lambda(lambda)?;
         }
-        log::debug!("at end of alternative1");
 
         
         if in_search_mode != self.in_search_mode(None) {
-            log::debug!("Set alternative 2");
             let current_thread = thread::current().id();
             let thread_info_map = self.thread_information.lock().unwrap();
             // Unwrap as we have precondition that thread info is available on spawning
@@ -226,12 +219,10 @@ impl DSL for Weel {
                 .last_mut()
                 .expect(error_message) = true;
         }
-        log::debug!("at end of alternative2");
         Ok(())
     }
     
     fn otherwise(self: Arc<Self>, lambda: impl Fn() -> Result<()> + Sync) -> Result<()>{
-        log::debug!("in otherwise");
         if matches!(
             *self.state.lock().unwrap(),
             State::Stopping | State::Finishing | State::Stopped
@@ -242,7 +233,6 @@ impl DSL for Weel {
         let thread_info_map = self.thread_information.lock().unwrap();
         // Unwrap as we have precondition that thread info is available on spawning
         let thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
-        log::debug!("Alternative executed is: {:?}", thread_info.alternative_executed.last());
         let alternative_executed = *thread_info.alternative_executed.last().expect(
             "Should be present as alternative is called within a choose that pushes element in",
         );

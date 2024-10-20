@@ -52,7 +52,7 @@ fn main() {
         )?;
 
         weel().choose(Exclusive, || {
-            weel().alternative("data.flag == true", || {
+            weel().alternative("!data.flag", || {
                 weel().call(
                     "a2",
                     "timeout",
