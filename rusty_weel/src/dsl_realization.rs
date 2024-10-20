@@ -159,7 +159,7 @@ impl DSL for Weel {
         ) {
             return Ok(());
         }
-        
+
         let error_message =
             "Should be present as alternative is called within a choose that pushes element in";
         let current_thread = thread::current().id();
@@ -180,7 +180,7 @@ impl DSL for Weel {
             return Ok(());
         }
 
-        let condition = self.clone().evaluate_condition(condition);
+        let condition = self.clone().evaluate_condition(condition)?;
         // Make sure only one thread is executed for choice
         if condition {
             *thread_info
@@ -194,7 +194,7 @@ impl DSL for Weel {
         let in_search_mode = self.in_search_mode(None);
 
         if condition || in_search_mode {
-            self.execute_lambda(lambda);
+            self.execute_lambda(lambda)?;
         }
 
         let current_thread = thread::current().id();
@@ -221,7 +221,11 @@ impl DSL for Weel {
         let thread_info_map = self.thread_information.lock().unwrap();
         // Unwrap as we have precondition that thread info is available on spawning
         let thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
-        if self.in_search_mode(None) || !thread_info.alternative_executed.last().expect("Should be present as alternative is called within a choose that pushes element in") {
+        if self.in_search_mode(None)
+            || !thread_info.alternative_executed.last().expect(
+                "Should be present as alternative is called within a choose that pushes element in",
+            )
+        {
             self.execute_lambda(lambda);
         }
     }
@@ -260,23 +264,39 @@ impl DSL for Weel {
         let thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
         let no_longer_necessary = thread_info.no_longer_necessary;
         // Unwrap as we have precondition that thread info is available on spawning
-        if matches!(*self.state.lock().unwrap(), State::Stopping | State::Stopped | State::Finishing) || no_longer_necessary {
+        if matches!(
+            *self.state.lock().unwrap(),
+            State::Stopping | State::Stopped | State::Finishing
+        ) || no_longer_necessary
+        {
             return Ok(());
         }
 
         //TODO:gather traces in threads...
         if let Some(parent) = &thread_info.parent {
-            let mut parent_thread_info = thread_info_map.get(parent).expect("Since we have a reference, threadinfo of parent has to exist").borrow_mut();
-            if !parent_thread_info.branch_traces.contains_key(&thread_info.branch_id) {
-                parent_thread_info.branch_traces.insert(thread_info.branch_id, Vec::new());
+            let mut parent_thread_info = thread_info_map
+                .get(parent)
+                .expect("Since we have a reference, threadinfo of parent has to exist")
+                .borrow_mut();
+            if !parent_thread_info
+                .branch_traces
+                .contains_key(&thread_info.branch_id)
+            {
+                parent_thread_info
+                    .branch_traces
+                    .insert(thread_info.branch_id, Vec::new());
             }
-            parent_thread_info.branch_traces.get_mut(&thread_info.branch_id).unwrap().push(id.to_owned());
+            parent_thread_info
+                .branch_traces
+                .get_mut(&thread_info.branch_id)
+                .unwrap()
+                .push(id.to_owned());
         }
         self.weel_progress(id.to_owned(), "0".to_owned(), true)?;
-        *self.state.lock().unwrap() = State::Stopping;
+        self.clone().set_state(State::Stopping)?;
         Ok(())
     }
-    
+
     fn terminate(self: Arc<Self>) -> Result<()> {
         let in_search_mode = self.in_search_mode(None);
         if in_search_mode {
@@ -287,7 +307,11 @@ impl DSL for Weel {
         let thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
         let no_longer_necessary = thread_info.no_longer_necessary;
         // Unwrap as we have precondition that thread info is available on spawning
-        if matches!(*self.state.lock().unwrap(), State::Stopping | State::Stopped | State::Finishing) || no_longer_necessary {
+        if matches!(
+            *self.state.lock().unwrap(),
+            State::Stopping | State::Stopped | State::Finishing
+        ) || no_longer_necessary
+        {
             return Ok(());
         }
 
@@ -305,7 +329,7 @@ impl Weel {
         self: Arc<Self>,
         model: impl FnOnce() -> Result<()> + Send + 'static,
         stop_signal_sender: Sender<()>,
-    ) {
+    ) -> Result<()> {
         let content = json!({
             "state": "running"
         });
@@ -315,7 +339,7 @@ impl Weel {
                     {
                         // Use custom scope to ensure dropping occurs asap
                         self.positions.lock().unwrap().clear();
-                        *self.state.lock().unwrap() = State::Running;
+                        self.clone().set_state(State::Running)?;
                     }
                     // TODO: implement the __weel_control_flow error handling logic in the handle_error/handle_join error
                     let result = model();
@@ -339,7 +363,8 @@ impl Weel {
                                         .inform_position_change(Some(ipc))
                                     {
                                         Ok(()) => {
-                                            *state = State::Finished;
+                                            drop(state);
+                                            self.clone().set_state(State::Finished)?;
                                         }
                                         Err(err) => {
                                             self.handle_error(err);
@@ -372,6 +397,7 @@ impl Weel {
             }
             Err(err) => self.handle_error(err),
         }
+        Ok(())
     }
 
     fn recursive_join(&self) {
@@ -614,7 +640,7 @@ impl Weel {
         parameters: Option<HTTPParams>,
         endpoint_name: Option<&str>,
     ) -> Result<()> {
-        let position = self.position_test(activity_id)?;
+        let position = self.clone().position_test(activity_id)?;
         let in_search_mode = self.in_search_mode(Some(activity_id));
         if in_search_mode {
             return Ok(());
@@ -972,7 +998,7 @@ impl Weel {
                         if !state_stopping_or_finishing
                             && !self.vote_sync_after(&connection_wrapper)?
                         {
-                            *self.state.lock().unwrap() = State::Stopping;
+                            self.clone().set_state(State::Stopping)?;
                             weel_position.detail = "unmark".to_owned();
                         }
                     }
@@ -997,7 +1023,7 @@ impl Weel {
                             .inform_position_change(Some(ipc))?;
                     }
                     Signal::Stop | Signal::StopSkipManipulate => {
-                        *self.state.lock().unwrap() = State::Stopping;
+                        self.clone().set_state(State::Stopping)?;
                     }
                     Signal::Skip => {
                         log::info!("Received skip signal. Do nothing")
@@ -1011,7 +1037,7 @@ impl Weel {
                         connection_wrapper.inform_activity_failed(Error::EvalError(
                             EvalError::SyntaxError(message),
                         ))?;
-                        *self.state.lock().unwrap() = State::Stopping;
+                        self.clone().set_state(State::Stopping)?;
                     }
                     EvalError::Signal(_signal, _evaluation_result) => {
                         log::error!("Handling EvalError::Signal in weel_activity, this should never happen! Should be \"raised\" as Error::Signal");
@@ -1160,7 +1186,7 @@ impl Weel {
         }
     }
 
-    fn evaluate_condition(self: Arc<Self>, condition: &str) -> bool {
+    fn evaluate_condition(self: Arc<Self>, condition: &str) -> Result<bool> {
         let connection_wrapper = ConnectionWrapper::new(self.clone(), None, None);
         let current_thread = thread::current();
         let thread_info_map = self.thread_information.lock().unwrap();
@@ -1176,31 +1202,44 @@ impl Weel {
             connection_wrapper.additional(),
         );
         match result {
-            Ok(cond) => cond,
+            Ok(cond) => Ok(cond),
             Err(err) => {
-                *self.state.lock().unwrap() = State::Stopping;
+                self.clone().set_state(State::Stopping)?;
                 log::error!(
                     "Encountered error when evaluating condition {condition}: {:?}",
                     err
                 );
-                match ConnectionWrapper::new(self.clone(), None, None).inform_syntax_error(err, Some(condition)) {
-                    Ok(_) => {},
-                    Err(c_err) => log::error!("Error occured when evaluating condition, but informing CPEE failed: {:?}", c_err),
+                match ConnectionWrapper::new(self.clone(), None, None)
+                    .inform_syntax_error(err, Some(condition))
+                {
+                    Ok(_) => {}
+                    Err(c_err) => log::error!(
+                        "Error occured when evaluating condition, but informing CPEE failed: {:?}",
+                        c_err
+                    ),
                 }
-                false
+                Ok(false)
             }
         }
     }
 
-    fn execute_lambda(self: &Arc<Self>, lambda: impl Fn() -> Result<()> + Sync) {
+    fn execute_lambda(self: &Arc<Self>, lambda: impl Fn() -> Result<()> + Sync) -> Result<()> {
         let result = lambda();
         match result {
-            Ok(()) => {}
+            Ok(()) => Ok(()),
             Err(err) => {
-                *self.state.lock().unwrap() = State::Stopping;
-                match ConnectionWrapper::new(self.clone(), None, None).inform_syntax_error(err, None) {
-                    Ok(_) => {},
-                    Err(c_err) => log::error!("Error occured when executing lambda, but informing CPEE failed: {:?}", c_err),
+                self.clone().set_state(State::Stopping)?;
+                match ConnectionWrapper::new(self.clone(), None, None)
+                    .inform_syntax_error(err, None)
+                {
+                    Ok(_) => Ok(()),
+                    Err(c_err) => {
+                        log::error!(
+                            "Error occured when executing lambda, but informing CPEE failed: {:?}",
+                            c_err
+                        );
+                        Err(c_err)
+                    }
                 }
             }
         }
@@ -1209,11 +1248,11 @@ impl Weel {
     /**
      * Checks whether the provided label is valid
      */
-    fn position_test<'a>(&self, activity_id: &'a str) -> Result<&'a str> {
+    fn position_test<'a>(self: Arc<Self>, activity_id: &'a str) -> Result<&'a str> {
         if activity_id.chars().all(char::is_alphanumeric) {
             Ok(activity_id)
         } else {
-            *self.state.lock().unwrap() = State::Stopping;
+            self.clone().set_state(State::Stopping)?;
             Err(Error::GeneralError(format!(
                 "position: {activity_id} not valid"
             )))
@@ -1315,14 +1354,22 @@ impl Weel {
                 Position::new(
                     position.clone(),
                     uuid,
-                    if skip { "after".to_owned() } else { "at".to_owned() },
+                    if skip {
+                        "after".to_owned()
+                    } else {
+                        "at".to_owned()
+                    },
                     passthrough,
                 )
             } else {
                 Position::new(
                     position.clone(),
                     uuid,
-                    if skip { "after".to_owned() } else { "at".to_owned() },
+                    if skip {
+                        "after".to_owned()
+                    } else {
+                        "at".to_owned()
+                    },
                     None,
                 )
             };
@@ -1382,7 +1429,23 @@ impl Weel {
 
     fn handle_error(self: &Arc<Self>, err: Error) {
         // TODO implement error handling that adheres to the handling in __weel_control_flow
-        *self.state.lock().unwrap() = State::Stopping;
+        match self.clone().set_state(State::Stopping) {
+            Ok(_) => {}
+            Err(err) => {
+                log::error!("Encountered error: {:?}", err);
+                match ConnectionWrapper::new(self.clone(), None, None)
+                    .inform_connectionwrapper_error(err)
+                {
+                    Ok(_) => {}
+                    Err(err) => {
+                        log::error!(
+                            "Encountered error but informing CPEE of error failed: {:?}",
+                            err
+                        )
+                    }
+                };
+            }
+        };
         log::error!("Encountered error: {:?}", err);
         match ConnectionWrapper::new(self.clone(), None, None).inform_connectionwrapper_error(err) {
             Ok(_) => {}
@@ -1420,7 +1483,7 @@ impl Weel {
 
     /**
      * Sets the state of the weel
-     * 
+     *
      * Locks: state and potentially positions and status
      */
     fn set_state(self: Arc<Self>, new_state: State) -> Result<()> {
@@ -1437,7 +1500,10 @@ impl Weel {
         if matches!(new_state, State::Stopping | State::Finishing) {
             let status = self.status.lock().unwrap();
             status.nudge.wake_all();
-            recursive_continue(&self.thread_information.lock().unwrap(), &thread::current().id());
+            recursive_continue(
+                &self.thread_information.lock().unwrap(),
+                &thread::current().id(),
+            );
         }
 
         ConnectionWrapper::new(self.clone(), None, None).inform_state_change(new_state)?;
@@ -1450,7 +1516,11 @@ fn recursive_continue(
     thread_id: &ThreadId,
 ) {
     let thread_info = thread_info_map.get(thread_id).unwrap().borrow();
-    thread_info.blocking_queue.lock().unwrap().enqueue(Signal::None);
+    thread_info
+        .blocking_queue
+        .lock()
+        .unwrap()
+        .enqueue(Signal::None);
     if let Some(branch_event) = &thread_info.branch_event {
         // TODO: Unsure whether we can borrow here -> Where relative to this thread will this branch event exist?
         branch_event.enqueue(());
