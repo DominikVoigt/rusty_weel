@@ -150,6 +150,11 @@ impl DSL for Weel {
         Ok(())
     }
 
+    /**
+     * This is one of the branches
+     * 
+     * Note: Correctness requiers invariant: Branches need to be executed/evaluated sequentially! -> Otherwise dropping and picking up the thread info mutex is problematic!
+     */
     fn alternative(
         self: Arc<Self>,
         condition: &str,
@@ -167,7 +172,6 @@ impl DSL for Weel {
         let current_thread = thread::current().id();
 
         let thread_info_map = self.thread_information.lock().unwrap();
-        // Unwrap as we have precondition that thread info is available on spawning
         let thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
 
         let choice_is_exclusive = matches!(
@@ -183,16 +187,16 @@ impl DSL for Weel {
             return Ok(());
         }
 
+        // Fine to drop here since branches are executed sequentially
         drop(thread_info);
         drop(thread_info_map);
         let condition_res = self.clone().evaluate_condition(condition)?;
         log::info!("Condition {condition}, was evaluated to: {}", condition_res);
-        // Make sure only one thread is executed for choice
         
         let thread_info_map = self.thread_information.lock().unwrap();
-        // Unwrap as we have precondition that thread info is available on spawning
         let mut thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
         if condition_res {
+            // Make sure only one thread is executed for choice
             *thread_info
                 .alternative_executed
                 .last_mut()
@@ -204,6 +208,7 @@ impl DSL for Weel {
         let in_search_mode = self.in_search_mode(None);
 
         if condition_res || in_search_mode {
+            log::debug!("Execute alternative lambda");
             self.execute_lambda(lambda)?;
         }
         log::debug!("at end of alternative1");
@@ -243,6 +248,7 @@ impl DSL for Weel {
         if self.in_search_mode(None)
         || !alternative_executed
         {
+            log::debug!("Executing otherwise lambda");
             self.execute_lambda(lambda)?;
         }
         Ok(())
