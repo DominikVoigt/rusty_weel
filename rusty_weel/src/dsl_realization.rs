@@ -201,7 +201,6 @@ impl DSL for Weel {
 
         drop(thread_info);
         drop(thread_info_map);
-
         let in_search_mode = self.in_search_mode(None);
 
         if condition_res || in_search_mode {
@@ -209,11 +208,12 @@ impl DSL for Weel {
         }
         log::debug!("at end of alternative1");
 
-        let current_thread = thread::current().id();
-        let thread_info_map = self.thread_information.lock().unwrap();
-        // Unwrap as we have precondition that thread info is available on spawning
-        let mut thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
+        
         if in_search_mode != self.in_search_mode(None) {
+            let current_thread = thread::current().id();
+            let thread_info_map = self.thread_information.lock().unwrap();
+            // Unwrap as we have precondition that thread info is available on spawning
+            let mut thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
             *thread_info
                 .alternative_executed
                 .last_mut()
