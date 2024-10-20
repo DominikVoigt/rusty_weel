@@ -196,6 +196,7 @@ impl DSL for Weel {
         let thread_info_map = self.thread_information.lock().unwrap();
         let mut thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
         if condition_res {
+            log::debug!("Set alternative 1");
             // Make sure only one thread is executed for choice
             *thread_info
                 .alternative_executed
@@ -215,6 +216,7 @@ impl DSL for Weel {
 
         
         if in_search_mode != self.in_search_mode(None) {
+            log::debug!("Set alternative 2");
             let current_thread = thread::current().id();
             let thread_info_map = self.thread_information.lock().unwrap();
             // Unwrap as we have precondition that thread info is available on spawning
