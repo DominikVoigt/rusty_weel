@@ -155,6 +155,7 @@ impl DSL for Weel {
         condition: &str,
         lambda: impl Fn() -> Result<()> + Sync,
     ) -> Result<()> {
+        log::debug!("in alternative");
         if matches!(
             *self.state.lock().unwrap(),
             State::Stopping | State::Finishing | State::Stopped
@@ -213,6 +214,7 @@ impl DSL for Weel {
     }
 
     fn otherwise(self: Arc<Self>, lambda: impl Fn() -> Result<()> + Sync) -> Result<()>{
+        log::debug!("in otherwise");
         if matches!(
             *self.state.lock().unwrap(),
             State::Stopping | State::Finishing | State::Stopped
