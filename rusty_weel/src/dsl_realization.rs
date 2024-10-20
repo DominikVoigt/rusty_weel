@@ -241,7 +241,6 @@ impl DSL for Weel {
         if self.in_search_mode(None)
         || !alternative_executed
         {
-            log::debug!("Executing otherwise lambda");
             self.execute_lambda(lambda)?;
         }
         Ok(())
@@ -771,7 +770,6 @@ impl Weel {
                             thread_info_map.get(&current_thread).unwrap().borrow_mut();
                         // TODO: In manipulate we directly "abort" and do not run code, here we run code and then check for abort, is this correct?
                         let mut connection_wrapper = connection_wrapper_mutex.lock().unwrap();
-                        log::debug!("Parameters before prepare: {:?}", parameters);
                         let parameters = match connection_wrapper.prepare(
                             prepare_code,
                             thread_info.local.clone(),
@@ -1676,7 +1674,7 @@ mod test {
             }
         };
         let stat = StaticData {
-            instance_id: 162,
+            instance_id: 164,
             host: "localhost".to_owned(),
             cpee_base_url: "https://echo.bpm.in.tum.de/flow/engine".to_owned(),
             redis_url: None,

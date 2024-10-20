@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{mpsc, Arc, Mutex};
 
 use indoc::indoc;
-use rusty_weel::data_types::ChooseVariant::Exclusive;
+use rusty_weel::data_types::ChooseVariant::{Exclusive, Inclusive};
 
 use std::{panic, thread};
 
@@ -51,10 +51,28 @@ fn main() {
             Option::None,
         )?;
 
-        weel().choose(Exclusive, || {
-            weel().alternative("!data.flag", || {
+        weel().choose(Inclusive, || {
+            weel().alternative("data.flag", || {
                 weel().call(
                     "a2",
+                    "timeout",
+                    HTTPParams {
+                        label: "Timeout 1",
+                        method: Method::POST,
+                        arguments: Some(vec![
+                            new_key_value_pair("timeout", "5", false),
+                        ]),
+                    },
+                    Option::None,
+                    Option::None,
+                    None,
+                    Option::None,
+                )?;
+                Ok(())
+            })?;
+            weel().alternative("data.flag", || {
+                weel().call(
+                    "a4",
                     "timeout",
                     HTTPParams {
                         label: "Timeout 1",
