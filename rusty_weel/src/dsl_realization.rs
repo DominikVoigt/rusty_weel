@@ -1707,6 +1707,10 @@ mod test {
             "bookAir".to_owned(),
             "http://gruppe.wst.univie.ac.at/~mangler/services/airline.php".to_owned(),
         );
+        test_endpoints.insert(
+            "timeout".to_owned(),
+            "https-post://cpee.org/services/timeout.php".to_owned(),
+        );
 
         let test_data = json!({
             "from": "Vienna",
