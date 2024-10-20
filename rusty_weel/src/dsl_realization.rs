@@ -235,10 +235,13 @@ impl DSL for Weel {
         let thread_info_map = self.thread_information.lock().unwrap();
         // Unwrap as we have precondition that thread info is available on spawning
         let thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
+        let alternative_executed = *thread_info.alternative_executed.last().expect(
+            "Should be present as alternative is called within a choose that pushes element in",
+        );
+        drop(thread_info);
+        drop(thread_info_map);
         if self.in_search_mode(None)
-            || !thread_info.alternative_executed.last().expect(
-                "Should be present as alternative is called within a choose that pushes element in",
-            )
+        || !alternative_executed
         {
             self.execute_lambda(lambda)?;
         }
