@@ -1676,7 +1676,7 @@ mod test {
             }
         };
         let stat = StaticData {
-            instance_id: 163,
+            instance_id: 162,
             host: "localhost".to_owned(),
             cpee_base_url: "https://echo.bpm.in.tum.de/flow/engine".to_owned(),
             redis_url: None,
