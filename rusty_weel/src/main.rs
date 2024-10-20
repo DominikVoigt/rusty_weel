@@ -51,7 +51,7 @@ fn main() {
             Option::None,
         )?;
 
-        weel().choose(Inclusive, || {
+        weel().choose(Exclusive, || {
             weel().alternative("data.flag", || {
                 weel().call(
                     "a2",
