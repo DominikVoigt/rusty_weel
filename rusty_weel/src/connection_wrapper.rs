@@ -422,7 +422,6 @@ impl ConnectionWrapper {
                 "passthrough".to_owned(),
                 json!(passthrough),
             );
-            log::debug!("Sending request with parameters: {:?}", parameters);
             // parameters do not look exactly like in the original (string representation looks different):
             content.insert("parameters".to_owned(), json!(parameters));
             weel.redis_notifications_client.lock()?.notify(
