@@ -297,7 +297,6 @@ impl ConnectionWrapper {
             // Only translate arguments that are expressions and that have actual expressions in them (expression_value should imply value is not empty)
             let mapped_arguments: Vec<KeyValuePair> = arguments
                 .into_par_iter()
-                .filter(|argument| argument.expression_value && argument.value.is_some())
                 .filter_map(|argument| {
                     if argument.expression_value {
                         if let Some(value) = argument.value.as_ref() {
@@ -342,6 +341,7 @@ impl ConnectionWrapper {
                     }
                 })
                 .collect();
+
             let error = error.lock().unwrap().take();
             if let Some(err) = error {
                 return Err(err);
