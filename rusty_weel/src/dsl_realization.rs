@@ -227,7 +227,7 @@ impl DSL for Weel {
         log::debug!("at end of alternative2");
         Ok(())
     }
-
+    
     fn otherwise(self: Arc<Self>, lambda: impl Fn() -> Result<()> + Sync) -> Result<()>{
         log::debug!("in otherwise");
         if matches!(
@@ -240,6 +240,7 @@ impl DSL for Weel {
         let thread_info_map = self.thread_information.lock().unwrap();
         // Unwrap as we have precondition that thread info is available on spawning
         let thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
+        log::debug!("Alternative executed is: {:?}", thread_info.alternative_executed.last());
         let alternative_executed = *thread_info.alternative_executed.last().expect(
             "Should be present as alternative is called within a choose that pushes element in",
         );
