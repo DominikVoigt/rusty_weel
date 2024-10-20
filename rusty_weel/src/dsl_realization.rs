@@ -170,7 +170,7 @@ impl DSL for Weel {
         log::debug!("in alternative2");
         let thread_info_map = self.thread_information.lock().unwrap();
         // Unwrap as we have precondition that thread info is available on spawning
-        let mut thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
+        let thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
 
         log::debug!("in alternative3");
         let choice_is_exclusive = matches!(
@@ -184,11 +184,19 @@ impl DSL for Weel {
             .last()
             .expect(error_message);
         if choice_is_exclusive && other_branch_executed {
+            log::debug!("in alternative ret");
             return Ok(());
         }
 
+        log::debug!("in alternative eval");
+        drop(thread_info);
+        drop(thread_info_map);
         let condition = self.clone().evaluate_condition(condition)?;
         // Make sure only one thread is executed for choice
+        
+        let thread_info_map = self.thread_information.lock().unwrap();
+        // Unwrap as we have precondition that thread info is available on spawning
+        let mut thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
         if condition {
             *thread_info
                 .alternative_executed
