@@ -60,7 +60,7 @@ fn main() {
                         label: "Timeout 1",
                         method: Method::POST,
                         arguments: Some(vec![
-                            new_key_value_pair("timeout", "3", false),
+                            new_key_value_pair("timeout", "10", false),
                         ]),
                     },
                     Option::None,
@@ -78,7 +78,7 @@ fn main() {
                         label: "Timeout 2",
                         method: Method::POST,
                         arguments: Some(vec![
-                            new_key_value_pair("timeout", "5", false),
+                            new_key_value_pair("timeout", "20", false),
                         ]),
                     },
                     Option::None,
