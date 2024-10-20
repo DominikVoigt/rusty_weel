@@ -210,12 +210,12 @@ impl DSL for Weel {
         Ok(())
     }
 
-    fn otherwise(self: Arc<Self>, lambda: impl Fn() -> Result<()> + Sync) {
+    fn otherwise(self: Arc<Self>, lambda: impl Fn() -> Result<()> + Sync) -> Result<()>{
         if matches!(
             *self.state.lock().unwrap(),
             State::Stopping | State::Finishing | State::Stopped
         ) {
-            return;
+            return Ok(());
         };
         let current_thread = thread::current().id();
         let thread_info_map = self.thread_information.lock().unwrap();
@@ -226,8 +226,9 @@ impl DSL for Weel {
                 "Should be present as alternative is called within a choose that pushes element in",
             )
         {
-            self.execute_lambda(lambda);
+            self.execute_lambda(lambda)?;
         }
+        Ok(())
     }
 
     fn loop_exec(
@@ -1694,7 +1695,8 @@ mod test {
             "from": "Vienna",
             "to": "Prague",
             "persons": 3,
-            "costs": 0
+            "costs": 0,
+            "flag": true
         });
         let dynamic = DynamicData {
             endpoints: test_endpoints,

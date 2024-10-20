@@ -527,7 +527,7 @@ impl ConnectionWrapper {
                     ))
                 }
             };
-            log::debug!("Calling {:?} on endpoint: {}", parameters.method.clone(), &endpoint);
+            log::info!("Calling {:?} on endpoint: {}", parameters.method.clone(), &endpoint);
             let mut client = http_helper::Client::new(&endpoint, parameters.method.clone())?;
             client.set_request_headers(headers.clone());
             client.add_parameters(params);
