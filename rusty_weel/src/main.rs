@@ -58,18 +58,14 @@ fn main() {
                     "timeout",
                     HTTPParams {
                         label: "Timeout 1",
-                        method: Method::GET,
+                        method: Method::POST,
                         arguments: Some(vec![
                             new_key_value_pair("timeout", "3", false),
                         ]),
                     },
                     Option::None,
                     Option::None,
-                    Some(indoc! {r###"
-                    data.airline = result.value('id')
-                    data.costs += result.value('costs').to_f
-                    status.update 1, 'Hotel'
-                    "###}),
+                    None,
                     Option::None,
                 )?;
                 Ok(())
@@ -80,18 +76,14 @@ fn main() {
                     "timeout",
                     HTTPParams {
                         label: "Timeout 2",
-                        method: Method::GET,
+                        method: Method::POST,
                         arguments: Some(vec![
                             new_key_value_pair("timeout", "5", false),
                         ]),
                     },
                     Option::None,
                     Option::None,
-                    Some(indoc! {r###"
-                    data.airline = result.value('id')
-                    data.costs += result.value('costs').to_f
-                    status.update 1, 'Hotel'
-                    "###}),
+                    None,
                     Option::None,
                 )?;
                 Ok(())

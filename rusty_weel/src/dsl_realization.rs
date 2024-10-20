@@ -1709,7 +1709,7 @@ mod test {
         );
         test_endpoints.insert(
             "timeout".to_owned(),
-            "https-post://cpee.org/services/timeout.php".to_owned(),
+            "https://cpee.org/services/timeout.php".to_owned(),
         );
 
         let test_data = json!({
