@@ -63,6 +63,13 @@ pub enum State {
     Stopped,
     Finishing,
     Finished,
+    None
+}
+
+impl Default for State {
+    fn default() -> Self {
+        Self::None
+    }
 }
 
 /**
@@ -97,7 +104,7 @@ pub struct DynamicData {
 pub struct Status {
     pub id: u32,
     pub message: String,
-    pub nudge: BlockingQueue<Status>,
+    pub nudge: BlockingQueue<State>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Default)]
@@ -183,7 +190,7 @@ pub struct ThreadInfo {
     pub in_search_mode: bool,
     pub switched_to_execution: bool,
     pub no_longer_necessary: bool,
-    pub blocking_queue: Arc<BlockingQueue<Signal>>,
+    pub blocking_queue: Arc<Mutex<BlockingQueue<Signal>>>,
 
     // ID of this thread relative to its parent (not globaly unique), used mainly for debugging), this id is used within the branch_traces
     pub branch_id: i32,
@@ -225,12 +232,13 @@ pub enum ChooseVariant {
 #[derive(Debug, Default)]
 pub struct BlockingQueue<T> {
     queue: Mutex<VecDeque<T>>,
+    pub num_waiting: u32,
     signal: Condvar,
 }
 
-impl<T> BlockingQueue<T> {
+impl<T: Default> BlockingQueue<T> {
     pub fn new() -> Self {
-        BlockingQueue { queue: Mutex::new(VecDeque::new()), signal: Condvar::new() }
+        BlockingQueue { queue: Mutex::new(VecDeque::new()), num_waiting: 0, signal: Condvar::new() }
     }
     
     pub fn enqueue(&self, element: T) {
@@ -238,15 +246,26 @@ impl<T> BlockingQueue<T> {
         self.signal.notify_one();
     }
 
-    pub fn dequeue(&self) -> T {
+    pub fn dequeue(&mut self) -> T {
         let mut queue = self.queue.lock().unwrap();
         // Even though can wake up spuriously, not a problem if we check the condition repeatedly on whether the queue is non-empty
         while queue.is_empty() {
             log::info!("Queue empty, have to wait...");
+            self.num_waiting = self.num_waiting + 1;
             queue = self.signal.wait(queue).unwrap();
+        }
+
+        if self.num_waiting > 0 {
+            self.num_waiting = self.num_waiting - 1;
         }
         // Only leave queue if it contains an item -> can pop it off
         queue.pop_front().unwrap()
+    }
+
+    pub fn wake_all(&self) {
+        for _i in 0..self.num_waiting  {
+            self.enqueue(T::default());
+        }
     }
 
     pub fn clear(&self) {

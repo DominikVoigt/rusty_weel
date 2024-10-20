@@ -149,7 +149,7 @@ fn startup(stop_signal_receiver: mpsc::Receiver<()>) -> Arc<Weel> {
             in_search_mode: in_search_mode,
             switched_to_execution: false,
             no_longer_necessary: false,
-            blocking_queue: Arc::new(BlockingQueue::new()),
+            blocking_queue: Arc::new(Mutex::new(BlockingQueue::new())),
             // TODO: Unsure here
             branch_id: 0,
             branch_traces: HashMap::new(),

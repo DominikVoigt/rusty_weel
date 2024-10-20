@@ -643,7 +643,7 @@ impl Weel {
                 return Ok(());
             }
 
-            thread_info.blocking_queue = Arc::new(BlockingQueue::new());
+            thread_info.blocking_queue = Arc::new(Mutex::new(BlockingQueue::new()));
             let mut connection_wrapper = connection_wrapper_mutex.lock().unwrap();
             connection_wrapper.handler_continue = Some(thread_info.blocking_queue.clone());
 
@@ -822,7 +822,7 @@ impl Weel {
 
                             if should_block {
                                 log::info!("Waiting...");
-                                wait_result = Some(thread_queue.dequeue());
+                                wait_result = Some(thread_queue.lock().unwrap().dequeue());
                                 log::info!("Waited")
                             };
 
@@ -1417,6 +1417,32 @@ impl Weel {
             .get("info")
             .expect("Attributes do not contain info")
     }
+
+    /**
+     * Sets the state of the weel
+     * 
+     * Locks: state and potentially positions and status
+     */
+    fn set_state(self: Arc<Self>, new_state: State) -> Result<()> {
+        let mut state = self.state.lock().unwrap();
+        if *state == new_state && !matches!(*state, State::Ready) {
+            return Ok(());
+        }
+
+        if matches!(new_state, State::Running) {
+            *self.positions.lock().unwrap() = Vec::new();
+        }
+        *state = new_state;
+
+        if matches!(new_state, State::Stopping | State::Finishing) {
+            let status = self.status.lock().unwrap();
+            status.nudge.wake_all();
+            recursive_continue(&self.thread_information.lock().unwrap(), &thread::current().id());
+        }
+
+        ConnectionWrapper::new(self.clone(), None, None).inform_state_change(new_state)?;
+        Ok(())
+    }
 }
 
 fn recursive_continue(
@@ -1424,7 +1450,7 @@ fn recursive_continue(
     thread_id: &ThreadId,
 ) {
     let thread_info = thread_info_map.get(thread_id).unwrap().borrow();
-    thread_info.blocking_queue.enqueue(Signal::None);
+    thread_info.blocking_queue.lock().unwrap().enqueue(Signal::None);
     if let Some(branch_event) = &thread_info.branch_event {
         // TODO: Unsure whether we can borrow here -> Where relative to this thread will this branch event exist?
         branch_event.enqueue(());
@@ -1467,6 +1493,12 @@ pub enum Signal {
     SyntaxError,
     Error,
     UpdateAgain,
+}
+
+impl Default for Signal {
+    fn default() -> Self {
+        Signal::None
+    }
 }
 
 pub enum ActivityType {
