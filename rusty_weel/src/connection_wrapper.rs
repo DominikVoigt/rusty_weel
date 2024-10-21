@@ -460,6 +460,7 @@ impl ConnectionWrapper {
      *  - redis_notification_client (shortly)
      */
     pub fn curl(selfy: &Arc<Mutex<Self>>, parameters: &HTTPParams, weel: Arc<Weel>) -> Result<()> {
+        log::info!("Calling debug with parameters: {:?}", parameters);
         let mut this = selfy.lock().unwrap();
         let callback_id = generate_random_key();
         this.handler_passthrough = Some(callback_id.clone());
