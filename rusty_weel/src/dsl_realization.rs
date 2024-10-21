@@ -259,10 +259,15 @@ impl DSL for Weel {
         }
 
         if self.in_search_mode(None) {
-            // TODO: here we would need to adapt all lambdas to allow Option<Signal> or something
-            // catch :escape...
-            self.execute_lambda(&lambda)?;
-            // end
+            match self.execute_lambda(&lambda) {
+                Ok(()) => {}
+                Err(err) => {
+                    // If the lambda throws up a BreakLoop -> We land here
+                    if !matches!(err, Error::BreakLoop()) {
+                        return Err(err);
+                    }
+                }
+            };
             if self.in_search_mode(None) {
                 return Ok(());
             } else {
@@ -273,21 +278,43 @@ impl DSL for Weel {
         let mut loop_guard: u32 = 0;
         let loop_id = generate_random_key();
         // catch :escape
-
         match test_type {
             "pre_test" => {
                 while self.clone().evaluate_condition(condition)? && !self.clone().should_skip() {
                     loop_guard += 1;
-                    self.execute_lambda(&lambda)?;
+
+                    match self.execute_lambda(&lambda) {
+                        Ok(()) => {}
+                        Err(err) => {
+                            if matches!(err, Error::BreakLoop()) {
+                                // If we got an escape instruction -> Break this loop, other errors are bubbled further up
+                                break;
+                            } else {
+                                return Err(err);
+                            }
+                        }
+                    };
                     ConnectionWrapper::loop_guard(self.clone(), &loop_id);
                 }
             }
             "post_test" => {
-                loop { // do-while
+                loop {
+                    // do-while
                     loop_guard += 1;
-                    self.execute_lambda(&lambda)?;
+                    match self.execute_lambda(&lambda) {
+                        Ok(()) => {}
+                        Err(err) => {
+                            if matches!(err, Error::BreakLoop()) {
+                                // If we got an escape instruction -> Break this loop, other errors are bubbled further up
+                                break;
+                            } else {
+                                return Err(err);
+                            }
+                        }
+                    };
                     ConnectionWrapper::loop_guard(self.clone(), &loop_id);
-                    let continue_loop = self.clone().evaluate_condition(condition)? && !self.clone().should_skip();
+                    let continue_loop =
+                        self.clone().evaluate_condition(condition)? && !self.clone().should_skip();
                     if !continue_loop {
                         break;
                     }
