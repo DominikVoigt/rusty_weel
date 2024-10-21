@@ -157,6 +157,12 @@ impl ConnectionWrapper {
         self.inform_resource_utilization()
     }
 
+    pub fn inform_activity_cancelled(&self) -> Result<()> {
+        let content = self.construct_basic_content();
+        self.inform("activity/cancelled", Some(content))?;
+        self.inform_resource_utilization()
+    }
+
     pub fn inform_activity_failed(&self, err: Error) -> Result<()> {
         let mut content = self.construct_basic_content();
         self.add_error_information(&mut content, err);
@@ -1043,10 +1049,6 @@ impl ConnectionWrapper {
                 panic!()
             }
         }
-    }
-
-    pub fn activity_no_longer_necessary(&self) -> bool {
-        true
     }
 
     fn add_error_information(&self, content: &mut Value, err: Error) {

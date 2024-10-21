@@ -175,7 +175,7 @@ impl DSL for Weel {
         let thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
 
         let choice_is_exclusive = matches!(
-            thread_info.alternative_mode.last().expect(error_message,),
+            thread_info.alternative_mode.last().expect(error_message),
             ChooseVariant::Exclusive
         );
         
@@ -875,8 +875,6 @@ impl Weel {
                             let connection_wrapper = connection_wrapper_mutex.lock().unwrap();
 
                             if thread_info.no_longer_necessary {
-                                // TODO: Definition of this method is basically empty?
-                                connection_wrapper.activity_no_longer_necessary();
                                 break 'raise Err(Signal::NoLongerNecessary.into());
                             }
                             // Store local for code execution -> allows us to unlock the thread_local_map here
@@ -1017,6 +1015,7 @@ impl Weel {
                         }
                     }
                     Signal::NoLongerNecessary => {
+                        connection_wrapper.inform_activity_cancelled()?;
                         connection_wrapper.inform_activity_done()?;
                         self.positions
                             .lock()
