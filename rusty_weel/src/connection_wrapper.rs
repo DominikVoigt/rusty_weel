@@ -77,21 +77,21 @@ impl ConnectionWrapper {
     /**
      * If too many request are issued to an address by the same wrapper, will throttle these requests
      */
-    pub fn loop_guard(&self, id: String) {
-        let attributes = &self.weel().attributes;
+    pub fn loop_guard(weel: Arc<Weel>, id: &str) {
+        let attributes = &weel.attributes;
         let loop_guard_attribute = attributes.get("nednoamol");
         if loop_guard_attribute.is_some_and(|attrib| attrib == "true") {
             return;
         }
-        match self.weel().loop_guard.lock().as_mut() {
+        match weel.loop_guard.lock().as_mut() {
             Ok(map) => {
-                let last = map.get(&id);
+                let last = map.get(id);
                 let should_throttle = match last {
                     // Some: loop guard was hite prior to this -> increase count
                     Some(entry) => {
                         let count = entry.0 + 1;
                         let last_call_time = entry.1;
-                        map.insert(id, (count, SystemTime::now()));
+                        map.insert(id.to_owned(), (count, SystemTime::now()));
 
                         let last_call_too_close = last_call_time
                             .elapsed()
@@ -102,7 +102,7 @@ impl ConnectionWrapper {
                         last_call_too_close && threshold_passed
                     }
                     None => {
-                        map.insert(id, (1, SystemTime::now()));
+                        map.insert(id.to_owned(), (1, SystemTime::now()));
                         false
                     }
                 };

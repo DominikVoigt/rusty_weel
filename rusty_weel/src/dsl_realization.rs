@@ -1,14 +1,14 @@
 use derive_more::From;
-use redis::Value;
+
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::any::{Any, TypeId};
+
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
-use std::thread::{self, Thread, ThreadId};
+use std::thread::{self, ThreadId};
 use std::time::SystemTime;
 
 use rand::distributions::Alphanumeric;
@@ -16,7 +16,7 @@ use rand::Rng;
 use reqwest::header::ToStrError;
 use rusty_weel_macro::get_str_from_value;
 
-use crate::connection_wrapper::{self, ConnectionWrapper};
+use crate::connection_wrapper::ConnectionWrapper;
 use crate::data_types::{
     BlockingQueue, CancelCondition, ChooseVariant, DynamicData, HTTPParams, InstanceMetaData,
     State, StaticData, Status, ThreadInfo,
@@ -119,10 +119,7 @@ impl DSL for Weel {
         variant: ChooseVariant,
         lambda: impl Fn() -> Result<()> + Sync,
     ) -> Result<()> {
-        if matches!(
-            *self.state.lock().unwrap(),
-            State::Stopping | State::Finishing | State::Stopped
-        ) {
+        if self.clone().should_skip() {
             return Ok(());
         }
 
@@ -160,10 +157,7 @@ impl DSL for Weel {
         condition: &str,
         lambda: impl Fn() -> Result<()> + Sync,
     ) -> Result<()> {
-        if matches!(
-            *self.state.lock().unwrap(),
-            State::Stopping | State::Finishing | State::Stopped
-        ) {
+        if self.clone().should_skip() {
             return Ok(());
         }
 
@@ -260,15 +254,7 @@ impl DSL for Weel {
             ));
         }
 
-        let current_thread = thread::current().id();
-        let thread_info_map = self.thread_information.lock().unwrap();
-        let thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
-        let no_longer_necessary = thread_info.no_longer_necessary;
-        if matches!(
-            *self.state.lock().unwrap(),
-            State::Stopping | State::Stopped | State::Finishing
-        ) || no_longer_necessary
-        {
+        if self.clone().should_skip() {
             return Ok(());
         }
 
@@ -290,41 +276,34 @@ impl DSL for Weel {
 
         match test_type {
             "pre_test" => {
-                while self.clone().evaluate_condition(condition)? {
-                    let current_thread = thread::current().id();
-                    {   // Leave loop if no longer necessary
-                        let thread_info_map = self.thread_information.lock().unwrap();
-                        let thread_info =
-                            thread_info_map.get(&current_thread).unwrap().borrow_mut();
-                        let no_longer_necessary = thread_info.no_longer_necessary;
-                        if matches!(
-                            *self.state.lock().unwrap(),
-                            State::Stopping | State::Stopped | State::Finishing
-                        ) || no_longer_necessary
-                        {
-                            return Ok(());
-                        }
-                    }
+                while self.clone().evaluate_condition(condition)? && !self.clone().should_skip() {
                     loop_guard += 1;
                     self.execute_lambda(&lambda)?;
-
+                    ConnectionWrapper::loop_guard(self.clone(), &loop_id);
                 }
             }
-            "post_test" => {}
+            "post_test" => {
+                loop { // do-while
+                    loop_guard += 1;
+                    self.execute_lambda(&lambda)?;
+                    ConnectionWrapper::loop_guard(self.clone(), &loop_id);
+                    let continue_loop = self.clone().evaluate_condition(condition)? && !self.clone().should_skip();
+                    if !continue_loop {
+                        break;
+                    }
+                }
+            }
             x => log::error!("This condition type is not allowed: {}", x),
         }
-
-        // end
-
         Ok(())
     }
 
-    fn pre_test(&self, condition: &str) -> Result<bool> {
-        todo!()
+    fn pre_test(condition: &str) -> [&str; 2] {
+        [condition, "pre_test"]
     }
 
-    fn post_test(&self, condition: &str) -> Result<bool> {
-        todo!()
+    fn post_test(condition: &str) -> [&str; 2] {
+        [condition, "post_test"]
     }
 
     fn critical_do(&self, mutex_id: &str, lambda: impl Fn() -> Result<()> + Sync) -> Result<()> {
@@ -338,18 +317,13 @@ impl DSL for Weel {
         if in_search_mode {
             return Ok(());
         }
+        if self.clone().should_skip() {
+            return Ok(());
+        }
+
         let current_thread = thread::current().id();
         let thread_info_map = self.thread_information.lock().unwrap();
         let thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
-        let no_longer_necessary = thread_info.no_longer_necessary;
-        // Unwrap as we have precondition that thread info is available on spawning
-        if matches!(
-            *self.state.lock().unwrap(),
-            State::Stopping | State::Stopped | State::Finishing
-        ) || no_longer_necessary
-        {
-            return Ok(());
-        }
 
         if let Some(parent) = &thread_info.parent {
             let mut parent_thread_info = thread_info_map
@@ -380,16 +354,8 @@ impl DSL for Weel {
         if in_search_mode {
             return Ok(());
         }
-        let current_thread = thread::current().id();
-        let thread_info_map = self.thread_information.lock().unwrap();
-        let thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
-        let no_longer_necessary = thread_info.no_longer_necessary;
         // Unwrap as we have precondition that thread info is available on spawning
-        if matches!(
-            *self.state.lock().unwrap(),
-            State::Stopping | State::Stopped | State::Finishing
-        ) || no_longer_necessary
-        {
+        if self.clone().should_skip() {
             return Ok(());
         }
 
@@ -532,6 +498,18 @@ impl Weel {
             )?;
         }
         Ok(())
+    }
+
+    fn should_skip(self: Arc<Self>) -> bool {
+        let current_thread = thread::current().id();
+        // Leave loop if no longer necessary
+        let thread_info_map = self.thread_information.lock().unwrap();
+        let thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
+        let no_longer_necessary = thread_info.no_longer_necessary;
+        matches!(
+            *self.state.lock().unwrap(),
+            State::Stopping | State::Stopped | State::Finishing
+        ) || no_longer_necessary
     }
 
     /**
@@ -1276,7 +1254,7 @@ impl Weel {
             &self.opts,
             condition,
             &thread_local,
-            connection_wrapper.additional()
+            &connection_wrapper,
         );
         match result {
             Ok(cond) => Ok(cond),
@@ -1621,6 +1599,7 @@ pub enum Error {
     PoisonError(),
     FromStrError(mime::FromStrError),
     Signal(Signal),
+    BreakLoop(),
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -1693,6 +1672,7 @@ impl Error {
             Error::PoisonError() => todo!(),
             Error::FromStrError(_) => todo!(),
             Error::Signal(_) => todo!(),
+            Error::BreakLoop() => todo!(),
         }
     }
 }

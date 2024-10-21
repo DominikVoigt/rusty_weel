@@ -29,9 +29,9 @@ pub trait DSL {
         lambda: impl Fn() -> Result<()> + Sync,
     ) -> Result<()>;
 
-    fn pre_test(&self, condition: &str) -> Result<bool>;
+    fn pre_test(condition: &str) -> [&str; 2];
 
-    fn post_test(&self, condition: &str) -> Result<bool>;
+    fn post_test(condition: &str) -> [&str; 2];
 
     /**
      * Implements the parallel/event gateway -> Executes the provided branches in parallel
