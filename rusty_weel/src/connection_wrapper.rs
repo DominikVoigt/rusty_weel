@@ -1149,6 +1149,18 @@ impl ConnectionWrapper {
         self.inform("gateway/split", Some(content))
     }
 
+    pub fn gateway_decide(&self, id: ThreadId, code: &str, condition: bool) -> Result<()> {
+        let id = format!("{:?}", id);
+        let content = json!({
+            "instance_uuid": self.weel().uuid(),
+            "code": code,
+            "condition": condition, 
+            "ecid": id
+        });
+
+        self.inform("gateway/decide", Some(content))
+    }
+
     pub fn join_branches(&self, id: ThreadId, branches: Option<&HashMap<i32, Vec<String>>>) -> Result<()> {
         let id = format!("{:?}", id);
         let mut content = json!({

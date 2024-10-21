@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     fmt::Display,
-    io::{Read, Seek, Write}, sync::Arc,
+    io::{Read, Seek, Write}, sync::Arc, thread,
 };
 
 use http_helper::{Client, Parameter};
@@ -17,9 +17,8 @@ use crate::{
 pub fn test_condition(
     dynamic_context: &DynamicData,
     static_context: &StaticData,
-    condition: &str,
+    code: &str,
     thread_local: &str,
-    additional: Value,
     connection_wrapper: &ConnectionWrapper
 ) -> Result<bool> {
     let mut client = Client::new(
@@ -29,7 +28,7 @@ pub fn test_condition(
     // Construct multipart request
     client.add_parameter(Parameter::SimpleParameter {
         name: "code".to_owned(),
-        value: condition.to_owned(),
+        value: code.to_owned(),
         param_type: http_helper::ParameterType::Body,
     });
     let data_map = json!(dynamic_context.data);
@@ -46,7 +45,7 @@ pub fn test_condition(
 
     let endpoints = serde_json::to_string(&dynamic_context.endpoints)?;
     client.add_complex_parameter("endpoints", APPLICATION_JSON, endpoints.as_bytes())?;
-
+    let additional = connection_wrapper.additional();
     let additional = if additional.is_null() {
         "{}".to_owned()
     } else {
@@ -78,9 +77,7 @@ pub fn test_condition(
                 serde_json::from_str(&content)?
             }
         };
-        connection_wrapper.inform
-    // TODO: @controller.notify("gateway/decide", :instance_uuid => @controller.uuid, :code => code, :condition => recv)
-        
+        connection_wrapper.gateway_decide(thread::current().id(), code, condition);
         Ok(condition)
     } else {
         let mut signal: Option<Signal> = None;
@@ -161,14 +158,14 @@ pub fn test_condition(
                             "Got signaled: {:?} with text: {} when evaluating {}",
                             x,
                             signal_text,
-                            condition
+                            code
                         );
                         Err(Error::EvalError(EvalError::GeneralEvalError(
                             format!(
                                 "Got signaled: {:?} with text: {} when evaluating {}",
                                 x,
                                 signal_text,
-                                condition))))
+                                code))))
                     }
                 }
             }
