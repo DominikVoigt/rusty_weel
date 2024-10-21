@@ -521,6 +521,7 @@ impl ConnectionWrapper {
             let endpoint = match this.handler_endpoints.get(0) {
                 // TODO: Set method by matched method in url
                 Some(endpoint) => {
+                    log::info!("processing endpoint");
                     match protocol_regex.captures(&endpoint) {
                         Some(capture) => {
                             match capture.get(2) {
