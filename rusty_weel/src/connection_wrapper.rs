@@ -518,6 +518,7 @@ impl ConnectionWrapper {
                 .unwrap_or("".to_owned());
             content.insert("activity".to_owned(), serde_json::Value::String(position));
             weel.register_callback(Arc::clone(selfy), &callback_id, content_node)?;
+            log::debug!("Before endpoint handling");
             let endpoint = match this.handler_endpoints.get(0) {
                 // TODO: Set method by matched method in url
                 Some(endpoint) => {
