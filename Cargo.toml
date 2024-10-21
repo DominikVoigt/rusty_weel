@@ -12,4 +12,3 @@ opt-level = "z" #optimize for size
 lto = true # Link time optimization
 panic = "abort"
 codegen-units = 1
-debug = 1
