@@ -592,7 +592,7 @@ impl ConnectionWrapper {
                         None => {}
                     };
                     protocol_regex
-                        .replace_all(&endpoint, if https_enabled { "https" } else { "http" })
+                        .replace_all(&endpoint, if https_enabled { "https:" } else { "http;" })
                 }
                 None => {
                     return Err(Error::GeneralError(
