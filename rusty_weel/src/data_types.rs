@@ -278,7 +278,6 @@ impl<T: Default> BlockingQueue<T> {
     }
 }
 
-type UndefinedTypeTODO = ();
 // Define a float type to easily apply changes here if needed
 #[allow(non_camel_case_types)]
 type float = f32;

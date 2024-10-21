@@ -290,7 +290,6 @@ impl DSL for Weel {
             return Ok(());
         }
 
-        //TODO:gather traces in threads...
         if let Some(parent) = &thread_info.parent {
             let mut parent_thread_info = thread_info_map
                 .get(parent)
@@ -438,7 +437,6 @@ impl Weel {
             match *state {
                 State::Ready => *state = State::Stopped,
                 State::Running => {
-                    // TODO: Where will this be set to stopped?
                     *state = State::Stopping;
                     // Wait for instance to stop
                     drop(state);
@@ -529,7 +527,6 @@ impl Weel {
                     .expect("could not lock votes")
                     .extend(votes.clone());
             }
-            // TODO: Check whether topics have correct structure, check blocking_pub_sub function documentation.
             let topics = votes
                 .iter()
                 .map(|entry| format!("vote-response: {entry}"))
@@ -856,7 +853,6 @@ impl Weel {
                             let mut wait_result = None;
 
                             // Get reference on the queue to allow us to unlock the rest of the thread info
-                            // TODO: Maybe put the blocking queue info into real thread local storage
                             let thread_queue = thread_info.blocking_queue.clone();
                             // We need to release the locks on the thread_info_map to allow other parallel branches to execute while we wait for the callback (can take long for async case)
                             drop(thread_info);
@@ -950,7 +946,7 @@ impl Weel {
                                     &format!("Activity {} {}", position, code_type),
                                     connection_wrapper.handler_return_value.clone(),
                                     connection_wrapper.handler_return_options.clone()
-                                ) // TODO: Even in signal case we need the eval result
+                                )
                                 {
                                     // When error/signal returned, pass it downwards for handling, except for Signal::Again that has some direct effects 
                                     Ok(res) => res,
@@ -1338,7 +1334,6 @@ impl Weel {
         uuid: String,
         skip: bool,
     ) -> Result<Position> {
-        // TODO: We could also guard the thread_info with a mutex again
         let mut ipc_node = json!({});
         let ipc = ipc_node
             .as_object_mut()
@@ -1430,7 +1425,6 @@ impl Weel {
                     .lock()
                     .unwrap()
                     .retain(|x| *x != branch_position);
-                // TODO: Probably clone here right?
                 if !ipc.contains_key("unmark") {
                     ipc.insert("unmark".to_owned(), json!([]));
                 }
@@ -1540,7 +1534,6 @@ fn recursive_continue(
         .unwrap()
         .enqueue(Signal::None);
     if let Some(branch_event) = &thread_info.branch_event {
-        // TODO: Unsure whether we can borrow here -> Where relative to this thread will this branch event exist?
         branch_event.enqueue(());
     }
     for child_id in &thread_info.branches {
