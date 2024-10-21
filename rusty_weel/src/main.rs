@@ -231,7 +231,6 @@ fn startup(stop_signal_receiver: mpsc::Receiver<()>) -> Arc<Weel> {
         }),
     );
 
-    let thread = thread::current();
     // create thread for callback subscriptions with redis
     RedisHelper::establish_callback_subscriptions(&weel.opts, Arc::clone(&weel.callback_keys));
     let weel = Arc::new(weel);
