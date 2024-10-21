@@ -1,4 +1,9 @@
-use http_helper::{header_map_to_hash_map, Parameter};
+use crate::{
+    data_types::{BlockingQueue, DynamicData, HTTPParams, InstanceMetaData, KeyValuePair},
+    dsl_realization::{generate_random_key, Error, Result, Signal, Weel},
+    eval_helper::{self, evaluate_expression, EvalError},
+};
+use http_helper::{header_map_to_hash_map, Method, Parameter};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use regex::Regex;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
@@ -12,11 +17,6 @@ use std::{
     time::{Duration, SystemTime},
 };
 use urlencoding::encode;
-use crate::{
-    data_types::{BlockingQueue, DynamicData, HTTPParams, InstanceMetaData, KeyValuePair},
-    dsl_realization::{generate_random_key, Error, Result, Signal, Weel},
-    eval_helper::{self, evaluate_expression, EvalError},
-};
 
 #[derive(Debug)]
 pub struct ConnectionWrapper {
@@ -144,7 +144,10 @@ impl ConnectionWrapper {
 
     pub fn inform_activity_manipulate(&self) -> Result<()> {
         let mut content: Value = self.construct_basic_content();
-        content.as_object_mut().unwrap().insert("label".to_owned(), json!(self.activity_id));
+        content
+            .as_object_mut()
+            .unwrap()
+            .insert("label".to_owned(), json!(self.activity_id));
         self.inform("activity/manipulating", Some(content))
     }
 
@@ -197,24 +200,33 @@ impl ConnectionWrapper {
         let content_node = self.construct_basic_content();
         if let Some(changed_status) = evaluation_result.changed_status {
             let mut content_node = content_node.clone();
-            let content = content_node.as_object_mut().expect("Construct basic content has to return json object");
-            content.insert("id".to_owned(), serde_json::Value::String(changed_status.id.to_string()));
-            content.insert("message".to_owned(), serde_json::Value::String(changed_status.message));
+            let content = content_node
+                .as_object_mut()
+                .expect("Construct basic content has to return json object");
+            content.insert(
+                "id".to_owned(),
+                serde_json::Value::String(changed_status.id.to_string()),
+            );
+            content.insert(
+                "message".to_owned(),
+                serde_json::Value::String(changed_status.message),
+            );
             self.inform("status/change", Some(content_node))?;
         }
         if let Some(changed_data) = evaluation_result.changed_data {
             let mut content_node = content_node.clone();
-            let content = content_node.as_object_mut().expect("Construct basic content has to return json object");
+            let content = content_node
+                .as_object_mut()
+                .expect("Construct basic content has to return json object");
             content.insert("changed".to_owned(), changed_data);
             self.inform("dataelements/change", Some(content_node))?;
         }
         if let Some(changed_endpoints) = evaluation_result.changed_endpoints {
             let mut content_node = content_node.clone();
-            let content = content_node.as_object_mut().expect("Construct basic content has to return json object");
-            content.insert(
-                "changed".to_owned(),
-                json!(changed_endpoints),
-            );
+            let content = content_node
+                .as_object_mut()
+                .expect("Construct basic content has to return json object");
+            content.insert("changed".to_owned(), json!(changed_endpoints));
             self.inform("endpoints/change", Some(content_node))?;
         }
         Ok(())
@@ -254,11 +266,16 @@ impl ConnectionWrapper {
         // Execute the prepare code and use the modified context for the rest of this metod (prepare_result) (Note: This context can differ as the prepare will not modify the global context)
         let contex_snapshot = match prepare_code {
             Some(code) => {
-                let result = weel.execute_code(true, code, &thread_local, self, "prepare", None, None)?;
+                let result =
+                    weel.execute_code(true, code, &thread_local, self, "prepare", None, None)?;
                 // Create snapshot of the context after the code is executed, if nothing changes, use the current dynamic data
                 DynamicData {
-                    data: result.data.unwrap_or(weel.context.lock().unwrap().data.clone()),
-                    endpoints: result.endpoints.unwrap_or(weel.context.lock().unwrap().endpoints.clone())
+                    data: result
+                        .data
+                        .unwrap_or(weel.context.lock().unwrap().data.clone()),
+                    endpoints: result
+                        .endpoints
+                        .unwrap_or(weel.context.lock().unwrap().endpoints.clone()),
                 }
             }
             None => {
@@ -280,10 +297,8 @@ impl ConnectionWrapper {
                         self.handler_endpoint_origin = self.handler_endpoints.clone();
 
                         let endpoint = encode(self.handler_endpoints.get(0).expect(""));
-                        self.handler_endpoints = vec![format!(
-                            "{}?original_endpoint={}",
-                            sim_engine_url, endpoint
-                        )];
+                        self.handler_endpoints =
+                            vec![format!("{}?original_endpoint={}", sim_engine_url, endpoint)];
                     }
                 }
                 None => {
@@ -384,7 +399,7 @@ impl ConnectionWrapper {
 
     /**
      * Will cancel an activity via the redis_helper thread
-     * 
+     *
      * May lock redis_notification client due to cancel_callback call on weel
      */
     pub fn activity_stop(&self) -> Result<()> {
@@ -410,18 +425,20 @@ impl ConnectionWrapper {
         let this = selfy.lock()?;
         let weel = this.weel();
         if this.handler_endpoints.is_empty() {
-            return Err(Error::GeneralError(format!("No endpoint provided for connection wrapper of activity: {}", this.activity_id)));
+            return Err(Error::GeneralError(format!(
+                "No endpoint provided for connection wrapper of activity: {}",
+                this.activity_id
+            )));
         }
         // We do not model annotations anyway -> Can skip this from the original code
         {
             this.inform_resource_utilization()?;
             let mut content_node = this.construct_basic_content();
-            let content = content_node.as_object_mut().expect("Construct basic content should return json object");
+            let content = content_node
+                .as_object_mut()
+                .expect("Construct basic content should return json object");
             content.insert("label".to_owned(), json!(this.activity_id));
-            content.insert(
-                "passthrough".to_owned(),
-                json!(passthrough),
-            );
+            content.insert("passthrough".to_owned(), json!(passthrough));
             // parameters do not look exactly like in the original (string representation looks different):
             content.insert("parameters".to_owned(), json!(parameters));
             weel.redis_notifications_client.lock()?.notify(
@@ -433,8 +450,13 @@ impl ConnectionWrapper {
         match passthrough {
             Some(passthrough) => {
                 let mut content_node = this.construct_basic_content();
-                let content = content_node.as_object_mut().expect("Construct basic content has to return json object");
-                content.insert("label".to_owned(), serde_json::Value::String(this.activity_id.clone()));
+                let content = content_node
+                    .as_object_mut()
+                    .expect("Construct basic content has to return json object");
+                content.insert(
+                    "label".to_owned(),
+                    serde_json::Value::String(this.activity_id.clone()),
+                );
                 content.remove("endpoint");
                 weel.register_callback(selfy.clone(), passthrough, content_node)?;
             }
@@ -520,48 +542,89 @@ impl ConnectionWrapper {
             content.insert("activity".to_owned(), serde_json::Value::String(position));
             weel.register_callback(Arc::clone(selfy), &callback_id, content_node)?;
             log::debug!("Before endpoint handling");
+
+            let mut method = parameters.method.clone();
+            let mut https_enabled = false;
             let endpoint = match this.handler_endpoints.get(0) {
                 // TODO: Set method by matched method in url
                 Some(endpoint) => {
                     log::info!("processing endpoint");
                     match protocol_regex.captures(&endpoint) {
                         Some(capture) => {
+                            match capture.get(1) {
+                                Some(captured_suffix) => {
+                                    if captured_suffix.as_str() == "s" {
+                                        https_enabled = true;
+                                    }
+                                }
+                                None => {}
+                            }
                             match capture.get(2) {
                                 Some(captured_method) => {
-                                    log::info!("Captured method: {}", captured_method.as_str())
-                                },
-                                None => {            
-                                },
+                                    log::info!("Captured method: {}", captured_method.as_str());
+                                    match captured_method.as_str().to_lowercase().as_str() {
+                                        "post" => {
+                                            method = Method::POST;
+                                        }
+                                        "get" => {
+                                            method = Method::GET;
+                                        }
+                                        "put" => {
+                                            method = Method::PUT;
+                                        }
+                                        "delete" => {
+                                            method = Method::DELETE;
+                                        }
+                                        "patch" => {
+                                            method = Method::PATCH;
+                                        }
+                                        "head" => {
+                                            method = Method::HEAD;
+                                        }
+                                        x => {
+                                            log::error!("Captured unsupported method: {x}")
+                                        }
+                                    }
+                                }
+                                None => {}
                             }
-                        },
-                        None => {
-                        },
+                        }
+                        None => {}
                     };
-                    protocol_regex.replace_all(&endpoint, r"http\\1:")
-                },
+                    protocol_regex
+                        .replace_all(&endpoint, if https_enabled { "https" } else { "http" })
+                }
                 None => {
                     return Err(Error::GeneralError(
                         "No endpoint for curl configured.".to_owned(),
                     ))
                 }
             };
-            log::info!("Calling {:?} on endpoint: {}", parameters.method.clone(), &endpoint);
-            let mut client = http_helper::Client::new(&endpoint, parameters.method.clone())?;
+            log::info!("Calling {:?} on endpoint: {}", method, &endpoint);
+            let mut client = http_helper::Client::new(&endpoint, method)?;
             client.set_request_headers(headers.clone());
             client.add_parameters(params);
 
             let response = client.execute_raw()?;
 
-            log::debug!(indoc::indoc! {
-            "
+            log::debug!(
+                indoc::indoc! {
+                        "
             Received response for service call of activity: 
             Name: {}
             Response headers: {:?},
             Response body: {:?}             
-            "}, parameters.label, response.headers, response.body);
+            "},
+                parameters.label,
+                response.headers,
+                response.body
+            );
 
             status = response.status_code;
-            log::info!("Service call of {activity_label} returned with status code: {}", status);
+            log::info!(
+                "Service call of {activity_label} returned with status code: {}",
+                status
+            );
             response_headers = header_map_to_hash_map(&response.headers)?;
             body = response.body;
 
@@ -612,7 +675,9 @@ impl ConnectionWrapper {
                         // TODO What about value_helper
                         content.insert(
                             "received".to_owned(),
-                            serde_json::Value::String(response_headers.get("CPEE_INSTANTIATION").unwrap().clone())
+                            serde_json::Value::String(
+                                response_headers.get("CPEE_INSTANTIATION").unwrap().clone(),
+                            ),
                         );
                         weel.redis_notifications_client.lock().unwrap().notify(
                             "task/instantiation",
@@ -764,7 +829,7 @@ impl ConnectionWrapper {
      * In case of a synchroneous call, it is called directly (within the curl method)
      * In case of an asynchroneous call, it is called from the callback thread (started when the instance is spun up via the `establish_callback_subscriptions` in the redis_helper)
      * Redis callbacks have no response code -> Optional
-     * 
+     *
      * Locks:
      * redis_notification_client
      */
@@ -782,8 +847,13 @@ impl ConnectionWrapper {
         let content = self.construct_basic_content();
         {
             let mut content_node = content.clone();
-            let content = content_node.as_object_mut().expect("Construct basic content has to return json object");
-            content.insert("received".to_owned(), serde_json::Value::String(recv.clone()));
+            let content = content_node
+                .as_object_mut()
+                .expect("Construct basic content has to return json object");
+            content.insert(
+                "received".to_owned(),
+                serde_json::Value::String(recv.clone()),
+            );
             content.insert(
                 "annotations".to_owned(),
                 serde_json::Value::String(self.annotations.clone().unwrap_or("".to_owned())),
@@ -798,7 +868,9 @@ impl ConnectionWrapper {
 
         if contains_non_empty(&options, "CPEE_INSTANTIATION") {
             let mut content_node = content.clone();
-            let content = content_node.as_object_mut().expect("Construct basic content has to return json object");
+            let content = content_node
+                .as_object_mut()
+                .expect("Construct basic content has to return json object");
             content.insert(
                 "received".to_owned(),
                 serde_json::Value::String(options.get("CPEE_INSTANTIATION").unwrap().clone()),
@@ -826,8 +898,13 @@ impl ConnectionWrapper {
             let event = event_regex.replace_all(&event, "");
 
             let mut content_node = content.clone();
-            let content = content_node.as_object_mut().expect("Construct basic content has to return json object");
-            content.insert("received".to_owned(), serde_json::Value::String(recv.clone()));
+            let content = content_node
+                .as_object_mut()
+                .expect("Construct basic content has to return json object");
+            content.insert(
+                "received".to_owned(),
+                serde_json::Value::String(recv.clone()),
+            );
 
             redis.notify(
                 &format!("task/{event}"),
@@ -844,9 +921,14 @@ impl ConnectionWrapper {
 
         if contains_non_empty(&options, "CPEE_STATUS") {
             let mut content_node = content.clone();
-            let content = content_node.as_object_mut().expect("Construct basic content has to return json object");
+            let content = content_node
+                .as_object_mut()
+                .expect("Construct basic content has to return json object");
             // CPEE::ValueHelper.parse(options['CPEE_INSTANTIATION'])
-            content.insert("status".to_owned(), serde_json::Value::String(options["CPEE_STATUS"].clone()));
+            content.insert(
+                "status".to_owned(),
+                serde_json::Value::String(options["CPEE_STATUS"].clone()),
+            );
         }
 
         if contains_non_empty(&options, "CPEE_UPDATE") {
@@ -891,8 +973,8 @@ impl ConnectionWrapper {
      *  - endpoint
      */
     pub fn construct_basic_content(&self) -> Value {
-        let position = 
-        self.handler_position
+        let position = self
+            .handler_position
             .clone()
             .map(|e| e.clone())
             .unwrap_or("".to_owned());
@@ -912,7 +994,10 @@ impl ConnectionWrapper {
             .unwrap_or("");
         let mut headers = HeaderMap::new();
         headers.append("CPEE-BASE", HeaderValue::from_str(&data.cpee_base_url)?);
-        headers.append("CPEE-Instance", HeaderValue::from_str(&data.instance_id.to_string())?);
+        headers.append(
+            "CPEE-Instance",
+            HeaderValue::from_str(&data.instance_id.to_string())?,
+        );
         headers.append(
             "CPEE-Instance-URL",
             HeaderValue::from_str(&data.instance_url)?,
@@ -977,7 +1062,6 @@ impl ConnectionWrapper {
             }
         }
     }
-
 
     fn extract_info_from_message(
         &self,
@@ -1046,23 +1130,20 @@ impl ConnectionWrapper {
             }
         )
     }
-    
+
     pub fn split_branches(&self, branches: &HashMap<i32, Vec<String>>) -> Result<()> {
-        let content = 
-            json!({
-                "instance_uuid": self.weel().uuid(),
-                "branches": branches
-            });
+        let content = json!({
+            "instance_uuid": self.weel().uuid(),
+            "branches": branches
+        });
         self.inform("gateway/split", Some(content))
     }
 
-
     pub fn join_branches(&self, branches: HashMap<i32, Vec<String>>) -> Result<()> {
-        let content = 
-            json!({
-                "instance_uuid": self.weel().uuid(),
-                "branches": branches
-            });
+        let content = json!({
+            "instance_uuid": self.weel().uuid(),
+            "branches": branches
+        });
         self.inform("gateway/join", Some(content))
     }
 }
