@@ -520,7 +520,22 @@ impl ConnectionWrapper {
             weel.register_callback(Arc::clone(selfy), &callback_id, content_node)?;
             let endpoint = match this.handler_endpoints.get(0) {
                 // TODO: Set method by matched method in url
-                Some(endpoint) => protocol_regex.replace_all(&endpoint, r"http\\1:"),
+                Some(endpoint) => {
+                    match protocol_regex.captures(&endpoint) {
+                        Some(capture) => {
+                            match capture.get(2) {
+                                Some(captured_method) => {
+                                    log::info!("Captured method: {}", captured_method.as_str())
+                                },
+                                None => {            
+                                },
+                            }
+                        },
+                        None => {
+                        },
+                    };
+                    protocol_regex.replace_all(&endpoint, r"http\\1:")
+                },
                 None => {
                     return Err(Error::GeneralError(
                         "No endpoint for curl configured.".to_owned(),
