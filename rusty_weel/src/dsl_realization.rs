@@ -151,7 +151,9 @@ impl DSL for Weel {
     /**
      * This is one of the branches
      * 
-     * Note: Correctness requiers invariant: Branches need to be executed/evaluated sequentially! -> Otherwise dropping and picking up the thread info mutex is problematic!
+     * TODO: Correctness currently requiers invariant: Branches need to be executed/evaluated sequentially! -> Otherwise dropping and picking up the thread info mutex is problematic!
+     *       -> We can fix this by introducing a lock on the level of the gate -> locking here
+     *       -> Holding the thread map longer would be bad as it is a global lock
      */
     fn alternative(
         self: Arc<Self>,
