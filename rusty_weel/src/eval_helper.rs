@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     fmt::Display,
-    io::{Read, Seek, Write},
+    io::{Read, Seek, Write}, sync::Arc,
 };
 
 use http_helper::{Client, Parameter};
@@ -11,8 +11,7 @@ use serde_json::{json, Value};
 use tempfile::tempfile;
 
 use crate::{
-    data_types::{DynamicData, StaticData, StatusDTO},
-    dsl_realization::{Error, Result, Signal},
+    connection_wrapper::{self, ConnectionWrapper}, data_types::{DynamicData, StaticData, StatusDTO}, dsl_realization::{Error, Result, Signal, Weel}, redis_helper
 };
 
 pub fn test_condition(
@@ -21,6 +20,7 @@ pub fn test_condition(
     condition: &str,
     thread_local: &str,
     additional: Value,
+    connection_wrapper: &ConnectionWrapper
 ) -> Result<bool> {
     let mut client = Client::new(
         &static_context.eval_backend_exec_full,
@@ -78,6 +78,9 @@ pub fn test_condition(
                 serde_json::from_str(&content)?
             }
         };
+        connection_wrapper.inform
+    // TODO: @controller.notify("gateway/decide", :instance_uuid => @controller.uuid, :code => code, :condition => recv)
+        
         Ok(condition)
     } else {
         let mut signal: Option<Signal> = None;

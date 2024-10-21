@@ -2,7 +2,7 @@ use std::{
     collections::{HashMap, HashSet},
     panic::{set_hook, take_hook},
     sync::{Arc, Mutex},
-    thread::{self, sleep, JoinHandle},
+    thread::{self, sleep, JoinHandle, ThreadId},
     time::Duration,
 };
 
@@ -62,7 +62,7 @@ impl RedisHelper {
         &mut self,
         what: &str,
         content: Option<Value>,
-        instace_meta_data: InstanceMetaData,
+        instace_meta_data: InstanceMetaData
     ) -> Result<()> {
         let mut content = content.unwrap_or(json!({}));
         // TODO: Original code adds attributes_translated here, do we need to do this?

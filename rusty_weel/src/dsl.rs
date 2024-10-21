@@ -23,9 +23,9 @@ pub trait DSL {
      */
     fn manipulate(self: Arc<Self>, id: &str, code: &str) -> Result<()>;
 
-    fn loop_exec(
-        &self,
-        condition: Result<bool>,
+    fn loop_exec(        
+        self: Arc<Self>,
+        condition: [&str; 2],
         lambda: impl Fn() -> Result<()> + Sync,
     ) -> Result<()>;
 

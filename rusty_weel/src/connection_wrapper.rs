@@ -13,7 +13,7 @@ use std::{
     io::{Read, Seek},
     str::FromStr,
     sync::{Arc, Mutex, Weak},
-    thread::{sleep, ThreadId},
+    thread::{self, sleep, ThreadId},
     time::{Duration, SystemTime},
 };
 use urlencoding::encode;
@@ -668,7 +668,8 @@ impl ConnectionWrapper {
                         "activity_uuid": this.handler_activity_uuid,
                         "label": this.activity_id,
                         "activity": this.handler_position,
-                        "endpoint": this.handler_endpoints
+                        "endpoint": this.handler_endpoints,
+                        "ecid": format!("{:?}", thread::current().id())
                     });
                     let content = content_node.as_object_mut().expect("Cannot fail");
 
@@ -988,7 +989,8 @@ impl ConnectionWrapper {
             "activity-uuid": self.handler_activity_uuid,
             "label": self.activity_id,
             "activity": position,
-            "endpoint": self.handler_endpoints
+            "endpoint": self.handler_endpoints,
+            "ecid": format!("{:?}", thread::current().id())
         })
     }
 
@@ -1137,7 +1139,7 @@ impl ConnectionWrapper {
         let id = format!("{:?}", id);
         let mut content = json!({
             "instance_uuid": self.weel().uuid(),
-            "id": id
+            "ecid": id
         });
 
         if let Some(branches) = branches {
@@ -1151,7 +1153,7 @@ impl ConnectionWrapper {
         let id = format!("{:?}", id);
         let mut content = json!({
             "instance_uuid": self.weel().uuid(),
-            "id": id
+            "ecid": id
         });
 
         if let Some(branches) = branches {

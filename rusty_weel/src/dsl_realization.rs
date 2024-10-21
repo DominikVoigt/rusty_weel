@@ -150,7 +150,7 @@ impl DSL for Weel {
 
     /**
      * This is one of the branches
-     * 
+     *
      * TODO: Correctness currently requiers invariant: Branches need to be executed/evaluated sequentially! -> Otherwise dropping and picking up the thread info mutex is problematic!
      *       -> We can fix this by introducing a lock on the level of the gate -> locking here
      *       -> Holding the thread map longer would be bad as it is a global lock
@@ -178,7 +178,7 @@ impl DSL for Weel {
             thread_info.alternative_mode.last().expect(error_message),
             ChooseVariant::Exclusive
         );
-        
+
         let other_branch_executed = *thread_info
             .alternative_executed
             .last()
@@ -191,7 +191,7 @@ impl DSL for Weel {
         drop(thread_info);
         drop(thread_info_map);
         let condition_res = self.clone().evaluate_condition(condition)?;
-        
+
         let thread_info_map = self.thread_information.lock().unwrap();
         let mut thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
         if condition_res {
@@ -210,7 +210,6 @@ impl DSL for Weel {
             self.execute_lambda(lambda)?;
         }
 
-        
         if in_search_mode != self.in_search_mode(None) {
             let current_thread = thread::current().id();
             let thread_info_map = self.thread_information.lock().unwrap();
@@ -223,8 +222,8 @@ impl DSL for Weel {
         }
         Ok(())
     }
-    
-    fn otherwise(self: Arc<Self>, lambda: impl Fn() -> Result<()> + Sync) -> Result<()>{
+
+    fn otherwise(self: Arc<Self>, lambda: impl Fn() -> Result<()> + Sync) -> Result<()> {
         if matches!(
             *self.state.lock().unwrap(),
             State::Stopping | State::Finishing | State::Stopped
@@ -240,22 +239,84 @@ impl DSL for Weel {
         );
         drop(thread_info);
         drop(thread_info_map);
-        if self.in_search_mode(None)
-        || !alternative_executed
-        {
+        if self.in_search_mode(None) || !alternative_executed {
             self.execute_lambda(lambda)?;
         }
         Ok(())
     }
 
     fn loop_exec(
-        &self,
-        condition: Result<bool>,
+        self: Arc<Self>,
+        condition: [&str; 2],
         lambda: impl Fn() -> Result<()> + Sync,
     ) -> Result<()> {
-        println!("Executing loop!");
-        lambda();
-        todo!()
+        let test_type = *condition.get(0).unwrap();
+        let mut condition = *condition.get(1).unwrap();
+
+        if !matches!(test_type, "pre_test" | "post_test") {
+            log::error!("Test type is: {:?}", test_type);
+            return Err(Error::GeneralError(
+                "Condition must be called pre_test or post_test".to_owned(),
+            ));
+        }
+
+        let current_thread = thread::current().id();
+        let thread_info_map = self.thread_information.lock().unwrap();
+        let thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
+        let no_longer_necessary = thread_info.no_longer_necessary;
+        if matches!(
+            *self.state.lock().unwrap(),
+            State::Stopping | State::Stopped | State::Finishing
+        ) || no_longer_necessary
+        {
+            return Ok(());
+        }
+
+        if self.in_search_mode(None) {
+            // TODO: here we would need to adapt all lambdas to allow Option<Signal> or something
+            // catch :escape...
+            self.execute_lambda(&lambda)?;
+            // end
+            if self.in_search_mode(None) {
+                return Ok(());
+            } else {
+                condition = "pre_test";
+            }
+        }
+
+        let mut loop_guard: u32 = 0;
+        let loop_id = generate_random_key();
+        // catch :escape
+
+        match test_type {
+            "pre_test" => {
+                while self.clone().evaluate_condition(condition)? {
+                    let current_thread = thread::current().id();
+                    {   // Leave loop if no longer necessary
+                        let thread_info_map = self.thread_information.lock().unwrap();
+                        let thread_info =
+                            thread_info_map.get(&current_thread).unwrap().borrow_mut();
+                        let no_longer_necessary = thread_info.no_longer_necessary;
+                        if matches!(
+                            *self.state.lock().unwrap(),
+                            State::Stopping | State::Stopped | State::Finishing
+                        ) || no_longer_necessary
+                        {
+                            return Ok(());
+                        }
+                    }
+                    loop_guard += 1;
+                    self.execute_lambda(&lambda)?;
+
+                }
+            }
+            "post_test" => {}
+            x => log::error!("This condition type is not allowed: {}", x),
+        }
+
+        // end
+
+        Ok(())
     }
 
     fn pre_test(&self, condition: &str) -> Result<bool> {
@@ -943,28 +1004,31 @@ impl Weel {
                                     &connection_wrapper,
                                     &format!("Activity {} {}", position, code_type),
                                     connection_wrapper.handler_return_value.clone(),
-                                    connection_wrapper.handler_return_options.clone()
-                                )
-                                {
-                                    // When error/signal returned, pass it downwards for handling, except for Signal::Again that has some direct effects 
+                                    connection_wrapper.handler_return_options.clone(),
+                                ) {
+                                    // When error/signal returned, pass it downwards for handling, except for Signal::Again that has some direct effects
                                     Ok(res) => res,
                                     Err(err) => match err {
-                                        Error::EvalError(eval_error) => {
-                                            match eval_error {
-                                                EvalError::Signal(signal, evaluation_result) => {
-                                                    match signal {
-                                                        Signal::Again => {
-                                                            signaled_again = true;
-                                                            evaluation_result
-                                                        },
-                                                        other => break 'raise Err(Error::Signal(other))
+                                        Error::EvalError(eval_error) => match eval_error {
+                                            EvalError::Signal(signal, evaluation_result) => {
+                                                match signal {
+                                                    Signal::Again => {
+                                                        signaled_again = true;
+                                                        evaluation_result
                                                     }
-                                                },
-                                                other_eval_error => break 'raise Err(Error::EvalError(other_eval_error)),
+                                                    other => {
+                                                        break 'raise Err(Error::Signal(other))
+                                                    }
+                                                }
+                                            }
+                                            other_eval_error => {
+                                                break 'raise Err(Error::EvalError(
+                                                    other_eval_error,
+                                                ))
                                             }
                                         },
-                                        other_error => break 'raise Err(other_error)
-                                    }
+                                        other_error => break 'raise Err(other_error),
+                                    },
                                 };
                                 connection_wrapper.inform_manipulate_change(result)?;
 
@@ -1212,7 +1276,7 @@ impl Weel {
             &self.opts,
             condition,
             &thread_local,
-            connection_wrapper.additional(),
+            connection_wrapper.additional()
         );
         match result {
             Ok(cond) => Ok(cond),
@@ -1642,7 +1706,7 @@ impl<T> From<PoisonError<T>> for Error {
 const KEY_LENGTH: usize = 32;
 
 /**
- * Generates random ASCII character string of length KEY_LENGTH
+ * Generates random ASCII character string of length KEY_LENGTH -> UUID
  */
 pub fn generate_random_key() -> String {
     rand::thread_rng()
