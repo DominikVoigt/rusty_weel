@@ -8,7 +8,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
-use std::thread::{self, ThreadId};
+use std::thread::{self, Thread, ThreadId};
 use std::time::SystemTime;
 
 use rand::distributions::Alphanumeric;
@@ -134,13 +134,13 @@ impl DSL for Weel {
         thread_info.alternative_mode.push(variant);
 
         let connection_wrapper = ConnectionWrapper::new(self.clone(), None, None);
-        connection_wrapper.split_branches(&thread_info.branch_traces)?;
         drop(thread_info);
         drop(thread_info_map);
+        connection_wrapper.split_branches(thread::current().id(), None)?;
         self.clone().execute_lambda(lambda)?;
+        connection_wrapper.join_branches(thread::current().id(), None)?;
         let current_thread = thread::current().id();
         let thread_info_map = self.thread_information.lock().unwrap();
-        // Unwrap as we have precondition that thread info is available on spawning
         let mut thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
 
         thread_info.alternative_executed.pop();

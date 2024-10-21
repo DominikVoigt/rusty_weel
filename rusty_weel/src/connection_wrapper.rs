@@ -13,7 +13,7 @@ use std::{
     io::{Read, Seek},
     str::FromStr,
     sync::{Arc, Mutex, Weak},
-    thread::sleep,
+    thread::{sleep, ThreadId},
     time::{Duration, SystemTime},
 };
 use urlencoding::encode;
@@ -1133,19 +1133,31 @@ impl ConnectionWrapper {
         )
     }
 
-    pub fn split_branches(&self, branches: &HashMap<i32, Vec<String>>) -> Result<()> {
-        let content = json!({
+    pub fn split_branches(&self, id: ThreadId, branches: Option<&HashMap<i32, Vec<String>>>) -> Result<()> {
+        let id = format!("{:?}", id);
+        let mut content = json!({
             "instance_uuid": self.weel().uuid(),
-            "branches": branches
+            "id": id
         });
+
+        if let Some(branches) = branches {
+            content.as_object_mut().unwrap().insert("branches".to_owned(), json!(branches.len()));
+        }
+
         self.inform("gateway/split", Some(content))
     }
 
-    pub fn join_branches(&self, branches: HashMap<i32, Vec<String>>) -> Result<()> {
-        let content = json!({
+    pub fn join_branches(&self, id: ThreadId, branches: Option<&HashMap<i32, Vec<String>>>) -> Result<()> {
+        let id = format!("{:?}", id);
+        let mut content = json!({
             "instance_uuid": self.weel().uuid(),
-            "branches": branches
+            "id": id
         });
+
+        if let Some(branches) = branches {
+            content.as_object_mut().unwrap().insert("branches".to_owned(), json!(branches.len()));
+        }
+
         self.inform("gateway/join", Some(content))
     }
 }
