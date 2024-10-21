@@ -58,7 +58,7 @@ fn main() {
                     "timeout",
                     HTTPParams {
                         label: "Timeout 1",
-                        method: Method::POST,
+                        method: Method::GET,
                         arguments: Some(vec![
                             new_key_value_pair("timeout", "5", false),
                         ]),
@@ -76,7 +76,7 @@ fn main() {
                     "timeout",
                     HTTPParams {
                         label: "Timeout 1",
-                        method: Method::POST,
+                        method: Method::GET,
                         arguments: Some(vec![
                             new_key_value_pair("timeout", "5", false),
                         ]),
@@ -94,7 +94,7 @@ fn main() {
                     "timeout",
                     HTTPParams {
                         label: "Timeout 2",
-                        method: Method::POST,
+                        method: Method::GET,
                         arguments: Some(vec![
                             new_key_value_pair("timeout", "3", false),
                         ]),
