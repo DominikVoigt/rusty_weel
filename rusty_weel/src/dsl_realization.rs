@@ -1,5 +1,6 @@
 use derive_more::From;
 
+use once_map::OnceMap;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -7,7 +8,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::sync::mpsc::{Receiver, Sender};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError, RwLock};
 use std::thread::{self, ThreadId};
 use std::time::SystemTime;
 
@@ -49,6 +50,9 @@ pub struct Weel {
     // Invariant: When a thread is spawned within any weel method, thread information for this thread has to be created
     // Use ref cell here to allow immutable borrows -> Allows to independently borrow distinct elements
     pub thread_information: Mutex<HashMap<ThreadId, RefCell<ThreadInfo>>>,
+    // We use once map here: For each critical section the mutex should be created only once!
+    // Locking a critical secition should not block other threads from entering other critical sections -> We cannot lock the hashmap with either a mutex or rwlock
+    pub critical_section_mutexes: OnceMap<String, Box<Mutex<()>>>,
     pub stop_signal_receiver: Mutex<Receiver<()>>,
 }
 
@@ -90,7 +94,7 @@ impl DSL for Weel {
     }
 
     fn parallel_do(
-        &self,
+        self: Arc<Self>,
         wait: Option<u32>,
         cancel: &str,
         start_branches: impl Fn() -> Result<()> + Sync,
@@ -102,7 +106,7 @@ impl DSL for Weel {
     }
 
     fn parallel_branch(
-        &self,
+        self: Arc<Self>,
         /*data: &str,*/ lambda: impl Fn() -> Result<()> + Sync,
     ) -> Result<()> {
         println!("Executing parallel branch");
@@ -332,9 +336,15 @@ impl DSL for Weel {
         ["post_test", condition]
     }
 
-    fn critical_do(&self, mutex_id: &str, lambda: impl Fn() -> Result<()> + Sync) -> Result<()> {
-        println!("in critical do");
-        lambda();
+    fn critical_do(self: Arc<Self>, mutex_id: &str, lambda: impl Fn() -> Result<()> + Sync) -> Result<()> {
+        if self.clone().should_skip() {
+            return Ok(());
+        }
+        let mutex = self.critical_section_mutexes.insert(mutex_id.to_owned(), |_key| Box::new(Mutex::new(())));
+        // Guard this mutex lock until the lambda is executed
+        let mutex_lock = mutex.lock().unwrap();
+        self.execute_lambda(lambda)?;
+        drop(mutex_lock);
         todo!()
     }
 
@@ -387,6 +397,10 @@ impl DSL for Weel {
 
         *self.state.lock().unwrap() = State::Finishing;
         Ok(())
+    }
+    
+    fn escape(self: Arc<Self>) -> Result<()> {
+        return Err(Error::BreakLoop());
     }
 }
 

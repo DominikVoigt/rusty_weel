@@ -40,7 +40,7 @@ pub trait DSL {
      * `cancel` - Determines on which task the termination of a branch is decided on: either the first or last task in a branch
      */
     fn parallel_do(
-        &self,
+        self: Arc<Self>,
         wait: Option<u32>,
         cancel: &str,
         lambda: impl Fn() -> Result<()> + Sync,
@@ -50,7 +50,7 @@ pub trait DSL {
      * One of the parallel branches within a parallel do, has to create the threads and then wait for sync with the parallel_do for execution
      */
     fn parallel_branch(
-        &self,
+        self: Arc<Self>,
         /*data: &str,*/ lambda: impl Fn() -> Result<()> + Sync,
     ) -> Result<()>;
 
@@ -58,7 +58,7 @@ pub trait DSL {
      * Guards critical block
      * All sections with the same mutex_id share the mutex
      */
-    fn critical_do(&self, mutex_id: &str, lambda: impl Fn() -> Result<()> + Sync) -> Result<()>;
+    fn critical_do(self: Arc<Self>, mutex_id: &str, lambda: impl Fn() -> Result<()> + Sync) -> Result<()>;
 
     /**
      * Implements the BPMN choice in the dsl
@@ -79,4 +79,5 @@ pub trait DSL {
 
     fn stop(self: Arc<Self>, id: &str) -> Result<()>;
     fn terminate(self: Arc<Self>) -> Result<()>;
+    fn escape(self: Arc<Self>) -> Result<()>;
 }

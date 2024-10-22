@@ -185,6 +185,7 @@ impl DynamicData {
     }
 }
 
+// TODO: Certain parts here can be moved into true thread local storage to speed up the application
 pub struct ThreadInfo {
     pub parent: Option<ThreadId>,
     pub in_search_mode: bool,

@@ -28,28 +28,6 @@ fn main() {
 
     let model = move || -> Result<()> {
         // inject!("./resources/164-decide.eic");
-        weel().loop_exec(Weel::pre_test("data.count > 0"), || {
-            weel().call(
-                "a1",
-                "timeout",
-                HTTPParams {
-                    label: "Timeout 1",
-                    method: Method::GET,
-                    arguments: Some(vec![
-                        new_key_value_pair("timeout", "5", false),
-                    ]),
-                },
-                Option::None,
-                Option::None,
-                Some(indoc! {
-                    "
-                        data.count -= 1  
-                    "
-                }),
-                Option::None,
-            )?;
-            Ok(())
-        })?;
         Ok(())
     };
 
@@ -107,6 +85,7 @@ fn startup(stop_signal_receiver: mpsc::Receiver<()>) -> Arc<Weel> {
         positions: Mutex::new(Vec::new()),
         thread_information: Mutex::new(HashMap::new()),
         stop_signal_receiver: Mutex::new(stop_signal_receiver),
+        critical_section_mutexes: once_map::OnceMap::new(),
         attributes,
     };
     let current_thread = thread::current();
