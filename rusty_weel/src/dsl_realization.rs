@@ -275,13 +275,11 @@ impl DSL for Weel {
             }
         }
 
-        let mut loop_guard: u32 = 0;
         let loop_id = generate_random_key();
         // catch :escape
         match test_type {
             "pre_test" => {
                 while self.clone().evaluate_condition(condition)? && !self.clone().should_skip() {
-                    loop_guard += 1;
 
                     match self.execute_lambda(&lambda) {
                         Ok(()) => {}
@@ -300,7 +298,6 @@ impl DSL for Weel {
             "post_test" => {
                 loop {
                     // do-while
-                    loop_guard += 1;
                     match self.execute_lambda(&lambda) {
                         Ok(()) => {}
                         Err(err) => {
@@ -322,6 +319,8 @@ impl DSL for Weel {
             }
             x => log::error!("This condition type is not allowed: {}", x),
         }
+        // after loop is done, remove the loop guard entry
+        self.loop_guard.lock().unwrap().remove(&loop_id);
         Ok(())
     }
 
