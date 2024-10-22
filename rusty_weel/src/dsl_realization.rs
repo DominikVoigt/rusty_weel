@@ -1739,7 +1739,7 @@ mod test {
             }
         };
         let stat = StaticData {
-            instance_id: 164,
+            instance_id: 170,
             host: "localhost".to_owned(),
             cpee_base_url: "https://echo.bpm.in.tum.de/flow/engine".to_owned(),
             redis_url: None,
@@ -1780,6 +1780,7 @@ mod test {
             "to": "Prague",
             "persons": 3,
             "costs": 0,
+            "count": 4,
             "flag": true
         });
         let dynamic = DynamicData {
