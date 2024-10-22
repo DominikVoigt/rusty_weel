@@ -326,11 +326,11 @@ impl DSL for Weel {
     }
 
     fn pre_test(condition: &str) -> [&str; 2] {
-        [condition, "pre_test"]
+        ["pre_test", condition]
     }
 
     fn post_test(condition: &str) -> [&str; 2] {
-        [condition, "post_test"]
+        ["post_test", condition]
     }
 
     fn critical_do(&self, mutex_id: &str, lambda: impl Fn() -> Result<()> + Sync) -> Result<()> {
