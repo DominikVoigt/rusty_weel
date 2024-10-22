@@ -1,0 +1,22 @@
+weel().loop_exec(Weel::pre_test("data.count > 0"), || {
+    weel().call(
+        "a1",
+        "timeout",
+        HTTPParams {
+            label: "Timeout 1",
+            method: Method::GET,
+            arguments: Some(vec![
+                new_key_value_pair("timeout", "5", false),
+            ]),
+        },
+        Option::None,
+        Option::None,
+        Some(indoc! {
+            "
+                data.count -= 1  
+            "
+        }),
+        Option::None,
+    )?;
+    Ok(())
+})?;
