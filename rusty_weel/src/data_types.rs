@@ -1,5 +1,6 @@
 use std::collections::VecDeque;
 use std::fs;
+use std::sync::atomic::{AtomicBool, AtomicU32};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::ThreadId;
 use std::{collections::HashMap, path::PathBuf};
@@ -12,7 +13,7 @@ use crate::dsl_realization::{Position, Signal};
 #[derive(Debug, Clone, Serialize)]
 pub struct HTTPParams {
     pub label: &'static str,
-    
+
     pub method: http_helper::Method,
     pub arguments: Option<Vec<KeyValuePair>>,
 }
@@ -27,19 +28,22 @@ impl TryInto<String> for HTTPParams {
         let args = match self.arguments {
             Some(args) => {
                 let args_map: HashMap<_, _>;
-                args_map = args.iter().map(|e| {
-                    let value = match e.value.clone() {
-                        Some(value) => value,
-                        None => {"->{ nil }"}.to_owned(),
-                    };
-                    (e.key, value)
-                }).collect();
+                args_map = args
+                    .iter()
+                    .map(|e| {
+                        let value = match e.value.clone() {
+                            Some(value) => value,
+                            None => { "->{ nil }" }.to_owned(),
+                        };
+                        (e.key, value)
+                    })
+                    .collect();
                 serde_json::to_string(&args_map)?
-            },
+            }
             None => "nil".to_owned(),
         };
         hash_rep.insert("arguments", args);
-        
+
         serde_json::to_string(&hash_rep)
     }
 }
@@ -63,7 +67,7 @@ pub enum State {
     Stopped,
     Finishing,
     Finished,
-    None
+    None,
 }
 
 impl Default for State {
@@ -115,7 +119,10 @@ pub struct StatusDTO {
 
 impl<'a> Status {
     pub fn to_dto(&self) -> StatusDTO {
-        StatusDTO { id: self.id, message: self.message.clone() }
+        StatusDTO {
+            id: self.id,
+            message: self.message.clone(),
+        }
     }
 }
 
@@ -154,8 +161,7 @@ pub struct TaskMetaData {
 impl StaticData {
     pub fn load(path: &str) -> Self {
         let config = fs::read_to_string(path).expect("Could not read configuration file!");
-        let config: Self =
-            serde_yaml::from_str(&config).expect("Could not parse Configuration");
+        let config: Self = serde_yaml::from_str(&config).expect("Could not parse Configuration");
         config
     }
 
@@ -203,7 +209,7 @@ pub struct ThreadInfo {
     pub parallel_wait_condition: CancelCondition,
     pub first_activity_in_thread: bool,
 
-    // Number of threads that need to fulfill the parallel wait condition 
+    // Number of threads that need to fulfill the parallel wait condition
     pub branch_threshold: u32,
     // Counts the number of executed branches w.r.t the parallel wait condition
     pub branch_count: u32,
@@ -219,12 +225,12 @@ pub struct ThreadInfo {
 #[derive(PartialEq, Eq)]
 pub enum CancelCondition {
     First,
-    Last
+    Last,
 }
 
 pub enum ChooseVariant {
     Inclusive,
-    Exclusive
+    Exclusive,
 }
 
 /**
@@ -235,40 +241,49 @@ pub enum ChooseVariant {
 #[derive(Debug, Default)]
 pub struct BlockingQueue<T> {
     queue: Mutex<VecDeque<T>>,
-    pub num_waiting: u32,
+    pub num_waiting: Mutex<u32>,
     signal: Condvar,
 }
 
 impl<T: Default> BlockingQueue<T> {
     pub fn new() -> Self {
-        BlockingQueue { queue: Mutex::new(VecDeque::new()), num_waiting: 0, signal: Condvar::new() }
+        BlockingQueue {
+            queue: Mutex::new(VecDeque::new()),
+            num_waiting: Mutex::new(0),
+            signal: Condvar::new(),
+        }
     }
-    
+
     pub fn enqueue(&self, element: T) {
         self.queue.lock().unwrap().push_back(element);
         self.signal.notify_one();
     }
 
-    pub fn dequeue(&mut self) -> T {
+    pub fn dequeue(&self) -> T {
         let mut queue = self.queue.lock().unwrap();
         // Even though can wake up spuriously, not a problem if we check the condition repeatedly on whether the queue is non-empty
         while queue.is_empty() {
             log::info!("Queue empty, have to wait...");
-            self.num_waiting = self.num_waiting + 1;
+            *self.num_waiting.lock().unwrap() += 1;
             queue = self.signal.wait(queue).unwrap();
         }
-
-        if self.num_waiting > 0 {
-            self.num_waiting = self.num_waiting - 1;
+        let mut waiting = self.num_waiting.lock().unwrap();
+        if *waiting > 0 {
+            *waiting -= 1;
         }
         // Only leave queue if it contains an item -> can pop it off
         queue.pop_front().unwrap()
     }
 
     pub fn wake_all(&self) {
-        for _i in 0..self.num_waiting  {
-            self.enqueue(T::default());
+        let mut queue = self.queue.lock().unwrap(); 
+        println!("Trying to wake all");
+        let waiting = self.num_waiting.lock().unwrap();
+        for _i in 0..*waiting {
+            queue.push_back(T::default());
         }
+        drop(queue);
+        self.signal.notify_all();
     }
 
     pub fn clear(&self) {
@@ -285,7 +300,34 @@ impl<T: Default> BlockingQueue<T> {
 type float = f32;
 
 #[cfg(test)]
-mod testing {
+mod test_queue {
+    use std::{sync::Arc, thread::{self, sleep}, time::Duration};
+
+    use super::BlockingQueue;
+
+    #[test]
+    fn test_count() {
+        println!("Start test");
+        let queue: Arc<BlockingQueue<u32>> = Arc::new(BlockingQueue::new());
+        let handles: Vec<_> = (0..2000).map(|_i| {
+            let queue = queue.clone();
+            thread::spawn(move || {
+                println!("Spawing thread {:?}", thread::current().id());
+                queue.dequeue();
+                println!("After dequeue")
+            })
+        }).collect();
+        println!("before sleep");
+        sleep(Duration::new(3, 0));
+        println!("after sleep");
+        queue.wake_all();
+        // Try to join all handles, otherwise this test will timeout if some threads are not waked up
+        handles.into_iter().for_each(|h| {h.join().unwrap();});
+    }
+}
+
+#[cfg(test)]
+mod test_data {
     use std::fs;
 
     use super::StaticData;
@@ -316,8 +358,7 @@ mod testing {
         let path = "./test_files/static.data";
         let _ = fs::remove_file(path);
         let dummy = create_dummy_static(path);
-        
-        assert_eq!(dummy, StaticData::load(path));
 
+        assert_eq!(dummy, StaticData::load(path));
     }
 }
