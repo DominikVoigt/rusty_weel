@@ -94,21 +94,21 @@ fn startup(stop_signal_receiver: mpsc::Receiver<()>) -> Arc<Weel> {
     weel.thread_information.lock().unwrap().insert(
         current_thread.id(),
         RefCell::new(ThreadInfo {
-            parent: None,
+            parent_thread: None,
             in_search_mode: in_search_mode,
             switched_to_execution: false,
             no_longer_necessary: false,
-            blocking_queue: Arc::new(Mutex::new(BlockingQueue::new())),
+            callback_signals: Arc::new(Mutex::new(BlockingQueue::new())),
             // TODO: Unsure here
             branch_id: 0,
             branch_traces: HashMap::new(),
             branch_position: None,
             // This should not matter since we are not in a parallel yet
-            branch_wait_count_cancel_condition: rusty_weel::data_types::CancelCondition::First,
-            branch_wait_count_cancel_active: false,
-            branch_wait_count_cancel: 0,
-            branch_wait_count: 0,
-            branch_event: None,
+            parallel_wait_condition: rusty_weel::data_types::CancelCondition::First,
+            first_activity_in_thread: true,
+            branch_threshold: 0,
+            branch_count: 0,
+            branch_barrier: None,
             // to here
             local: String::new(),
             branches: Vec::new(),

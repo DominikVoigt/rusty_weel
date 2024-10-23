@@ -1,5 +1,6 @@
 use derive_more::From;
 
+use indoc::indoc;
 use once_map::OnceMap;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -27,6 +28,11 @@ use crate::eval_helper::{self, EvalError};
 use crate::redis_helper::{RedisHelper, Topic};
 
 static EVALUATION_LOCK: Mutex<()> = Mutex::new(());
+static PRECON_THREAD_INFO: &str = indoc! {
+    "
+    The thread information was not available even though the thread was already running!
+    The thread information should be created for every thread when it is spawned (either in main or parallel branch)
+    "};
 
 pub struct Weel {
     pub opts: StaticData,
@@ -99,10 +105,20 @@ impl DSL for Weel {
         cancel: &str,
         start_branches: impl Fn() -> Result<()> + Sync,
     ) -> Result<()> {
-        println!("Calling parallel_do");
-        println!("Executing lambda");
-        // start_branches();
-        todo!()
+        if self.clone().should_skip() {
+            return Ok(());
+        }
+
+        let current_thread_id = thread::current().id();
+        let thread_map = self.thread_information.lock().unwrap();
+        let thread_info = thread_map.get(&current_thread_id).expect(PRECON_THREAD_INFO).borrow_mut();
+
+        thread_info.branches = Vec::new();
+        thread_info.branch_traces = HashMap::new();
+        // thread_info.branch_finished_count = 0;
+        thread_info.branch_barrier = Some(BlockingQueue::new());
+
+        thread_info.Ok(())
     }
 
     fn parallel_branch(
@@ -130,7 +146,7 @@ impl DSL for Weel {
         let current_thread = thread::current().id();
         let thread_info_map = self.thread_information.lock().unwrap();
         // Unwrap as we have precondition that thread info is available on spawning
-        let mut thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
+        let mut thread_info = thread_info_map.get(&current_thread).expect(PRECON_THREAD_INFO).borrow_mut();
         thread_info.alternative_executed.push(false);
         thread_info.alternative_mode.push(variant);
 
@@ -142,7 +158,7 @@ impl DSL for Weel {
         connection_wrapper.join_branches(thread::current().id(), None)?;
         let current_thread = thread::current().id();
         let thread_info_map = self.thread_information.lock().unwrap();
-        let mut thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
+        let mut thread_info = thread_info_map.get(&current_thread).expect(PRECON_THREAD_INFO).borrow_mut();
 
         thread_info.alternative_executed.pop();
         thread_info.alternative_mode.pop();
@@ -170,7 +186,7 @@ impl DSL for Weel {
         let current_thread = thread::current().id();
 
         let thread_info_map = self.thread_information.lock().unwrap();
-        let thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
+        let thread_info = thread_info_map.get(&current_thread).expect(PRECON_THREAD_INFO).borrow_mut();
 
         let choice_is_exclusive = matches!(
             thread_info.alternative_mode.last().expect(error_message),
@@ -191,7 +207,7 @@ impl DSL for Weel {
         let condition_res = self.clone().evaluate_condition(condition)?;
 
         let thread_info_map = self.thread_information.lock().unwrap();
-        let mut thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
+        let mut thread_info = thread_info_map.get(&current_thread).expect(PRECON_THREAD_INFO).borrow_mut();
         if condition_res {
             // Make sure only one thread is executed for choice
             *thread_info
@@ -212,7 +228,7 @@ impl DSL for Weel {
             let current_thread = thread::current().id();
             let thread_info_map = self.thread_information.lock().unwrap();
             // Unwrap as we have precondition that thread info is available on spawning
-            let mut thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
+            let mut thread_info = thread_info_map.get(&current_thread).expect(PRECON_THREAD_INFO).borrow_mut();
             *thread_info
                 .alternative_executed
                 .last_mut()
@@ -231,7 +247,7 @@ impl DSL for Weel {
         let current_thread = thread::current().id();
         let thread_info_map = self.thread_information.lock().unwrap();
         // Unwrap as we have precondition that thread info is available on spawning
-        let thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
+        let thread_info = thread_info_map.get(&current_thread).expect(PRECON_THREAD_INFO).borrow_mut();
         let alternative_executed = *thread_info.alternative_executed.last().expect(
             "Should be present as alternative is called within a choose that pushes element in",
         );
@@ -284,7 +300,6 @@ impl DSL for Weel {
         match test_type {
             "pre_test" => {
                 while self.clone().evaluate_condition(condition)? && !self.clone().should_skip() {
-
                     match self.execute_lambda(&lambda) {
                         Ok(()) => {}
                         Err(err) => {
@@ -336,11 +351,17 @@ impl DSL for Weel {
         ["post_test", condition]
     }
 
-    fn critical_do(self: Arc<Self>, mutex_id: &str, lambda: impl Fn() -> Result<()> + Sync) -> Result<()> {
+    fn critical_do(
+        self: Arc<Self>,
+        mutex_id: &str,
+        lambda: impl Fn() -> Result<()> + Sync,
+    ) -> Result<()> {
         if self.clone().should_skip() {
             return Ok(());
         }
-        let mutex = self.critical_section_mutexes.insert(mutex_id.to_owned(), |_key| Box::new(Mutex::new(())));
+        let mutex = self
+            .critical_section_mutexes
+            .insert(mutex_id.to_owned(), |_key| Box::new(Mutex::new(())));
         // Guard this mutex lock until the lambda is executed
         let mutex_lock = mutex.lock().unwrap();
         self.execute_lambda(lambda)?;
@@ -359,9 +380,9 @@ impl DSL for Weel {
 
         let current_thread = thread::current().id();
         let thread_info_map = self.thread_information.lock().unwrap();
-        let thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
+        let thread_info = thread_info_map.get(&current_thread).expect(PRECON_THREAD_INFO).borrow_mut();
 
-        if let Some(parent) = &thread_info.parent {
+        if let Some(parent) = &thread_info.parent_thread {
             let mut parent_thread_info = thread_info_map
                 .get(parent)
                 .expect("Since we have a reference, threadinfo of parent has to exist")
@@ -398,7 +419,7 @@ impl DSL for Weel {
         *self.state.lock().unwrap() = State::Finishing;
         Ok(())
     }
-    
+
     fn escape(self: Arc<Self>) -> Result<()> {
         return Err(Error::BreakLoop());
     }
@@ -541,10 +562,10 @@ impl Weel {
     }
 
     fn should_skip(self: Arc<Self>) -> bool {
-        let current_thread = thread::current().id();
+        let current_thread_id = thread::current().id();
         // Leave loop if no longer necessary
         let thread_info_map = self.thread_information.lock().unwrap();
-        let thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
+        let thread_info = thread_info_map.get(&current_thread_id).expect(PRECON_THREAD_INFO).borrow_mut();
         let no_longer_necessary = thread_info.no_longer_necessary;
         matches!(
             *self.state.lock().unwrap(),
@@ -749,10 +770,10 @@ impl Weel {
          * We use a block computation here to mimick the exception handling -> If an exception in the original ruby code is raised, we return it here
          */
         let result: Result<()> = 'raise: {
-            let current_thread = thread::current().id();
+            let current_thread_id = thread::current().id();
             let thread_info_map = self.thread_information.lock().unwrap();
             // Unwrap as we have precondition that thread info is available on spawning
-            let mut thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
+            let mut thread_info = thread_info_map.get(&current_thread_id).expect(PRECON_THREAD_INFO).borrow_mut();
 
             // Check early return
             let in_invalid_state = match *self.state.lock().unwrap() {
@@ -763,16 +784,16 @@ impl Weel {
                 return Ok(());
             }
 
-            thread_info.blocking_queue = Arc::new(Mutex::new(BlockingQueue::new()));
+            thread_info.callback_signals = Arc::new(Mutex::new(BlockingQueue::new()));
             let mut connection_wrapper = connection_wrapper_mutex.lock().unwrap();
-            connection_wrapper.handler_continue = Some(thread_info.blocking_queue.clone());
+            connection_wrapper.handler_continue = Some(thread_info.callback_signals.clone());
 
-            let parent = thread_info.parent.clone();
+            let parent = thread_info.parent_thread.clone();
 
             // Register position/label of this thread in the branch traces of the parent thread
             if parent.is_some() {
                 let mut parent_thread_info =
-                    thread_info_map.get(&parent.unwrap()).unwrap().borrow_mut();
+                    thread_info_map.get(&parent.unwrap()).expect(PRECON_THREAD_INFO).borrow_mut();
                 let traces = parent_thread_info
                     .branch_traces
                     .get_mut(&thread_info.branch_id);
@@ -845,7 +866,7 @@ impl Weel {
                         let thread_info_map = self.thread_information.lock().unwrap();
                         // Unwrap as we have precondition that thread info is available on spawning
                         let thread_info =
-                            thread_info_map.get(&current_thread).unwrap().borrow_mut();
+                            thread_info_map.get(&current_thread).expect(PRECON_THREAD_INFO).borrow_mut();
                         // TODO: In manipulate we directly "abort" and do not run code, here we run code and then check for abort, is this correct?
                         let mut connection_wrapper = connection_wrapper_mutex.lock().unwrap();
                         let parameters = match connection_wrapper.prepare(
@@ -920,7 +941,7 @@ impl Weel {
                             let thread_info_map = self.thread_information.lock().unwrap();
                             // Unwrap as we have precondition that thread info is available on spawning
                             let thread_info =
-                                thread_info_map.get(&current_thread).unwrap().borrow();
+                                thread_info_map.get(&current_thread).expect(PRECON_THREAD_INFO).borrow();
                             let state_stopping_or_finishing = matches!(
                                 *self.state.lock().unwrap(),
                                 State::Stopping | State::Stopped | State::Finishing
@@ -932,7 +953,7 @@ impl Weel {
                             let mut wait_result = None;
 
                             // Get reference on the queue to allow us to unlock the rest of the thread info
-                            let thread_queue = thread_info.blocking_queue.clone();
+                            let thread_queue = thread_info.callback_signals.clone();
                             // We need to release the locks on the thread_info_map to allow other parallel branches to execute while we wait for the callback (can take long for async case)
                             drop(thread_info);
                             drop(thread_info_map);
@@ -950,7 +971,7 @@ impl Weel {
                             let thread_info_map = self.thread_information.lock().unwrap();
                             // Unwrap as we have precondition that thread info is available on spawning
                             let thread_info =
-                                thread_info_map.get(&current_thread).unwrap().borrow();
+                                thread_info_map.get(&current_thread).expect(PRECON_THREAD_INFO).borrow();
                             let connection_wrapper = connection_wrapper_mutex.lock().unwrap();
 
                             if thread_info.no_longer_necessary {
@@ -1107,7 +1128,7 @@ impl Weel {
                         let thread_info_map = self.thread_information.lock().unwrap();
                         // Unwrap as we have precondition that thread info is available on spawning
                         let mut thread_info =
-                            thread_info_map.get(&current_thread).unwrap().borrow_mut();
+                            thread_info_map.get(&current_thread).expect(PRECON_THREAD_INFO).borrow_mut();
                         thread_info.branch_position = None;
                         weel_position.handler_passthrough = None;
                         weel_position.detail = "unmark".to_owned();
@@ -1153,25 +1174,25 @@ impl Weel {
             let current_thread = thread::current().id();
             let thread_info_map = self.thread_information.lock().unwrap();
             // Unwrap as we have precondition that thread info is available on spawning
-            let mut thread_info = thread_info_map.get(&current_thread).unwrap().borrow_mut();
+            let mut thread_info = thread_info_map.get(&current_thread).expect(PRECON_THREAD_INFO).borrow_mut();
 
-            if let Some(parent_id) = thread_info.parent {
-                let mut parent_info = thread_info_map.get(&parent_id).unwrap().borrow_mut();
+            if let Some(parent_id) = thread_info.parent_thread {
+                let mut parent_info = thread_info_map.get(&parent_id).expect(PRECON_THREAD_INFO).borrow_mut();
 
-                if parent_info.branch_wait_count_cancel_condition == CancelCondition::First {
-                    if !thread_info.branch_wait_count_cancel_active
-                        && parent_info.branch_wait_count_cancel < parent_info.branch_wait_count
+                if parent_info.parallel_wait_condition == CancelCondition::First {
+                    if thread_info.first_activity_in_thread
+                        && parent_info.branch_threshold < parent_info.branch_count
                     {
-                        thread_info.branch_wait_count_cancel_active = true;
-                        parent_info.branch_wait_count_cancel =
-                            parent_info.branch_wait_count_cancel + 1;
+                        thread_info.first_activity_in_thread = false;
+                        parent_info.branch_threshold =
+                            parent_info.branch_threshold + 1;
                     }
                 }
                 let state_not_stopping_or_finishing = match *self.state.lock().unwrap() {
                     State::Stopping | State::Finishing => false,
                     _other => true,
                 };
-                if parent_info.branch_wait_count_cancel == parent_info.branch_wait_count
+                if parent_info.branch_threshold == parent_info.branch_count
                     && state_not_stopping_or_finishing
                 {
                     // Will iteratively mark all children as no longer necessary
@@ -1179,7 +1200,7 @@ impl Weel {
                         match thread_info_map.get(child_id) {
                             Some(thread_info) => {
                                 let mut thread_info = thread_info.borrow_mut();
-                                if !thread_info.branch_wait_count_cancel_active {
+                                if thread_info.first_activity_in_thread {
                                     thread_info.no_longer_necessary = true;
                                     drop(thread_info);
                                     // Should be fine w.r.t. mutable borrows, since this will continue recusively down the hieararchy
@@ -1187,7 +1208,8 @@ impl Weel {
                                 }
                             }
                             None => {
-                                log::info!("Child Thread of Thread {:?} with id: {:?} does not have any thread info", parent_id, child_id)
+                                log::error!("Child Thread of Thread {:?} with id: {:?} does not have any thread info", parent_id, child_id);
+                                log::error!("{}", PRECON_THREAD_INFO)
                             }
                         }
                     }
@@ -1285,7 +1307,7 @@ impl Weel {
         let connection_wrapper = ConnectionWrapper::new(self.clone(), None, None);
         let current_thread = thread::current();
         let thread_info_map = self.thread_information.lock().unwrap();
-        let thread_info = thread_info_map.get(&current_thread.id()).unwrap().borrow();
+        let thread_info = thread_info_map.get(&current_thread.id()).expect(PRECON_THREAD_INFO).borrow();
         let thread_local = thread_info.local.clone();
         drop(thread_info);
         drop(thread_info_map);
@@ -1362,7 +1384,7 @@ impl Weel {
         let thread = thread::current();
         let thread_info_map = self.thread_information.lock().unwrap();
         // We unwrap here but we need to ensure that when the weel creates a thread, it registers the thread info!
-        let mut thread_info = thread_info_map.get(&thread.id()).unwrap().borrow_mut();
+        let mut thread_info = thread_info_map.get(&thread.id()).expect(PRECON_THREAD_INFO).borrow_mut();
 
         if !thread_info.in_search_mode {
             return false;
@@ -1379,10 +1401,10 @@ impl Weel {
                 // We found the first position on this branch -> We do not need to search futher along this branch of execution
                 thread_info.in_search_mode = false;
                 thread_info.switched_to_execution = true;
-                while let Some(parent) = thread_info.parent {
+                while let Some(parent) = thread_info.parent_thread {
                     // Each parent thread has to have some thread information. In general all threads should, when they spawn via weel register and add their thread information
                     // Communicate to ancestor branches that in one of its childs a label was found and the search is done.
-                    thread_info = thread_info_map.get(&parent).unwrap().borrow_mut();
+                    thread_info = thread_info_map.get(&parent).expect(PRECON_THREAD_INFO).borrow_mut();
                     thread_info.in_search_mode = false;
                     thread_info.switched_to_execution = true;
                 }
@@ -1430,6 +1452,7 @@ impl Weel {
                         "Thread information for branch {:?} is empty",
                         current_thread.id()
                     );
+                    log::error!("{}", PRECON_THREAD_INFO);
                     panic!("Thread information not present!")
                 }
             };
@@ -1488,7 +1511,7 @@ impl Weel {
             self.positions.lock().unwrap().push(weel_position.clone());
             current_thread_info.branch_position = Some(weel_position.clone());
 
-            (current_thread_info.parent, weel_position)
+            (current_thread_info.parent_thread, weel_position)
         };
         if let Some(parent_thread_id) = parent_thread_id {
             let mut parent_thread_info = match thread_info_map.get(&parent_thread_id) {
@@ -1498,6 +1521,7 @@ impl Weel {
                         "Thread information for branch {:?} is empty",
                         current_thread.id()
                     );
+                    log::error!("{}", PRECON_THREAD_INFO);
                     panic!("Thread information not present!")
                 }
             };
@@ -1608,13 +1632,13 @@ fn recursive_continue(
     thread_info_map: &MutexGuard<HashMap<ThreadId, RefCell<ThreadInfo>>>,
     thread_id: &ThreadId,
 ) {
-    let thread_info = thread_info_map.get(thread_id).unwrap().borrow();
+    let thread_info = thread_info_map.get(thread_id).expect(PRECON_THREAD_INFO).borrow();
     thread_info
-        .blocking_queue
+        .callback_signals
         .lock()
         .unwrap()
         .enqueue(Signal::None);
-    if let Some(branch_event) = &thread_info.branch_event {
+    if let Some(branch_event) = &thread_info.branch_barrier {
         branch_event.enqueue(());
     }
     for child_id in &thread_info.branches {

@@ -187,28 +187,29 @@ impl DynamicData {
 
 // TODO: Certain parts here can be moved into true thread local storage to speed up the application
 pub struct ThreadInfo {
-    pub parent: Option<ThreadId>,
+    pub parent_thread: Option<ThreadId>,
     pub in_search_mode: bool,
     pub switched_to_execution: bool,
     pub no_longer_necessary: bool,
-    // Continue structure
-    pub blocking_queue: Arc<Mutex<BlockingQueue<Signal>>>,
+    // Continue structure in original code
+    pub callback_signals: Arc<Mutex<BlockingQueue<Signal>>>,
 
-    // ID of this thread relative to its parent (not globaly unique), used mainly for debugging), this id is used within the branch_traces
-    pub branch_id: i32,
-    pub branch_traces: HashMap<i32, Vec<String>>,
-    pub branch_position: Option<Position>,
-    pub branch_wait_count_cancel_condition: CancelCondition,
-    pub branch_wait_count_cancel_active: bool,
-
-    // Counts the number of already canceled branches
-    pub branch_wait_count_cancel: i32,
-    pub branch_wait_count: i32,
-    // Used for synchronization of child branches
-    pub branch_event: Option<BlockingQueue<()>>,
-    pub local: String,
     // Thread IDs of all spawned children threads (are branches)
     pub branches: Vec<ThreadId>,
+    // ID of this thread relative to its parent (not globaly unique), used mainly for debugging), this id is used within the branch_traces
+    pub branch_id: u32,
+    pub branch_traces: HashMap<u32, Vec<String>>,
+    pub branch_position: Option<Position>,
+    pub parallel_wait_condition: CancelCondition,
+    pub first_activity_in_thread: bool,
+
+    // Number of threads that need to fulfill the parallel wait condition 
+    pub branch_threshold: u32,
+    // Counts the number of executed branches w.r.t the parallel wait condition
+    pub branch_count: u32,
+    // Used for synchronization of child branches
+    pub branch_barrier: Option<BlockingQueue<()>>,
+    pub local: String,
 
     // For choose -> Might be truly thread local
     pub alternative_executed: Vec<bool>,

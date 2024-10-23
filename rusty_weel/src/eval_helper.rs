@@ -77,7 +77,7 @@ pub fn test_condition(
                 serde_json::from_str(&content)?
             }
         };
-        connection_wrapper.gateway_decide(thread::current().id(), code, condition);
+        connection_wrapper.gateway_decide(thread::current().id(), code, condition)?;
         Ok(condition)
     } else {
         let mut signal: Option<Signal> = None;
