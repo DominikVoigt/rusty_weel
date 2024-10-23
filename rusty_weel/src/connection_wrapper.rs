@@ -1135,7 +1135,7 @@ impl ConnectionWrapper {
         )
     }
 
-    pub fn split_branches(&self, id: ThreadId, branches: Option<&HashMap<i32, Vec<String>>>) -> Result<()> {
+    pub fn split_branches(&self, id: ThreadId, branches: Option<&HashMap<u32, Vec<String>>>) -> Result<()> {
         let id = format!("{:?}", id);
         let mut content = json!({
             "instance_uuid": self.weel().uuid(),
@@ -1161,7 +1161,7 @@ impl ConnectionWrapper {
         self.inform("gateway/decide", Some(content))
     }
 
-    pub fn join_branches(&self, id: ThreadId, branches: Option<&HashMap<i32, Vec<String>>>) -> Result<()> {
+    pub fn join_branches(&self, id: ThreadId, branches: Option<&HashMap<u32, Vec<String>>>) -> Result<()> {
         let id = format!("{:?}", id);
         let mut content = json!({
             "instance_uuid": self.weel().uuid(),

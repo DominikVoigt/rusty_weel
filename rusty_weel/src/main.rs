@@ -106,9 +106,9 @@ fn startup(stop_signal_receiver: mpsc::Receiver<()>) -> Arc<Weel> {
             // This should not matter since we are not in a parallel yet
             parallel_wait_condition: rusty_weel::data_types::CancelCondition::First,
             first_activity_in_thread: true,
-            branch_threshold: 0,
-            branch_count: 0,
-            branch_barrier: None,
+            branch_wait_threshold: 0,
+            branch_wait_count: 0,
+            branch_barrier_setup: None,
             // to here
             local: String::new(),
             branches: Vec::new(),

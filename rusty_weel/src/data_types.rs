@@ -210,11 +210,13 @@ pub struct ThreadInfo {
     pub first_activity_in_thread: bool,
 
     // Number of threads that need to fulfill the parallel wait condition
-    pub branch_threshold: u32,
+    pub branch_wait_threshold: usize,
     // Counts the number of executed branches w.r.t the parallel wait condition
-    pub branch_count: u32,
-    // Used for synchronization of child branches
-    pub branch_barrier: Option<BlockingQueue<()>>,
+    pub branch_wait_count: usize,
+    // Used for synchronization the setup of child branches
+    pub branch_barrier_setup: Option<Arc<BlockingQueue<()>>>,
+    // Used for synon the start of child branches
+    pub branch_barrier_start: Option<Arc<BlockingQueue<()>>>,
     pub local: String,
 
     // For choose -> Might be truly thread local

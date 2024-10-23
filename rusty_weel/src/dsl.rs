@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::{data_types::{ChooseVariant, HTTPParams}, dsl_realization::Result};
+use crate::{data_types::{CancelCondition, ChooseVariant, HTTPParams}, dsl_realization::Result};
 
 pub trait DSL {
     /**
@@ -41,8 +41,8 @@ pub trait DSL {
      */
     fn parallel_do(
         self: Arc<Self>,
-        wait: Option<u32>,
-        cancel: &str,
+        wait: Option<usize>,
+        cancel: CancelCondition,
         lambda: impl Fn() -> Result<()> + Sync,
     ) -> Result<()>;
 

@@ -18,7 +18,7 @@ use rand::Rng;
 use reqwest::header::ToStrError;
 use rusty_weel_macro::get_str_from_value;
 
-use crate::connection_wrapper::ConnectionWrapper;
+use crate::connection_wrapper::{self, ConnectionWrapper};
 use crate::data_types::{
     BlockingQueue, CancelCondition, ChooseVariant, DynamicData, HTTPParams, InstanceMetaData,
     State, StaticData, Status, ThreadInfo,
@@ -101,9 +101,9 @@ impl DSL for Weel {
 
     fn parallel_do(
         self: Arc<Self>,
-        wait: Option<u32>,
-        cancel: &str,
-        start_branches: impl Fn() -> Result<()> + Sync,
+        wait: Option<usize>,
+        cancel: CancelCondition,
+        lambda: impl Fn() -> Result<()> + Sync,
     ) -> Result<()> {
         if self.clone().should_skip() {
             return Ok(());
@@ -111,14 +111,70 @@ impl DSL for Weel {
 
         let current_thread_id = thread::current().id();
         let thread_map = self.thread_information.lock().unwrap();
-        let thread_info = thread_map.get(&current_thread_id).expect(PRECON_THREAD_INFO).borrow_mut();
+        let mut thread_info = thread_map.get(&current_thread_id).expect(PRECON_THREAD_INFO).borrow_mut();
 
         thread_info.branches = Vec::new();
         thread_info.branch_traces = HashMap::new();
         // thread_info.branch_finished_count = 0;
-        thread_info.branch_barrier = Some(BlockingQueue::new());
+        let barrier = Arc::new(BlockingQueue::new());
+        thread_info.branch_barrier_setup = Some(barrier.clone());
+        drop(thread_info);
+        drop(thread_map);
 
-        thread_info.Ok(())
+        // Startup the branches
+        self.execute_lambda(lambda)?;
+
+        let thread_map = self.thread_information.lock().unwrap();
+        let mut thread_info = thread_map.get(&current_thread_id).expect(PRECON_THREAD_INFO).borrow_mut();
+
+        thread_info.branch_wait_count = 0;
+        // If wait is not set, wait for all branches to terminate
+        thread_info.branch_wait_threshold = wait.unwrap_or(thread_info.branches.len());
+        thread_info.parallel_wait_condition = cancel;
+        let spawned_branches: usize = thread_info.branches.len();
+
+        // wait for all spawned branches to signal ready
+        for _ in 1..=spawned_branches {
+            barrier.dequeue();
+        }
+        let traces = thread_info.branch_traces.clone();
+        let branches = thread_info.branches.clone();
+        let connection_wrapper = ConnectionWrapper::new(self.clone(), None, None);
+        connection_wrapper.split_branches(current_thread_id, Some(&traces))?;
+
+        // Now start all branches
+        for thread in &thread_info.branches {
+            let child_info: std::cell::RefMut<'_, ThreadInfo> = thread_map.get(thread).unwrap().borrow_mut();
+            child_info.branch_barrier_start.as_ref().unwrap().enqueue(());
+        }
+        drop(thread_info);
+        drop(thread_map);
+
+        if !(self.clone().should_skip() || spawned_branches == 0) {
+            // note sure what this is for?
+            barrier.dequeue();
+        }
+
+        connection_wrapper.join_branches(current_thread_id, Some(&traces))?;
+        
+        if !self.clone().should_skip() {
+            let thread_map = self.thread_information.lock().unwrap();
+            for thread in &branches {
+                let mut child_info: std::cell::RefMut<'_, ThreadInfo> = thread_map.get(thread).unwrap().borrow_mut();
+                child_info.no_longer_necessary = true;
+                self.recursive_continue(thread);
+            }
+
+            for thread in branches {
+                let mut child_info: std::cell::RefMut<'_, ThreadInfo> = thread_map.get(thread).unwrap().borrow_mut();
+                child_info.no_longer_necessary = true;
+                self.recursive_join(Some(thread));
+            }
+        }
+        
+
+
+        Ok(())
     }
 
     fn parallel_branch(
@@ -477,7 +533,7 @@ impl Weel {
                                     };
                                 }
                                 State::Stopping => {
-                                    self.recursive_join();
+                                    self.recursive_join(None);
                                     *state = State::Stopped;
                                     match ConnectionWrapper::new(self.clone(), None, None)
                                         .inform_state_change(State::Stopped)
@@ -505,7 +561,7 @@ impl Weel {
         Ok(())
     }
 
-    fn recursive_join(&self) {
+    fn recursive_join(&self, thread: Option<ThreadId>) {
         // TODO: Implement recursive join, this should not be required?
         log::error!("Recursive join not yet impemented/removed")
     }
@@ -1181,18 +1237,18 @@ impl Weel {
 
                 if parent_info.parallel_wait_condition == CancelCondition::First {
                     if thread_info.first_activity_in_thread
-                        && parent_info.branch_threshold < parent_info.branch_count
+                        && parent_info.branch_wait_threshold < parent_info.branch_wait_count
                     {
                         thread_info.first_activity_in_thread = false;
-                        parent_info.branch_threshold =
-                            parent_info.branch_threshold + 1;
+                        parent_info.branch_wait_threshold =
+                            parent_info.branch_wait_threshold + 1;
                     }
                 }
                 let state_not_stopping_or_finishing = match *self.state.lock().unwrap() {
                     State::Stopping | State::Finishing => false,
                     _other => true,
                 };
-                if parent_info.branch_threshold == parent_info.branch_count
+                if parent_info.branch_wait_threshold == parent_info.branch_wait_count
                     && state_not_stopping_or_finishing
                 {
                     // Will iteratively mark all children as no longer necessary
@@ -1638,7 +1694,7 @@ fn recursive_continue(
         .lock()
         .unwrap()
         .enqueue(Signal::None);
-    if let Some(branch_event) = &thread_info.branch_barrier {
+    if let Some(branch_event) = &thread_info.branch_barrier_setup {
         branch_event.enqueue(());
     }
     for child_id in &thread_info.branches {
