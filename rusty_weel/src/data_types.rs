@@ -1,6 +1,5 @@
 use std::collections::VecDeque;
 use std::fs;
-use std::sync::atomic::{AtomicBool, AtomicU32};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::ThreadId;
 use std::{collections::HashMap, path::PathBuf};
