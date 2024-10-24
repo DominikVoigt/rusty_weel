@@ -174,7 +174,7 @@ impl DSL for Weel {
                 let mut child_info: std::cell::RefMut<'_, ThreadInfo> =
                     thread_map.get(thread).unwrap().borrow_mut();
                 child_info.no_longer_necessary = true;
-                self.recursive_continue(thread);
+                recursive_continue(&thread_map, thread);
             }
 
             for thread in branches {
@@ -1294,13 +1294,15 @@ impl Weel {
                         && parent_info.branch_wait_threshold < parent_info.branch_wait_count
                     {
                         thread_info.first_activity_in_thread = false;
-                        parent_info.branch_wait_threshold = parent_info.branch_wait_threshold + 1;
+                        parent_info.branch_wait_count = parent_info.branch_wait_count + 1;
                     }
                 }
                 let state_not_stopping_or_finishing = match *self.state.lock().unwrap() {
                     State::Stopping | State::Finishing => false,
                     _other => true,
                 };
+                // Drop to reacquire under parent
+                drop(thread_info);
                 if parent_info.branch_wait_threshold == parent_info.branch_wait_count
                     && state_not_stopping_or_finishing
                 {
