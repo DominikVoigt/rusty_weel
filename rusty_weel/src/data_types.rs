@@ -194,21 +194,11 @@ impl DynamicData {
 // TODO: Certain parts here can be moved into true thread local storage to speed up the application
 pub struct ThreadInfo {
     pub parent_thread: Option<ThreadId>,
-    pub in_search_mode: bool,
-    pub switched_to_execution: bool,
-    pub no_longer_necessary: bool,
-    // Continue structure in original code
-    pub callback_signals: Arc<Mutex<BlockingQueue<Signal>>>,
-
-    // Thread IDs of all spawned children threads (are branches)
     pub branches: Vec<ThreadId>,
-    // ID of this thread relative to its parent (not globaly unique), used mainly for debugging), this id is used within the branch_traces
-    pub branch_id: u32,
-    pub branch_traces: HashMap<u32, Vec<String>>,
-    pub branch_position: Option<Position>,
+    pub branch_traces: HashMap<ThreadId, Vec<String>>,
+    
+    // For parallel and parallel branch to communicate
     pub parallel_wait_condition: CancelCondition,
-    pub first_activity_in_thread: bool,
-
     // Number of threads that need to fulfill the parallel wait condition
     pub branch_wait_threshold: usize,
     // Counts the number of executed branches w.r.t the parallel wait condition
@@ -217,11 +207,25 @@ pub struct ThreadInfo {
     pub branch_barrier_setup: Option<Arc<BlockingQueue<()>>>,
     // Used for synon the start of child branches
     pub branch_barrier_start: Option<Arc<BlockingQueue<()>>>,
-    pub local: String,
-
+    
     // For choose -> Might be truly thread local
     pub alternative_executed: Vec<bool>,
     pub alternative_mode: Vec<ChooseVariant>,
+    
+    pub no_longer_necessary: bool,
+    
+    pub in_search_mode: bool,
+    pub branch_position: Option<Position>,
+    pub switched_to_execution: bool,
+    // Continue structure in original code
+    pub callback_signals: Arc<Mutex<BlockingQueue<Signal>>>,
+
+    // Thread IDs of all spawned children threads (are branches)
+    // ID of this thread relative to its parent (not globaly unique), used mainly for debugging), this id is used within the branch_traces
+    pub first_activity_in_thread: bool,
+
+    pub local: String,
+
 }
 
 #[derive(PartialEq, Eq)]

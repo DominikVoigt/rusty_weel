@@ -1135,7 +1135,7 @@ impl ConnectionWrapper {
         )
     }
 
-    pub fn split_branches(&self, id: ThreadId, branches: Option<&HashMap<u32, Vec<String>>>) -> Result<()> {
+    pub fn split_branches(&self, id: ThreadId, branches: Option<&HashMap<ThreadId, Vec<String>>>) -> Result<()> {
         let id = format!("{:?}", id);
         let mut content = json!({
             "instance_uuid": self.weel().uuid(),
