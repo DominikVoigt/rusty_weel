@@ -1161,15 +1161,15 @@ impl ConnectionWrapper {
         self.inform("gateway/decide", Some(content))
     }
 
-    pub fn join_branches(&self, id: ThreadId, branches: Option<&HashMap<ThreadId, Vec<String>>>) -> Result<()> {
+    pub fn join_branches(&self, id: ThreadId, branch_traces: Option<&HashMap<ThreadId, Vec<String>>>) -> Result<()> {
         let id = format!("{:?}", id);
         let mut content = json!({
             "instance_uuid": self.weel().uuid(),
             "ecid": id
         });
 
-        if let Some(branches) = branches {
-            content.as_object_mut().unwrap().insert("branches".to_owned(), json!(branches.len()));
+        if let Some(branch_traces) = branch_traces {
+            content.as_object_mut().unwrap().insert("branches".to_owned(), json!(branch_traces.len()));
         }
 
         self.inform("gateway/join", Some(content))

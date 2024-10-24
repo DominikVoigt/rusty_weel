@@ -160,6 +160,7 @@ impl DSL for Weel {
                 .enqueue(());
         }
 
+        // Wait for the "final" thread to fulfill the wait condition (wait_threshold = wait_count)
         if !(self.clone().should_skip(&thread_info) || spawned_branches == 0) {
             // note sure what this is for?
             barrier.dequeue();
