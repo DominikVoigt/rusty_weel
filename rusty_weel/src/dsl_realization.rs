@@ -112,7 +112,7 @@ impl DSL for Weel {
             .expect(PRECON_THREAD_INFO)
             .borrow_mut();
         
-        if self.clone().should_skip(&thread_info) {
+        if self.should_skip(&thread_info) {
             return Ok(());
         }
 
@@ -161,14 +161,14 @@ impl DSL for Weel {
         }
 
         // Wait for the "final" thread to fulfill the wait condition (wait_threshold = wait_count)
-        if !(self.clone().should_skip(&thread_info) || spawned_branches == 0) {
+        if !(self.should_skip(&thread_info) || spawned_branches == 0) {
             // note sure what this is for?
             barrier.dequeue();
         }
 
         connection_wrapper.join_branches(current_thread_id, Some(&thread_info.branch_traces))?;
 
-        if !self.clone().should_skip(&thread_info) {
+        if !self.should_skip(&thread_info) {
             let thread_map = self.thread_information.lock().unwrap();
             for thread in &branches {
                 let mut child_info: std::cell::RefMut<'_, ThreadInfo> =
@@ -214,7 +214,7 @@ impl DSL for Weel {
             .expect(PRECON_THREAD_INFO)
             .borrow_mut();
         
-        if self.clone().should_skip(&thread_info) {
+        if self.should_skip(&thread_info) {
             return Ok(());
         }
 
@@ -251,7 +251,7 @@ impl DSL for Weel {
         condition: &str,
         lambda: impl Fn() -> Result<()> + Sync,
     ) -> Result<()> {
-        if self.clone().should_skip_locking() {
+        if self.should_skip_locking() {
             return Ok(());
         }
 
@@ -360,7 +360,7 @@ impl DSL for Weel {
             ));
         }
 
-        if self.clone().should_skip_locking() {
+        if self.should_skip_locking() {
             return Ok(());
         }
 
@@ -385,7 +385,7 @@ impl DSL for Weel {
         // catch :escape
         match test_type {
             "pre_test" => {
-                while self.clone().evaluate_condition(condition)? && !self.clone().should_skip_locking() {
+                while self.clone().evaluate_condition(condition)? && !self.should_skip_locking() {
                     match self.execute_lambda(&lambda) {
                         Ok(()) => {}
                         Err(err) => {
@@ -417,7 +417,7 @@ impl DSL for Weel {
                     ConnectionWrapper::loop_guard(self.clone(), &loop_id);
 
                     let continue_loop =
-                        self.clone().evaluate_condition(condition)? && !self.clone().should_skip_locking();
+                        self.clone().evaluate_condition(condition)? && !self.should_skip_locking();
                     if !continue_loop {
                         break;
                     }
@@ -443,7 +443,7 @@ impl DSL for Weel {
         mutex_id: &str,
         lambda: impl Fn() -> Result<()> + Sync,
     ) -> Result<()> {
-        if self.clone().should_skip_locking() {
+        if self.should_skip_locking() {
             return Ok(());
         }
         let mutex = self
@@ -468,7 +468,7 @@ impl DSL for Weel {
             .expect(PRECON_THREAD_INFO)
             .borrow_mut();
         
-        if self.clone().should_skip(&thread_info) {
+        if self.should_skip(&thread_info) {
             return Ok(());
         }
 
@@ -504,7 +504,7 @@ impl DSL for Weel {
         }
 
         // Unwrap as we have precondition that thread info is available on spawning
-        if self.clone().should_skip_locking() {
+        if self.should_skip_locking() {
             return Ok(());
         }
 
@@ -658,7 +658,7 @@ impl Weel {
      * This version is useful if you need to lock the thread information anyway, 
      * then you do not have to release and reaquire the lock  
      */
-    fn should_skip(self: Arc<Self>, thread_info: &ThreadInfo) -> bool {
+    fn should_skip(&self, thread_info: &ThreadInfo) -> bool {
         let no_longer_necessary = thread_info.no_longer_necessary;
         matches!(
             *self.state.lock().unwrap(),
@@ -670,7 +670,7 @@ impl Weel {
      * This version acquires the lock itself, this is useful if you do not need the
      * thread_info anyway
      */
-    fn should_skip_locking(self: Arc<Self>) -> bool {
+    fn should_skip_locking(&self) -> bool {
         let current_thread_id = thread::current().id();
             let thread_info_map = self.thread_information.lock().unwrap();
             // Unwrap as we have precondition that thread info is available on spawning
