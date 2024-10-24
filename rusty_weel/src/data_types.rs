@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use std::fs;
 use std::sync::{Arc, Condvar, Mutex};
-use std::thread::ThreadId;
+use std::thread::{JoinHandle, ThreadId};
 use std::{collections::HashMap, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -195,7 +195,7 @@ pub struct ThreadInfo {
     pub parent_thread: Option<ThreadId>,
     pub branches: Vec<ThreadId>,
     pub branch_traces: HashMap<ThreadId, Vec<String>>,
-    
+
     // For parallel and parallel branch to communicate
     pub parallel_wait_condition: CancelCondition,
     // Number of threads that need to fulfill the parallel wait condition
@@ -206,13 +206,15 @@ pub struct ThreadInfo {
     pub branch_barrier_setup: Option<Arc<BlockingQueue<()>>>,
     // Used for synon the start of child branches
     pub branch_barrier_start: Option<Arc<BlockingQueue<()>>>,
-    
+    // Join handle for the thread, this should only ever be called from parent, and is set by parent after the thread is initialized -> main thread has no join handle -> None
+    pub join_handle: Option<JoinHandle<()>>,
+
     // For choose -> Might be truly thread local
     pub alternative_executed: Vec<bool>,
     pub alternative_mode: Vec<ChooseVariant>,
-    
+
     pub no_longer_necessary: bool,
-    
+
     pub in_search_mode: bool,
     pub branch_position: Option<Position>,
     pub switched_to_execution: bool,
@@ -224,7 +226,33 @@ pub struct ThreadInfo {
     pub first_activity_in_thread: bool,
 
     pub local: String,
+}
 
+impl Default for ThreadInfo {
+    fn default() -> Self {
+        Self {
+            parent_thread: None,
+            in_search_mode: false,
+            switched_to_execution: false,
+            no_longer_necessary: false,
+            callback_signals: Arc::new(Mutex::new(BlockingQueue::new())),
+            branch_traces: HashMap::new(),
+            branch_position: None,
+            // This should not matter since we are not in a parallel yet
+            parallel_wait_condition: CancelCondition::First,
+            first_activity_in_thread: true,
+            branch_wait_threshold: 0,
+            branch_wait_count: 0,
+            branch_barrier_setup: None,
+            branch_barrier_start: None,
+            branches: Vec::new(),
+            join_handle: None,
+            // To here
+            local: String::new(),
+            alternative_mode: Vec::new(),
+            alternative_executed: Vec::new(),
+        }
+    }
 }
 
 #[derive(PartialEq, Eq)]
@@ -233,6 +261,7 @@ pub enum CancelCondition {
     Last,
 }
 
+#[derive(Clone, Copy)]
 pub enum ChooseVariant {
     Inclusive,
     Exclusive,
@@ -281,7 +310,7 @@ impl<T: Default> BlockingQueue<T> {
     }
 
     pub fn wake_all(&self) {
-        let mut queue = self.queue.lock().unwrap(); 
+        let mut queue = self.queue.lock().unwrap();
         println!("Trying to wake all");
         let waiting = self.num_waiting.lock().unwrap();
         for _i in 0..*waiting {
@@ -306,7 +335,11 @@ type float = f32;
 
 #[cfg(test)]
 mod test_queue {
-    use std::{sync::Arc, thread::{self, sleep}, time::Duration};
+    use std::{
+        sync::Arc,
+        thread::{self, sleep},
+        time::Duration,
+    };
 
     use super::BlockingQueue;
 
@@ -314,20 +347,24 @@ mod test_queue {
     fn test_count() {
         println!("Start test");
         let queue: Arc<BlockingQueue<u32>> = Arc::new(BlockingQueue::new());
-        let handles: Vec<_> = (0..2000).map(|_i| {
-            let queue = queue.clone();
-            thread::spawn(move || {
-                println!("Spawing thread {:?}", thread::current().id());
-                queue.dequeue();
-                println!("After dequeue")
+        let handles: Vec<_> = (0..2000)
+            .map(|_i| {
+                let queue = queue.clone();
+                thread::spawn(move || {
+                    println!("Spawing thread {:?}", thread::current().id());
+                    queue.dequeue();
+                    println!("After dequeue")
+                })
             })
-        }).collect();
+            .collect();
         println!("before sleep");
         sleep(Duration::new(3, 0));
         println!("after sleep");
         queue.wake_all();
         // Try to join all handles, otherwise this test will timeout if some threads are not waked up
-        handles.into_iter().for_each(|h| {h.join().unwrap();});
+        handles.into_iter().for_each(|h| {
+            h.join().unwrap();
+        });
     }
 }
 

@@ -8,8 +8,8 @@ use serde_json::json;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
-use std::sync::mpsc::{Receiver, Sender};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError, RwLock};
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread::{self, ThreadId};
 use std::time::SystemTime;
 
@@ -18,7 +18,7 @@ use rand::Rng;
 use reqwest::header::ToStrError;
 use rusty_weel_macro::get_str_from_value;
 
-use crate::connection_wrapper::{self, ConnectionWrapper};
+use crate::connection_wrapper::ConnectionWrapper;
 use crate::data_types::{
     BlockingQueue, CancelCondition, ChooseVariant, DynamicData, HTTPParams, InstanceMetaData,
     State, StaticData, Status, ThreadInfo,
@@ -59,7 +59,7 @@ pub struct Weel {
     // We use once map here: For each critical section the mutex should be created only once!
     // Locking a critical secition should not block other threads from entering other critical sections -> We cannot lock the hashmap with either a mutex or rwlock
     pub critical_section_mutexes: OnceMap<String, Box<Mutex<()>>>,
-    pub stop_signal_receiver: Mutex<Receiver<()>>,
+    pub stop_signal_receiver: Mutex<Option<Receiver<()>>>,
 }
 
 impl DSL for Weel {
@@ -103,7 +103,7 @@ impl DSL for Weel {
         self: Arc<Self>,
         wait: Option<usize>,
         cancel: CancelCondition,
-        lambda: impl Fn() -> Result<()> + Sync,
+        lambda: Arc<dyn Fn() -> Result<()> + Sync + Send>,
     ) -> Result<()> {
         let current_thread_id = thread::current().id();
         let thread_map = self.thread_information.lock().unwrap();
@@ -111,7 +111,7 @@ impl DSL for Weel {
             .get(&current_thread_id)
             .expect(PRECON_THREAD_INFO)
             .borrow_mut();
-        
+
         if self.should_skip(&thread_info) {
             return Ok(());
         }
@@ -119,13 +119,16 @@ impl DSL for Weel {
         thread_info.branches = Vec::new();
         thread_info.branch_traces = HashMap::new();
         // thread_info.branch_finished_count = 0;
-        let barrier = Arc::new(BlockingQueue::new());
-        thread_info.branch_barrier_setup = Some(barrier.clone());
+        let barrier_setup = Arc::new(BlockingQueue::new());
+        thread_info.branch_barrier_setup = Some(barrier_setup.clone());
+
+        let barrier_start = Arc::new(BlockingQueue::new());
+        thread_info.branch_barrier_start = Some(barrier_start.clone());
         drop(thread_info);
         drop(thread_map);
 
         // Startup the branches
-        self.execute_lambda(lambda)?;
+        self.execute_lambda(lambda.as_ref())?;
 
         let thread_map = self.thread_information.lock().unwrap();
         let mut thread_info = thread_map
@@ -141,47 +144,59 @@ impl DSL for Weel {
 
         // wait for all spawned branches to signal ready
         for _ in 1..=spawned_branches {
-            barrier.dequeue();
+            barrier_setup.dequeue();
         }
 
         // Now the branches are setup, they should be static.
         let branches = thread_info.branches.clone();
+        
         let connection_wrapper = ConnectionWrapper::new(self.clone(), None, None);
         connection_wrapper.split_branches(current_thread_id, Some(&thread_info.branch_traces))?;
-
+        
         // Now start all branches
         for thread in &thread_info.branches {
-            let child_info: std::cell::RefMut<'_, ThreadInfo> =
-                thread_map.get(thread).unwrap().borrow_mut();
-            child_info
-                .branch_barrier_start
-                .as_ref()
-                .unwrap()
-                .enqueue(());
+            if !thread_info.in_search_mode {
+                thread_map.get(thread).unwrap().borrow_mut().in_search_mode = false;
+            }
+            barrier_start.enqueue(());
         }
 
         // Wait for the "final" thread to fulfill the wait condition (wait_threshold = wait_count)
-        if !(self.should_skip(&thread_info) || spawned_branches == 0) {
-            // note sure what this is for?
-            barrier.dequeue();
+        if !(self.terminating() || spawned_branches == 0) {
+            // we now need to let the branches run and let them have access to the thread map -> Cannot go into block with them locked
+            drop(thread_info);
+            drop(thread_map);
+            barrier_start.dequeue();
         }
+
+        let thread_map = self.thread_information.lock().unwrap();
+        let thread_info = thread_map
+            .get(&current_thread_id)
+            .expect(PRECON_THREAD_INFO)
+            .borrow();
 
         connection_wrapper.join_branches(current_thread_id, Some(&thread_info.branch_traces))?;
 
-        if !self.should_skip(&thread_info) {
-            let thread_map = self.thread_information.lock().unwrap();
-            for thread in &branches {
+        // TODO: in original code we did not check on no_longer necessary here, should we or not?
+        if !self.terminating() {
+            for thread in &thread_info.branches {
                 let mut child_info: std::cell::RefMut<'_, ThreadInfo> =
                     thread_map.get(thread).unwrap().borrow_mut();
                 child_info.no_longer_necessary = true;
                 recursive_continue(&thread_map, thread);
             }
-
-            for thread in branches {
+            drop(thread_info);
+            drop(thread_map);
+            for child_thread in branches {
+                // need to acquire in loop, as we need to release lock to allow children to finish
+                let thread_map = self.thread_information.lock().unwrap();
                 let mut child_info: std::cell::RefMut<'_, ThreadInfo> =
-                    thread_map.get(&thread).unwrap().borrow_mut();
+                    thread_map.get(&child_thread).unwrap().borrow_mut();
                 child_info.no_longer_necessary = true;
-                self.recursive_join(Some(thread));
+                drop(child_info);
+                drop(thread_map);
+                
+                self.recursive_join(child_thread);
             }
         }
 
@@ -190,21 +205,64 @@ impl DSL for Weel {
 
     fn parallel_branch(
         self: Arc<Self>,
-        /*data: &str,*/ lambda: impl Fn() -> Result<()> + Sync,
+        /*data: &str,*/ lambda: Arc<dyn Fn() -> Result<()> + Sync + Send>,
     ) -> Result<()> {
-        println!("Executing parallel branch");
-        thread::scope(|scope| {
-            scope.spawn(|| {
-                lambda();
-            });
+        if self.should_skip_locking() {
+            return Ok(());
+        };
+        
+        let parent_thread = thread::current().id();
+
+        // We cannot let this run on further as we need to get a handle on the thread_info_map, if we do not do this here, 
+        // then we would need to ensure in parallel gateway that the thread info is dropped again before waiting for ready
+        let (setup_done_tx, setup_done_rx) = mpsc::channel::<()>();
+        // Todo, what is this weel_data? Local copy?
+        let handle = thread::spawn(move || -> Result<()> {
+            let current_thread= thread::current().id();
+            
+            let thread_info_map = self.thread_information.lock().unwrap();
+            // Unwrap as we have precondition that thread info is available on spawning
+            let mut parent_thread_info = thread_info_map
+                .get(&parent_thread)
+                .expect(PRECON_THREAD_INFO)
+                .borrow_mut();
+
+            let mut thread_info = ThreadInfo::default();
+            thread_info.in_search_mode = self.search_positions.lock().unwrap().is_empty();
+            thread_info.parent_thread = Some(parent_thread);
+            // The barriers are setup by the parent, we just use a pointer here
+            // TODO: I believe using message passing here is more robust and easier 
+            let branch_barrier_setup = parent_thread_info.branch_barrier_setup.clone().expect("should be there. Initialized by parallel_exec");
+            let branch_barrier_start = parent_thread_info.branch_barrier_start.clone().expect("should be there. Initialized by parallel_exec");
+            
+            // Notify parallel gateway that the thread has completed setup
+            setup_done_tx.send(()).unwrap();
+            branch_barrier_setup.enqueue(());
+            
+            if !self.terminating() {
+                // wait for run signal from parallel gateway 
+                branch_barrier_start.dequeue();
+            }
+            if !self.should_skip(&thread_info) {
+                self.execute_lambda(lambda.as_ref())?;
+            }
+
+
+            if !parent_thread_info.alternative_executed.is_empty() {
+                thread_info.alternative_executed = vec![*parent_thread_info.alternative_executed.last().unwrap()]; 
+                thread_info.alternative_mode = vec![*parent_thread_info.alternative_mode.last().unwrap()];
+            };
+            
+            Ok(())
         });
+        setup_done_rx.recv().unwrap();
         todo!()
     }
 
     fn choose(
         self: Arc<Self>,
         variant: ChooseVariant,
-        lambda: impl Fn() -> Result<()> + Sync,
+        lambda: &(dyn  Fn() -> Result<()> + Sync),
     ) -> Result<()> {
         let current_thread = thread::current().id();
         let thread_info_map = self.thread_information.lock().unwrap();
@@ -213,7 +271,7 @@ impl DSL for Weel {
             .get(&current_thread)
             .expect(PRECON_THREAD_INFO)
             .borrow_mut();
-        
+
         if self.should_skip(&thread_info) {
             return Ok(());
         }
@@ -249,7 +307,7 @@ impl DSL for Weel {
     fn alternative(
         self: Arc<Self>,
         condition: &str,
-        lambda: impl Fn() -> Result<()> + Sync,
+        lambda: &(dyn Fn() -> Result<()> + Sync),
     ) -> Result<()> {
         if self.should_skip_locking() {
             return Ok(());
@@ -320,11 +378,8 @@ impl DSL for Weel {
         Ok(())
     }
 
-    fn otherwise(self: Arc<Self>, lambda: impl Fn() -> Result<()> + Sync) -> Result<()> {
-        if matches!(
-            *self.state.lock().unwrap(),
-            State::Stopping | State::Finishing | State::Stopped
-        ) {
+    fn otherwise(self: Arc<Self>, lambda: &(dyn Fn() -> Result<()> + Sync)) -> Result<()> {
+        if self.should_skip_locking() {
             return Ok(());
         };
         let current_thread = thread::current().id();
@@ -348,7 +403,7 @@ impl DSL for Weel {
     fn loop_exec(
         self: Arc<Self>,
         condition: [&str; 2],
-        lambda: impl Fn() -> Result<()> + Sync,
+        lambda: &(dyn Fn() -> Result<()> + Sync),
     ) -> Result<()> {
         let test_type = *condition.get(0).unwrap();
         let mut condition = *condition.get(1).unwrap();
@@ -441,7 +496,7 @@ impl DSL for Weel {
     fn critical_do(
         self: Arc<Self>,
         mutex_id: &str,
-        lambda: impl Fn() -> Result<()> + Sync,
+        lambda: &(dyn Fn() -> Result<()> + Sync),
     ) -> Result<()> {
         if self.should_skip_locking() {
             return Ok(());
@@ -457,21 +512,20 @@ impl DSL for Weel {
     }
 
     fn stop(self: Arc<Self>, id: &str) -> Result<()> {
-        let in_search_mode = self.in_search_mode(None);
-        if in_search_mode {
+        if self.in_search_mode(None) {
             return Ok(());
         }
+
         let current_thread = thread::current().id();
         let thread_info_map = self.thread_information.lock().unwrap();
         let thread_info = thread_info_map
             .get(&current_thread)
             .expect(PRECON_THREAD_INFO)
             .borrow_mut();
-        
+
         if self.should_skip(&thread_info) {
             return Ok(());
         }
-
 
         if let Some(parent) = &thread_info.parent_thread {
             let mut parent_thread_info = thread_info_map
@@ -493,18 +547,12 @@ impl DSL for Weel {
                 .push(id.to_owned());
         }
         self.weel_progress(id.to_owned(), "0".to_owned(), true)?;
-        self.clone().set_state(State::Stopping)?;
+        self.set_state(State::Stopping)?;
         Ok(())
     }
 
     fn terminate(self: Arc<Self>) -> Result<()> {
-        let in_search_mode = self.in_search_mode(None);
-        if in_search_mode {
-            return Ok(());
-        }
-
-        // Unwrap as we have precondition that thread info is available on spawning
-        if self.should_skip_locking() {
+        if self.in_search_mode(None) || self.should_skip_locking() {
             return Ok(());
         }
 
@@ -513,6 +561,9 @@ impl DSL for Weel {
     }
 
     fn escape(self: Arc<Self>) -> Result<()> {
+        if self.in_search_mode(None) || self.should_skip_locking() {
+            return Ok(());
+        }
         return Err(Error::BreakLoop());
     }
 }
@@ -536,7 +587,7 @@ impl Weel {
                     {
                         // Use custom scope to ensure dropping occurs asap
                         self.positions.lock().unwrap().clear();
-                        self.clone().set_state(State::Running)?;
+                        self.set_state(State::Running)?;
                     }
                     // TODO: implement the __weel_control_flow error handling logic in the handle_error/handle_join error
                     let result = model();
@@ -561,7 +612,7 @@ impl Weel {
                                     {
                                         Ok(()) => {
                                             drop(state);
-                                            self.clone().set_state(State::Finished)?;
+                                            self.set_state(State::Finished)?;
                                         }
                                         Err(err) => {
                                             self.handle_error(err);
@@ -569,7 +620,7 @@ impl Weel {
                                     };
                                 }
                                 State::Stopping => {
-                                    self.recursive_join(None);
+                                    self.recursive_join(thread::current().id());
                                     *state = State::Stopped;
                                     match ConnectionWrapper::new(self.clone(), None, None)
                                         .inform_state_change(State::Stopped)
@@ -597,9 +648,26 @@ impl Weel {
         Ok(())
     }
 
-    fn recursive_join(&self, thread: Option<ThreadId>) {
-        // TODO: Implement recursive join, this should not be required?
-        log::error!("Recursive join not yet impemented/removed")
+    // TODO: look into case where thread is none? What are we doing there?
+    fn recursive_join(&self, thread: ThreadId) {
+        let thread_map = self.thread_information.lock().unwrap();
+        let mut thread_info = thread_map.get(&thread).expect(PRECON_THREAD_INFO).borrow_mut();
+        let children = thread_info.branches.clone();
+        // Release lock on thread info map to allow threads to run to the end (in case they need to acquire the lock)
+        
+        if thread != thread::current().id() {
+            if let Some(handle) = thread_info.join_handle.take() {
+                drop(thread_info);
+                drop(thread_map);
+                // wait for thread to terminate
+                handle.join();
+
+            }    
+        }
+        // join all child threads:
+        for child in children {
+            self.recursive_join(child);
+        }
     }
 
     fn abort_start(&self) {
@@ -620,7 +688,7 @@ impl Weel {
                     *state = State::Stopping;
                     // Wait for instance to stop
                     drop(state);
-                    let rec_result = self.stop_signal_receiver.lock().unwrap().recv();
+                    let rec_result = self.stop_signal_receiver.lock().unwrap().as_ref().expect("Has been set after init").recv();
                     if matches!(rec_result, Err(_)) {
                         log::error!("Error receiving termination signal for model thread. Sender must have been dropped.")
                     }
@@ -655,15 +723,12 @@ impl Weel {
 
     /**
      * Requires the threads thread info -> thread info needs to be locked first
-     * This version is useful if you need to lock the thread information anyway, 
+     * This version is useful if you need to lock the thread information anyway,
      * then you do not have to release and reaquire the lock  
      */
     fn should_skip(&self, thread_info: &ThreadInfo) -> bool {
         let no_longer_necessary = thread_info.no_longer_necessary;
-        matches!(
-            *self.state.lock().unwrap(),
-            State::Stopping | State::Stopped | State::Finishing
-        ) || no_longer_necessary
+        self.terminating() || no_longer_necessary
     }
 
     /**
@@ -672,18 +737,22 @@ impl Weel {
      */
     fn should_skip_locking(&self) -> bool {
         let current_thread_id = thread::current().id();
-            let thread_info_map = self.thread_information.lock().unwrap();
-            // Unwrap as we have precondition that thread info is available on spawning
-            let thread_info = thread_info_map
-                .get(&current_thread_id)
-                .expect(PRECON_THREAD_INFO)
-                .borrow();
+        let thread_info_map = self.thread_information.lock().unwrap();
+        // Unwrap as we have precondition that thread info is available on spawning
+        let thread_info = thread_info_map
+            .get(&current_thread_id)
+            .expect(PRECON_THREAD_INFO)
+            .borrow();
 
         let no_longer_necessary = thread_info.no_longer_necessary;
+        self.terminating() || no_longer_necessary
+    }
+
+    fn terminating(&self) -> bool {
         matches!(
             *self.state.lock().unwrap(),
             State::Stopping | State::Stopped | State::Finishing
-        ) || no_longer_necessary
+        )
     }
 
     /**
@@ -1237,7 +1306,7 @@ impl Weel {
                         if !state_stopping_or_finishing
                             && !self.vote_sync_after(&connection_wrapper)?
                         {
-                            self.clone().set_state(State::Stopping)?;
+                            self.set_state(State::Stopping)?;
                             weel_position.detail = "unmark".to_owned();
                         }
                     }
@@ -1265,7 +1334,7 @@ impl Weel {
                             .inform_position_change(Some(ipc))?;
                     }
                     Signal::Stop | Signal::StopSkipManipulate => {
-                        self.clone().set_state(State::Stopping)?;
+                        self.set_state(State::Stopping)?;
                     }
                     Signal::Skip => {
                         log::info!("Received skip signal. Do nothing")
@@ -1279,7 +1348,7 @@ impl Weel {
                         connection_wrapper.inform_activity_failed(Error::EvalError(
                             EvalError::SyntaxError(message),
                         ))?;
-                        self.clone().set_state(State::Stopping)?;
+                        self.set_state(State::Stopping)?;
                     }
                     EvalError::Signal(_signal, _evaluation_result) => {
                         log::error!("Handling EvalError::Signal in weel_activity, this should never happen! Should be \"raised\" as Error::Signal");
@@ -1296,7 +1365,7 @@ impl Weel {
             };
         };
         {
-            // Original ensure block
+            // Check whether we need to handle interactions due to the parallel gate
             let current_thread = thread::current().id();
             let thread_info_map = self.thread_information.lock().unwrap();
             // Unwrap as we have precondition that thread info is available on spawning
@@ -1325,6 +1394,7 @@ impl Weel {
                 };
                 // Drop to reacquire under parent
                 drop(thread_info);
+                // if we reach the threshold, we can put all the other threads on no longer necessary
                 if parent_info.branch_wait_threshold == parent_info.branch_wait_count
                     && state_not_stopping_or_finishing
                 {
@@ -1457,7 +1527,7 @@ impl Weel {
         match result {
             Ok(cond) => Ok(cond),
             Err(err) => {
-                self.clone().set_state(State::Stopping)?;
+                self.set_state(State::Stopping)?;
                 log::error!(
                     "Encountered error when evaluating condition {condition}: {:?}",
                     err
@@ -1476,12 +1546,12 @@ impl Weel {
         }
     }
 
-    fn execute_lambda(self: &Arc<Self>, lambda: impl Fn() -> Result<()> + Sync) -> Result<()> {
+    fn execute_lambda(self: &Arc<Self>, lambda: &(dyn Fn() -> Result<()> + Sync)) -> Result<()> {
         let result = lambda();
         match result {
             Ok(()) => Ok(()),
             Err(err) => {
-                self.clone().set_state(State::Stopping)?;
+                self.set_state(State::Stopping)?;
                 match ConnectionWrapper::new(self.clone(), None, None)
                     .inform_syntax_error(err, None)
                 {
@@ -1505,7 +1575,7 @@ impl Weel {
         if activity_id.chars().all(char::is_alphanumeric) {
             Ok(activity_id)
         } else {
-            self.clone().set_state(State::Stopping)?;
+            self.set_state(State::Stopping)?;
             Err(Error::GeneralError(format!(
                 "position: {activity_id} not valid"
             )))
@@ -1688,7 +1758,7 @@ impl Weel {
 
     pub fn handle_error(self: &Arc<Self>, err: Error) {
         // TODO implement error handling that adheres to the handling in __weel_control_flow
-        match self.clone().set_state(State::Stopping) {
+        match self.set_state(State::Stopping) {
             Ok(_) => {}
             Err(err) => {
                 log::error!("Encountered error: {:?}", err);
@@ -1745,7 +1815,7 @@ impl Weel {
      *
      * Locks: state and potentially positions and status
      */
-    fn set_state(self: Arc<Self>, new_state: State) -> Result<()> {
+    fn set_state(self: &Arc<Self>, new_state: State) -> Result<()> {
         let mut state = self.state.lock().unwrap();
         if *state == new_state && !matches!(*state, State::Ready) {
             return Ok(());
@@ -1778,6 +1848,7 @@ fn recursive_continue(
         .get(thread_id)
         .expect(PRECON_THREAD_INFO)
         .borrow();
+    // Make async tasks continue
     thread_info
         .callback_signals
         .lock()

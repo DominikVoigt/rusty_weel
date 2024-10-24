@@ -1,16 +1,18 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
+use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{mpsc, Arc, Mutex};
 
 use indoc::indoc;
+use lazy_static::lazy_static;
 use rusty_weel::data_types::ChooseVariant::{Exclusive, Inclusive};
 
 use std::{panic, thread};
 
 use rusty_weel::connection_wrapper::ConnectionWrapper;
 use rusty_weel::data_types::{
-    BlockingQueue, DynamicData, HTTPParams, KeyValuePair, State, StaticData, Status, ThreadInfo,
+    DynamicData, HTTPParams, KeyValuePair, State, StaticData, Status, ThreadInfo,
 };
 use rusty_weel::dsl::DSL;
 use rusty_weel::dsl_realization::{Result, Weel};
@@ -20,27 +22,63 @@ use http_helper::Method;
 use rusty_weel_macro::inject;
 use std::io::Write;
 
+lazy_static! {
+    static ref WEEL: Arc<Weel> = startup();
+}
 fn main() {
     let (stop_signal_sender, stop_signal_receiver) = mpsc::channel::<()>();
-    let local_weel = startup(stop_signal_receiver);
-    let weel_ref = local_weel.clone();
-    let weel = move || weel_ref.clone();
-
-    let model = move || -> Result<()> {
+    *WEEL.stop_signal_receiver.lock().unwrap() = Some(stop_signal_receiver);
+    let model = || -> Result<()> {
         // inject!("./resources/164-decide.eic");
+        weel!().parallel_do(
+            None,
+            rusty_weel::data_types::CancelCondition::First,
+            plambda!(|| -> Result<()> {
+                weel!().parallel_branch(Arc::new(|| -> Result<()> {
+                    weel!().loop_exec(
+                        Weel::pre_test("data.count > 0"),
+                        lambda!(|| {
+                            weel!().call(
+                                "a1",
+                                "timeout",
+                                HTTPParams {
+                                    label: "Timeout 1",
+                                    method: Method::GET,
+                                    arguments: Some(vec![new_key_value_pair(
+                                        "timeout", "5", false,
+                                    )]),
+                                },
+                                Option::None,
+                                Option::None,
+                                Some(indoc! {
+                                    "
+                                        data.count -= 1  
+                                    "
+                                }),
+                                Option::None,
+                            )?;
+                            Ok(())
+                        }),
+                    )?;
+                    Ok(())
+                }))?;
+                Ok(())
+            }),
+        )?;
+
         Ok(())
     };
 
     // Executes the code and blocks until it is finished
-    let res = local_weel.clone().start(model, stop_signal_sender);
+    let res = weel!().start(model, stop_signal_sender);
     match res {
-        Ok(_) => {},
-        Err(err) => local_weel.handle_error(err),
+        Ok(_) => {}
+        Err(err) => weel!().handle_error(err),
     }
     log::info!("At the end of main");
 }
 
-fn startup(stop_signal_receiver: mpsc::Receiver<()>) -> Arc<Weel> {
+fn startup() -> Arc<Weel> {
     //simple_logger::init_with_level(log::Level::Info).unwrap();
     init_logger();
     set_panic_hook();
@@ -84,38 +122,19 @@ fn startup(stop_signal_receiver: mpsc::Receiver<()>) -> Arc<Weel> {
         loop_guard: Mutex::new(HashMap::new()),
         positions: Mutex::new(Vec::new()),
         thread_information: Mutex::new(HashMap::new()),
-        stop_signal_receiver: Mutex::new(stop_signal_receiver),
+        stop_signal_receiver: Mutex::new(None),
         critical_section_mutexes: once_map::OnceMap::new(),
         attributes,
     };
     let current_thread = thread::current();
 
     // TODO: Think about the correct values. Some of them need to be determined dynamically I believe? E.g. search_mode and branch traces
-    weel.thread_information.lock().unwrap().insert(
-        current_thread.id(),
-        RefCell::new(ThreadInfo {
-            parent_thread: None,
-            in_search_mode: in_search_mode,
-            switched_to_execution: false,
-            no_longer_necessary: false,
-            callback_signals: Arc::new(Mutex::new(BlockingQueue::new())),
-            // TODO: Unsure here
-            branch_id: 0,
-            branch_traces: HashMap::new(),
-            branch_position: None,
-            // This should not matter since we are not in a parallel yet
-            parallel_wait_condition: rusty_weel::data_types::CancelCondition::First,
-            first_activity_in_thread: true,
-            branch_wait_threshold: 0,
-            branch_wait_count: 0,
-            branch_barrier_setup: None,
-            // to here
-            local: String::new(),
-            branches: Vec::new(),
-            alternative_mode: Vec::new(),
-            alternative_executed: Vec::new()
-        }),
-    );
+    let mut thread_info = ThreadInfo::default();
+    thread_info.in_search_mode = in_search_mode;
+    weel.thread_information
+        .lock()
+        .unwrap()
+        .insert(current_thread.id(), RefCell::new(thread_info));
 
     // create thread for callback subscriptions with redis
     RedisHelper::establish_callback_subscriptions(&weel.opts, Arc::clone(&weel.callback_keys));
@@ -176,7 +195,7 @@ fn setup_signal_handler(weel: &Arc<Weel>) {
         match res {
             Ok(_) => {
                 log::info!("Successfuly executed stop function on weel")
-            },
+            }
             Err(err) => {
                 log::error!("Error occured when trying to stop: {:?}", err);
                 panic!("Could not stop -> Crash instead of failing silently")
@@ -203,4 +222,25 @@ pub fn new_key_value_pair(
         value,
         expression_value,
     }
+}
+
+#[macro_export]
+macro_rules! weel {
+    () => {
+        WEEL.clone()
+    };
+}
+
+#[macro_export]
+macro_rules! lambda {
+    ($expr: expr) => {
+        &Box::new($expr)
+    };
+}
+
+#[macro_export]
+macro_rules! plambda {
+    ($expr: expr) => {
+        Arc::new($expr)
+    };
 }

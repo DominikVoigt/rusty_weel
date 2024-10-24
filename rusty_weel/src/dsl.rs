@@ -26,7 +26,7 @@ pub trait DSL {
     fn loop_exec(        
         self: Arc<Self>,
         condition: [&str; 2],
-        lambda: impl Fn() -> Result<()> + Sync,
+        lambda: &(dyn Fn() -> Result<()> + Sync),
     ) -> Result<()>;
 
     fn pre_test(condition: &str) -> [&str; 2];
@@ -43,7 +43,7 @@ pub trait DSL {
         self: Arc<Self>,
         wait: Option<usize>,
         cancel: CancelCondition,
-        lambda: impl Fn() -> Result<()> + Sync,
+        lambda: Arc<dyn Fn() -> Result<()> + Sync + Send>,
     ) -> Result<()>;
 
     /**
@@ -51,31 +51,31 @@ pub trait DSL {
      */
     fn parallel_branch(
         self: Arc<Self>,
-        /*data: &str,*/ lambda: impl Fn() -> Result<()> + Sync,
+        /*data: &str,*/ lambda: Arc<dyn Fn() -> Result<()> + Sync + Send>,
     ) -> Result<()>;
 
     /**
      * Guards critical block
      * All sections with the same mutex_id share the mutex
      */
-    fn critical_do(self: Arc<Self>, mutex_id: &str, lambda: impl Fn() -> Result<()> + Sync) -> Result<()>;
+    fn critical_do(self: Arc<Self>, mutex_id: &str, lambda: &(dyn Fn() -> Result<()> + Sync)) -> Result<()>;
 
     /**
      * Implements the BPMN choice in the dsl
      */
-    fn choose(self: Arc<Self>, variant: ChooseVariant, lambda: impl Fn() -> Result<()> + Sync) -> Result<()>;
+    fn choose(self: Arc<Self>, variant: ChooseVariant, lambda: &(dyn Fn() -> Result<()> + Sync)) -> Result<()>;
 
     /**
      * Implements a single branch of the BPMN choice
      * lambda will be executed if the provided condition is true, or if search mode is true (as the start position might be in any branch)
      */
-    fn alternative(self: Arc<Self>, condition: &str, lambda: impl Fn() -> Result<()> + Sync) -> Result<()>;
+    fn alternative(self: Arc<Self>, condition: &str, lambda: &(dyn Fn() -> Result<()> + Sync)) -> Result<()>;
 
     /**
      * Implements otherwise branch of the BPMN choice
      * lambda will be executed none of the `alternative` branch conditions are true, or if search mode is true (as the start position might be in any branch)
      */
-    fn otherwise(self: Arc<Self>, lambda: impl Fn() -> Result<()> + Sync) -> Result<()>;
+    fn otherwise(self: Arc<Self>, lambda: &(dyn Fn() -> Result<()> + Sync)) -> Result<()>;
 
     fn stop(self: Arc<Self>, id: &str) -> Result<()>;
     fn terminate(self: Arc<Self>) -> Result<()>;
