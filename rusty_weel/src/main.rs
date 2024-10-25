@@ -33,11 +33,11 @@ fn main() {
         weel!().parallel_do(
             None,
             rusty_weel::data_types::CancelCondition::First,
-            plambda!(|| -> Result<()> {
+            pƛ!(|| -> Result<()> {
                 weel!().parallel_branch(Arc::new(|| -> Result<()> {
                     weel!().loop_exec(
                         Weel::pre_test("data.count > 0"),
-                        lambda!(|| {
+                        ƛ!( || {
                             weel!().call(
                                 "a1",
                                 "timeout",
@@ -232,14 +232,14 @@ macro_rules! weel {
 }
 
 #[macro_export]
-macro_rules! lambda {
+macro_rules! ƛ {
     ($expr: expr) => {
         &Box::new($expr)
     };
 }
 
 #[macro_export]
-macro_rules! plambda {
+macro_rules! pƛ {
     ($expr: expr) => {
         Arc::new($expr)
     };

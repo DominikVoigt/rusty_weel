@@ -205,7 +205,7 @@ impl DSL for Weel {
 
     fn parallel_branch(
         self: Arc<Self>,
-        /*data: &str,*/ lambda: Arc<dyn Fn() -> Result<()> + Sync + Send>,
+        lambda: Arc<dyn Fn() -> Result<()> + Sync + Send>,
     ) -> Result<()> {
         if self.should_skip_locking() {
             return Ok(());
@@ -216,7 +216,8 @@ impl DSL for Weel {
         // We cannot let this run on further as we need to get a handle on the thread_info_map, if we do not do this here, 
         // then we would need to ensure in parallel gateway that the thread info is dropped again before waiting for ready
         let (setup_done_tx, setup_done_rx) = mpsc::channel::<()>();
-        // Todo, what is this weel_data? Local copy?
+        // TODO: , what is this weel_data? Local copy?
+        // TODO: provide clone of dyn data here
         let handle = thread::spawn(move || -> Result<()> {
             let current_thread= thread::current().id();
             
@@ -246,7 +247,6 @@ impl DSL for Weel {
             if !self.should_skip(&thread_info) {
                 self.execute_lambda(lambda.as_ref())?;
             }
-
 
             if !parent_thread_info.alternative_executed.is_empty() {
                 thread_info.alternative_executed = vec![*parent_thread_info.alternative_executed.last().unwrap()]; 
