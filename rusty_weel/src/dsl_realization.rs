@@ -213,11 +213,9 @@ impl DSL for Weel {
         // TODO: , what is this weel_data? Local copy?
         // TODO: provide clone of dyn data here
         let handle = thread::spawn(move || -> Result<()> {
-            let current_thread = thread::current().id();
-
-            let thread_info_map = self.thread_information.lock().unwrap();
+            let mut thread_info_map = self.thread_information.lock().unwrap();
             // Unwrap as we have precondition that thread info is available on spawning
-            let mut parent_thread_info = thread_info_map
+            let parent_thread_info = thread_info_map
                 .get(&parent_thread)
                 .expect(PRECON_THREAD_INFO)
                 .borrow_mut();
@@ -236,7 +234,17 @@ impl DSL for Weel {
                 .branch_barrier_start
                 .clone()
                 .expect("should be there. Initialized by parallel_exec");
+            
+            if !parent_thread_info.alternative_executed.is_empty() {
+                thread_info.alternative_executed =
+                    vec![*parent_thread_info.alternative_executed.last().unwrap()];
+                thread_info.alternative_mode =
+                    vec![*parent_thread_info.alternative_mode.last().unwrap()];
+            };
 
+            drop(parent_thread_info);
+            thread_info_map.insert(thread::current().id(), RefCell::new(thread_info));
+            drop(thread_info_map);
             // Notify parallel gateway that the thread has completed setup
             setup_done_tx.send(()).unwrap();
 
@@ -245,16 +253,11 @@ impl DSL for Weel {
                 branch_barrier_start.dequeue();
             }
 
-            if !parent_thread_info.alternative_executed.is_empty() {
-                thread_info.alternative_executed =
-                    vec![*parent_thread_info.alternative_executed.last().unwrap()];
-                thread_info.alternative_mode =
-                    vec![*parent_thread_info.alternative_mode.last().unwrap()];
-            };
-
-            if !self.should_skip(&thread_info) {
+            if !self.should_skip_locking() {
                 self.execute_lambda(lambda.as_ref())?;
             }
+
+            // Now the parallel branch terminates
 
             Ok(())
         });
