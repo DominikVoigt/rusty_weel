@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 use std::fs;
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::thread::{JoinHandle, ThreadId};
 use std::{collections::HashMap, path::PathBuf};
 
@@ -12,39 +12,8 @@ use crate::dsl_realization::{Position, Signal};
 #[derive(Debug, Clone, Serialize)]
 pub struct HTTPParams {
     pub label: &'static str,
-
     pub method: http_helper::Method,
     pub arguments: Option<Vec<KeyValuePair>>,
-}
-
-impl TryInto<String> for HTTPParams {
-    type Error = serde_json::Error;
-
-    fn try_into(self) -> Result<String, Self::Error> {
-        let mut hash_rep = HashMap::new();
-        hash_rep.insert("label", self.label.to_owned());
-        hash_rep.insert("method", format!("{:?}", self.method));
-        let args = match self.arguments {
-            Some(args) => {
-                let args_map: HashMap<_, _>;
-                args_map = args
-                    .iter()
-                    .map(|e| {
-                        let value = match e.value.clone() {
-                            Some(value) => value,
-                            None => { "->{ nil }" }.to_owned(),
-                        };
-                        (e.key, value)
-                    })
-                    .collect();
-                serde_json::to_string(&args_map)?
-            }
-            None => "nil".to_owned(),
-        };
-        hash_rep.insert("arguments", args);
-
-        serde_json::to_string(&hash_rep)
-    }
 }
 
 /*
@@ -202,12 +171,14 @@ pub struct ThreadInfo {
     pub branch_wait_threshold: usize,
     // Counts the number of executed branches w.r.t the parallel wait condition
     pub branch_wait_count: usize,
-    // Used for synchronization the setup of child branches
-    pub branch_barrier_setup: Option<Arc<BlockingQueue<()>>>,
     // Used for synon the start of child branches
     pub branch_barrier_start: Option<Arc<BlockingQueue<()>>>,
+    // Used by child branches to signal (via sender) to the gateway (via receiver) that the wait condition is fulfilled -> unblock gateway thread
+    pub branch_event_sender: Option<mpsc::Sender<()>>,
     // Join handle for the thread, this should only ever be called from parent, and is set by parent after the thread is initialized -> main thread has no join handle -> None
     pub join_handle: Option<JoinHandle<()>>,
+    // Snapshot of the data at the time of creation of the branch
+    pub local: Option<Value>,
 
     // For choose -> Might be truly thread local
     pub alternative_executed: Vec<bool>,
@@ -225,7 +196,6 @@ pub struct ThreadInfo {
     // ID of this thread relative to its parent (not globaly unique), used mainly for debugging), this id is used within the branch_traces
     pub first_activity_in_thread: bool,
 
-    pub local: String,
 }
 
 impl Default for ThreadInfo {
@@ -243,12 +213,12 @@ impl Default for ThreadInfo {
             first_activity_in_thread: true,
             branch_wait_threshold: 0,
             branch_wait_count: 0,
-            branch_barrier_setup: None,
             branch_barrier_start: None,
+            branch_event_sender: None,
             branches: Vec::new(),
             join_handle: None,
             // To here
-            local: String::new(),
+            local: None,
             alternative_mode: Vec::new(),
             alternative_executed: Vec::new(),
         }

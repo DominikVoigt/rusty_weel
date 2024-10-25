@@ -33,11 +33,11 @@ fn main() {
         weel!().parallel_do(
             None,
             rusty_weel::data_types::CancelCondition::First,
-            pƛ!(|| -> Result<()> {
-                weel!().parallel_branch(Arc::new(|| -> Result<()> {
+            pƛ!({
+                weel!().parallel_branch(pƛ!({
                     weel!().loop_exec(
                         Weel::pre_test("data.count > 0"),
-                        ƛ!( || {
+                        ƛ!({
                             weel!().call(
                                 "a1",
                                 "timeout",
@@ -57,15 +57,12 @@ fn main() {
                                 }),
                                 Option::None,
                             )?;
-                            Ok(())
                         }),
                     )?;
-                    Ok(())
-                }))?;
-                Ok(())
+                })
+            )?;
             }),
         )?;
-
         Ok(())
     };
 
@@ -233,14 +230,55 @@ macro_rules! weel {
 
 #[macro_export]
 macro_rules! ƛ {
-    ($expr: expr) => {
-        &Box::new($expr)
+    ($block: block) => {
+        &Box::new(|| -> rusty_weel::dsl_realization::Result<()> {
+            $block
+            Ok(())
+    })
     };
 }
 
 #[macro_export]
 macro_rules! pƛ {
-    ($expr: expr) => {
-        Arc::new($expr)
+    ($block: block) => {
+        std::sync::Arc::new(|| -> rusty_weel::dsl_realization::Result<()> {
+            $block
+            Ok(())
+    })
     };
+}
+
+#[cfg(test)]
+mod test {
+    #[test]
+    fn test_lambda() {
+        let lambda = ƛ!(
+            {
+                println!("Inside the lambda");
+                let inner = ƛ!(
+                    {
+                        println!("Inside the lambda2")
+                    }
+                );
+                matches!(inner(), Ok(()));
+            }
+        );
+        matches!(lambda(), Ok(()));
+    }
+
+    #[test]
+    fn test_plambda() {
+        let plambda = pƛ!(
+            {
+                println!("Inside the plambda");
+                let inner = pƛ!(
+                    {
+                        println!("Inside the plambda2")
+                    }
+                );
+                matches!(inner(), Ok(()));
+            }
+        );
+        matches!(plambda(), Ok(()));
+    }
 }

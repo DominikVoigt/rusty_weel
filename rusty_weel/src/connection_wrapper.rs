@@ -264,7 +264,7 @@ impl ConnectionWrapper {
     pub fn prepare(
         &mut self,
         prepare_code: Option<&str>,
-        thread_local: String,
+        thread_local: &Option<Value>,
         endpoint_names: &Vec<&str>,
         parameters: HTTPParams,
     ) -> Result<HTTPParams> {
@@ -273,7 +273,7 @@ impl ConnectionWrapper {
         let contex_snapshot = match prepare_code {
             Some(code) => {
                 let result =
-                    weel.execute_code(true, code, &thread_local, self, "prepare", None, None)?;
+                    weel.execute_code(true, code, thread_local, self, "prepare", None, None)?;
                 // Create snapshot of the context after the code is executed, if nothing changes, use the current dynamic data
                 DynamicData {
                     data: result
@@ -326,7 +326,7 @@ impl ConnectionWrapper {
                                 &weel.opts,
                                 value,
                                 None,
-                                &thread_local,
+                                thread_local,
                                 self.additional(),
                                 // In prepare we do not have access to the call result yet
                                 None,

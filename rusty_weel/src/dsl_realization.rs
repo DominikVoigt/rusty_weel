@@ -3,7 +3,7 @@ use derive_more::From;
 use indoc::indoc;
 use once_map::OnceMap;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{json, Value};
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -119,11 +119,11 @@ impl DSL for Weel {
         thread_info.branches = Vec::new();
         thread_info.branch_traces = HashMap::new();
         // thread_info.branch_finished_count = 0;
-        let barrier_setup = Arc::new(BlockingQueue::new());
-        thread_info.branch_barrier_setup = Some(barrier_setup.clone());
 
         let barrier_start = Arc::new(BlockingQueue::new());
         thread_info.branch_barrier_start = Some(barrier_start.clone());
+        let (branch_event_tx, branch_event_rx) = mpsc::channel::<()>();
+        thread_info.branch_event_sender = Some(branch_event_tx);
         drop(thread_info);
         drop(thread_map);
 
@@ -138,21 +138,15 @@ impl DSL for Weel {
 
         thread_info.branch_wait_count = 0;
         // If wait is not set, wait for all branches to terminate
-        thread_info.branch_wait_threshold = wait.unwrap_or(thread_info.branches.len());
-        thread_info.parallel_wait_condition = cancel;
-        let spawned_branches: usize = thread_info.branches.len();
-
-        // wait for all spawned branches to signal ready
-        for _ in 1..=spawned_branches {
-            barrier_setup.dequeue();
-        }
-
-        // Now the branches are setup, they should be static.
+        // Now the branches are setup, the list should be static.
         let branches = thread_info.branches.clone();
-        
+        let spawned_branches: usize = branches.len();
+        thread_info.branch_wait_threshold = wait.unwrap_or(spawned_branches);
+        thread_info.parallel_wait_condition = cancel;
+
         let connection_wrapper = ConnectionWrapper::new(self.clone(), None, None);
         connection_wrapper.split_branches(current_thread_id, Some(&thread_info.branch_traces))?;
-        
+
         // Now start all branches
         for thread in &thread_info.branches {
             if !thread_info.in_search_mode {
@@ -166,7 +160,7 @@ impl DSL for Weel {
             // we now need to let the branches run and let them have access to the thread map -> Cannot go into block with them locked
             drop(thread_info);
             drop(thread_map);
-            barrier_start.dequeue();
+            branch_event_rx.recv().unwrap();
         }
 
         let thread_map = self.thread_information.lock().unwrap();
@@ -195,7 +189,7 @@ impl DSL for Weel {
                 child_info.no_longer_necessary = true;
                 drop(child_info);
                 drop(thread_map);
-                
+
                 self.recursive_join(child_thread);
             }
         }
@@ -210,49 +204,58 @@ impl DSL for Weel {
         if self.should_skip_locking() {
             return Ok(());
         };
-        
+
         let parent_thread = thread::current().id();
 
-        // We cannot let this run on further as we need to get a handle on the thread_info_map, if we do not do this here, 
+        // We cannot let this run on further as we need to get a handle on the thread_info_map, if we do not do this here,
         // then we would need to ensure in parallel gateway that the thread info is dropped again before waiting for ready
         let (setup_done_tx, setup_done_rx) = mpsc::channel::<()>();
         // TODO: , what is this weel_data? Local copy?
         // TODO: provide clone of dyn data here
         let handle = thread::spawn(move || -> Result<()> {
-            let current_thread= thread::current().id();
-            
+            let current_thread = thread::current().id();
+
             let thread_info_map = self.thread_information.lock().unwrap();
             // Unwrap as we have precondition that thread info is available on spawning
             let mut parent_thread_info = thread_info_map
                 .get(&parent_thread)
                 .expect(PRECON_THREAD_INFO)
                 .borrow_mut();
+            // Get a sender to signal wait end
+            let branch_event_sender = parent_thread_info
+                .branch_event_sender
+                .as_ref()
+                .expect("Branch event channel has to be established by parallel gateway")
+                .clone();
 
             let mut thread_info = ThreadInfo::default();
             thread_info.in_search_mode = self.search_positions.lock().unwrap().is_empty();
             thread_info.parent_thread = Some(parent_thread);
-            // The barriers are setup by the parent, we just use a pointer here
-            // TODO: I believe using message passing here is more robust and easier 
-            let branch_barrier_setup = parent_thread_info.branch_barrier_setup.clone().expect("should be there. Initialized by parallel_exec");
-            let branch_barrier_start = parent_thread_info.branch_barrier_start.clone().expect("should be there. Initialized by parallel_exec");
-            
+            thread_info.local = Some(self.context.lock().unwrap().data.clone());
+            let branch_barrier_start = parent_thread_info
+                .branch_barrier_start
+                .clone()
+                .expect("should be there. Initialized by parallel_exec");
+
             // Notify parallel gateway that the thread has completed setup
             setup_done_tx.send(()).unwrap();
-            branch_barrier_setup.enqueue(());
-            
+
             if !self.terminating() {
-                // wait for run signal from parallel gateway 
+                // wait for run signal from parallel gateway
                 branch_barrier_start.dequeue();
             }
+
+            if !parent_thread_info.alternative_executed.is_empty() {
+                thread_info.alternative_executed =
+                    vec![*parent_thread_info.alternative_executed.last().unwrap()];
+                thread_info.alternative_mode =
+                    vec![*parent_thread_info.alternative_mode.last().unwrap()];
+            };
+
             if !self.should_skip(&thread_info) {
                 self.execute_lambda(lambda.as_ref())?;
             }
 
-            if !parent_thread_info.alternative_executed.is_empty() {
-                thread_info.alternative_executed = vec![*parent_thread_info.alternative_executed.last().unwrap()]; 
-                thread_info.alternative_mode = vec![*parent_thread_info.alternative_mode.last().unwrap()];
-            };
-            
             Ok(())
         });
         setup_done_rx.recv().unwrap();
@@ -262,7 +265,7 @@ impl DSL for Weel {
     fn choose(
         self: Arc<Self>,
         variant: ChooseVariant,
-        lambda: &(dyn  Fn() -> Result<()> + Sync),
+        lambda: &(dyn Fn() -> Result<()> + Sync),
     ) -> Result<()> {
         let current_thread = thread::current().id();
         let thread_info_map = self.thread_information.lock().unwrap();
@@ -651,18 +654,25 @@ impl Weel {
     // TODO: look into case where thread is none? What are we doing there?
     fn recursive_join(&self, thread: ThreadId) {
         let thread_map = self.thread_information.lock().unwrap();
-        let mut thread_info = thread_map.get(&thread).expect(PRECON_THREAD_INFO).borrow_mut();
+        let mut thread_info = thread_map
+            .get(&thread)
+            .expect(PRECON_THREAD_INFO)
+            .borrow_mut();
         let children = thread_info.branches.clone();
         // Release lock on thread info map to allow threads to run to the end (in case they need to acquire the lock)
-        
+
         if thread != thread::current().id() {
             if let Some(handle) = thread_info.join_handle.take() {
                 drop(thread_info);
                 drop(thread_map);
                 // wait for thread to terminate
-                handle.join();
-
-            }    
+                match handle.join() {
+                    Ok(()) => {}
+                    Err(err) => {
+                        log::error!("error when joining thread with id {:?}: {:?}", thread, err)
+                    }
+                };
+            }
         }
         // join all child threads:
         for child in children {
@@ -688,7 +698,13 @@ impl Weel {
                     *state = State::Stopping;
                     // Wait for instance to stop
                     drop(state);
-                    let rec_result = self.stop_signal_receiver.lock().unwrap().as_ref().expect("Has been set after init").recv();
+                    let rec_result = self
+                        .stop_signal_receiver
+                        .lock()
+                        .unwrap()
+                        .as_ref()
+                        .expect("Has been set after init")
+                        .recv();
                     if matches!(rec_result, Err(_)) {
                         log::error!("Error receiving termination signal for model thread. Sender must have been dropped.")
                     }
@@ -1060,7 +1076,7 @@ impl Weel {
                         let mut connection_wrapper = connection_wrapper_mutex.lock().unwrap();
                         let parameters = match connection_wrapper.prepare(
                             prepare_code,
-                            thread_info.local.clone(),
+                            &thread_info.local,
                             &vec![endpoint_name.unwrap()],
                             parameters.clone().expect(
                                 "The activity type call requires parameters to be provided",
@@ -1170,7 +1186,7 @@ impl Weel {
                             if thread_info.no_longer_necessary {
                                 break 'raise Err(Signal::NoLongerNecessary.into());
                             }
-                            // Store local for code execution -> allows us to unlock the thread_local_map here
+                            // Store local for code execution -> allows us to unlock the thread_local_map here and since local is a snapshot, it should be fine
                             let local = thread_info.local.clone();
                             drop(thread_info);
                             drop(thread_info_map);
@@ -1440,7 +1456,7 @@ impl Weel {
         self: &Self,
         read_only: bool,
         code: &str,
-        local: &str,
+        local: &Option<Value>,
         connection_wrapper: &ConnectionWrapper,
         location: &str,
         call_result: Option<String>,
@@ -1854,9 +1870,10 @@ fn recursive_continue(
         .lock()
         .unwrap()
         .enqueue(Signal::None);
-    if let Some(branch_event) = &thread_info.branch_barrier_setup {
-        branch_event.enqueue(());
-    }
+    todo!("Originally the setup barrier was used here:");
+    //if let Some(branch_event) = &thread_info.branch_barrier_setup {
+    //    branch_event.enqueue(());
+    //}
     for child_id in &thread_info.branches {
         recursive_continue(thread_info_map, child_id);
     }

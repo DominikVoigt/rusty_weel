@@ -1,25 +1,28 @@
 use std::{
     collections::HashMap,
     fmt::Display,
-    io::{Read, Seek, Write}, sync::Arc, thread,
+    io::{Read, Seek, Write},
+    thread,
 };
 
 use http_helper::{Client, Parameter};
 use log;
 use mime::{APPLICATION_JSON, TEXT_PLAIN_UTF_8};
-use serde_json::{json, Value};
+use serde_json::Value;
 use tempfile::tempfile;
 
 use crate::{
-    connection_wrapper::{self, ConnectionWrapper}, data_types::{DynamicData, StaticData, StatusDTO}, dsl_realization::{Error, Result, Signal, Weel}, redis_helper
+    connection_wrapper::ConnectionWrapper,
+    data_types::{DynamicData, StaticData, StatusDTO},
+    dsl_realization::{Error, Result, Signal},
 };
 
 pub fn test_condition(
     dynamic_context: &DynamicData,
     static_context: &StaticData,
     code: &str,
-    thread_local: &str,
-    connection_wrapper: &ConnectionWrapper
+    thread_local: &Option<Value>,
+    connection_wrapper: &ConnectionWrapper,
 ) -> Result<bool> {
     let mut client = Client::new(
         &static_context.eval_backend_exec_full,
@@ -31,16 +34,19 @@ pub fn test_condition(
         value: code.to_owned(),
         param_type: http_helper::ParameterType::Body,
     });
-    let data_map = json!(dynamic_context.data);
-    log::info!("For evaluation, sending data: {:?}", data_map);
+    log::info!("For evaluation, sending data: {:?}", dynamic_context.data);
     client.add_complex_parameter(
         "dataelements",
         APPLICATION_JSON,
-        serde_json::to_string_pretty(&data_map)?.as_bytes(),
+        serde_json::to_string_pretty(&dynamic_context.data)?.as_bytes(),
     )?;
 
-    if !thread_local.is_empty() {
-        client.add_complex_parameter("local", APPLICATION_JSON, thread_local.as_bytes())?;
+    if let Some(context) = thread_local {
+        client.add_complex_parameter(
+            "local",
+            APPLICATION_JSON,
+            serde_json::to_string_pretty(context)?.as_bytes(),
+        )?;
     }
 
     let endpoints = serde_json::to_string(&dynamic_context.endpoints)?;
@@ -68,7 +74,7 @@ pub fn test_condition(
         let condition = match result.content.pop().expect(
             "The return code of condition_eval call was 2xx but no parameters where returned",
         ) {
-            Parameter::SimpleParameter {  value, .. } => serde_json::from_str(&value)?,
+            Parameter::SimpleParameter { value, .. } => serde_json::from_str(&value)?,
             Parameter::ComplexParameter {
                 mut content_handle, ..
             } => {
@@ -89,55 +95,63 @@ pub fn test_condition(
                 Parameter::SimpleParameter { name, value, .. } => {
                     p_name = name;
                     p_content = value;
-                },
-                Parameter::ComplexParameter { name, mut content_handle, .. } => {
+                }
+                Parameter::ComplexParameter {
+                    name,
+                    mut content_handle,
+                    ..
+                } => {
                     p_name = name;
                     content_handle.read_to_string(&mut p_content)?;
-                },
+                }
             };
             match p_name.as_str() {
                 // If this is set -> loop and try again on Signal::Again
-                    // Handle others based on ruby code
-                    "signal" => {
-                        signal = {
-                            let signal_enum = if let Some(enum_name) = p_content.split("::").last() {
-                                enum_name.trim()
-                            } else {
-                                &p_content
-                            };
-                            // Enums are serialized as strings!
-                            let signal_enum = format!("\"{signal_enum}\"");
-                            match serde_json::from_str(&signal_enum) {
-                                Ok(res) => res,
-                                Err(err) => {
-                                    log::error!("Encountered error deserializing signal: {:?}, received: {}", err, p_content);
-                                    return Err(Error::JsonError(err));
-                                }
-                            }
-                        };
-                    }
-                    "signal_text" => {
-                        signal_text = if p_content.starts_with("\"") {
-                            // In case we have a string, strip them
-                            match serde_json::from_str(&p_content) {
-                                Ok(res) => res,
-                                Err(err) => {
-                                    log::error!("Encountered error deserializing signal_text: {:?}, received: {}", err, p_content);
-                                    return Err(Error::JsonError(err));
-                                }
-                            }
+                // Handle others based on ruby code
+                "signal" => {
+                    signal = {
+                        let signal_enum = if let Some(enum_name) = p_content.split("::").last() {
+                            enum_name.trim()
                         } else {
-                            // In case we have a hash
-                            Some(p_content)
+                            &p_content
                         };
-                    }
-                    x => {
-                        log::info!("Eval endpoint send unexpected part: {x}");
-                        log::info!("Content: {}", p_content);
-                        continue;
-                    }
+                        // Enums are serialized as strings!
+                        let signal_enum = format!("\"{signal_enum}\"");
+                        match serde_json::from_str(&signal_enum) {
+                            Ok(res) => res,
+                            Err(err) => {
+                                log::error!(
+                                    "Encountered error deserializing signal: {:?}, received: {}",
+                                    err,
+                                    p_content
+                                );
+                                return Err(Error::JsonError(err));
+                            }
+                        }
+                    };
+                }
+                "signal_text" => {
+                    signal_text = if p_content.starts_with("\"") {
+                        // In case we have a string, strip them
+                        match serde_json::from_str(&p_content) {
+                            Ok(res) => res,
+                            Err(err) => {
+                                log::error!("Encountered error deserializing signal_text: {:?}, received: {}", err, p_content);
+                                return Err(Error::JsonError(err));
+                            }
+                        }
+                    } else {
+                        // In case we have a hash
+                        Some(p_content)
+                    };
+                }
+                x => {
+                    log::info!("Eval endpoint send unexpected part: {x}");
+                    log::info!("Content: {}", p_content);
+                    continue;
+                }
             }
-        };
+        }
         let signal_text = match signal_text {
             Some(text) => text,
             None => "".to_owned(),
@@ -146,9 +160,10 @@ pub fn test_condition(
             Some(signal) => {
                 match signal {
                     // Actual signals are handed over as Signals (different from Error::Signal as the eval result will be required here)
-                    Signal::Error => Err(Error::EvalError(EvalError::RuntimeError(
-                        format!("{} {}", "Condition", signal_text),
-                    ))),
+                    Signal::Error => Err(Error::EvalError(EvalError::RuntimeError(format!(
+                        "{} {}",
+                        "Condition", signal_text
+                    )))),
                     // The code related error signals are converted to actual errors and handled separately
                     Signal::SyntaxError => {
                         Err(Error::EvalError(EvalError::SyntaxError(signal_text)))
@@ -160,19 +175,17 @@ pub fn test_condition(
                             signal_text,
                             code
                         );
-                        Err(Error::EvalError(EvalError::GeneralEvalError(
-                            format!(
-                                "Got signaled: {:?} with text: {} when evaluating {}",
-                                x,
-                                signal_text,
-                                code))))
+                        Err(Error::EvalError(EvalError::GeneralEvalError(format!(
+                            "Got signaled: {:?} with text: {} when evaluating {}",
+                            x, signal_text, code
+                        ))))
                     }
                 }
             }
-            None => {
-                Err(Error::EvalError(EvalError::GeneralEvalError(
-                    format!("Response of Eval Service is {}, eval result was returned but signal is missing", status))))
-            }
+            None => Err(Error::EvalError(EvalError::GeneralEvalError(format!(
+                "Response of Eval Service is {}, eval result was returned but signal is missing",
+                status
+            )))),
         }
     }
 }
@@ -188,7 +201,7 @@ pub fn evaluate_expression(
     static_context: &StaticData,
     expression: &str,
     weel_status: Option<StatusDTO>,
-    thread_local: &str,
+    thread_local: &Option<Value>,
     additional: Value,
     call_result: Option<String>,
     call_headers: Option<HashMap<String, String>>,
@@ -207,16 +220,19 @@ pub fn evaluate_expression(
             value: expression.to_owned(),
             param_type: http_helper::ParameterType::Body,
         });
-        let data_map = json!(dynamic_context.data);
-        log::info!("For evaluation, sending data: {:?}", data_map);
+        log::info!("For evaluation, sending data: {:?}", dynamic_context.data);
         client.add_complex_parameter(
             "dataelements",
             APPLICATION_JSON,
-            serde_json::to_string_pretty(&data_map)?.as_bytes(),
+            serde_json::to_string_pretty(&dynamic_context.data)?.as_bytes(),
         )?;
 
-        if !thread_local.is_empty() {
-            client.add_complex_parameter("local", APPLICATION_JSON, thread_local.as_bytes())?;
+        if let Some(context) = thread_local {
+            client.add_complex_parameter(
+                "local",
+                APPLICATION_JSON,
+                serde_json::to_string_pretty(context)?.as_bytes(),
+            )?;
         }
 
         let endpoints = serde_json::to_string(&dynamic_context.endpoints)?;
@@ -292,7 +308,10 @@ pub fn evaluate_expression(
                         }
                     }
                 } else {
-                    log::error!("Received simple parameter with name {}. We ignore these currently", name);
+                    log::error!(
+                        "Received simple parameter with name {}. We ignore these currently",
+                        name
+                    );
                     continue;
                 }
             }
@@ -636,7 +655,7 @@ mod test {
             &static_data,
             "data.name = 'Tom'",
             Some(status.to_dto()),
-            "",
+            &None,
             serde_json::Value::Null,
             None,
             None,
