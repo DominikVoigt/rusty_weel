@@ -190,7 +190,7 @@ impl DSL for Weel {
                 drop(child_info);
                 drop(thread_map);
 
-                self.recursive_join(child_thread);
+                self.recursive_join(child_thread)?;
             }
         }
 
@@ -201,7 +201,7 @@ impl DSL for Weel {
         self: Arc<Self>,
         lambda: Arc<dyn Fn() -> Result<()> + Sync + Send>,
     ) -> Result<()> {
-        if self.should_skip_locking() {
+        if self.clone().should_skip_locking() {
             return Ok(());
         };
 
@@ -209,11 +209,13 @@ impl DSL for Weel {
 
         // We cannot let this run on further as we need to get a handle on the thread_info_map, if we do not do this here,
         // then we would need to ensure in parallel gateway that the thread info is dropped again before waiting for ready
-        let (setup_done_tx, setup_done_rx) = mpsc::channel::<()>();
-        // TODO: , what is this weel_data? Local copy?
-        // TODO: provide clone of dyn data here
+        let (setup_done_tx, setup_done_rx) = mpsc::channel::<ThreadId>();
+        // The spawned thread has to wait shortly to register the handle before executing its branch
+        let (handle_registered_tx, handle_registered_rx) = mpsc::channel::<()>();
+
+        let weel = self.clone();
         let handle = thread::spawn(move || -> Result<()> {
-            let mut thread_info_map = self.thread_information.lock().unwrap();
+            let mut thread_info_map = weel.thread_information.lock().unwrap();
             // Unwrap as we have precondition that thread info is available on spawning
             let parent_thread_info = thread_info_map
                 .get(&parent_thread)
@@ -227,14 +229,14 @@ impl DSL for Weel {
                 .clone();
 
             let mut thread_info = ThreadInfo::default();
-            thread_info.in_search_mode = self.search_positions.lock().unwrap().is_empty();
+            thread_info.in_search_mode = weel.search_positions.lock().unwrap().is_empty();
             thread_info.parent_thread = Some(parent_thread);
-            thread_info.local = Some(self.context.lock().unwrap().data.clone());
+            thread_info.local = Some(weel.context.lock().unwrap().data.clone());
             let branch_barrier_start = parent_thread_info
                 .branch_barrier_start
                 .clone()
                 .expect("should be there. Initialized by parallel_exec");
-            
+
             if !parent_thread_info.alternative_executed.is_empty() {
                 thread_info.alternative_executed =
                     vec![*parent_thread_info.alternative_executed.last().unwrap()];
@@ -246,23 +248,76 @@ impl DSL for Weel {
             thread_info_map.insert(thread::current().id(), RefCell::new(thread_info));
             drop(thread_info_map);
             // Notify parallel gateway that the thread has completed setup
-            setup_done_tx.send(()).unwrap();
+            setup_done_tx.send(thread::current().id()).unwrap();
 
-            if !self.terminating() {
+            if !weel.terminating() {
                 // wait for run signal from parallel gateway
                 branch_barrier_start.dequeue();
             }
 
-            if !self.should_skip_locking() {
-                self.execute_lambda(lambda.as_ref())?;
+            if !weel.should_skip_locking() {
+                weel.execute_lambda(lambda.as_ref())?;
             }
 
             // Now the parallel branch terminates
+            let thread_info_map = weel.thread_information.lock().unwrap();
+            let mut parent_thread_info = thread_info_map
+                .get(&parent_thread)
+                .expect(PRECON_THREAD_INFO)
+                .borrow_mut();
+            parent_thread_info.branch_finished_count += 1;
 
+            if matches!(
+                parent_thread_info.parallel_wait_condition,
+                CancelCondition::Last
+            ) {
+                let reached_wait_threshold = parent_thread_info.branch_finished_count
+                    == parent_thread_info.branch_wait_threshold;
+                if reached_wait_threshold
+                    && !matches!(
+                        *weel.state.lock().unwrap(),
+                        State::Stopping | State::Finishing
+                    )
+                {
+                    for child in &parent_thread_info.branches {
+                        let mut child_info = thread_info_map.get(child).unwrap().borrow_mut();
+                        if child_info.first_activity_in_thread == true {
+                            child_info.no_longer_necessary = true;
+                            drop(child_info);
+                            recursive_continue(&thread_info_map, child);
+                        }
+                    }
+                }
+            }
+
+            // Case when the wait count is the number of branches?
+            if parent_thread_info.branch_finished_count == parent_thread_info.branches.len()
+                && !matches!(
+                    *weel.state.lock().unwrap(),
+                    State::Stopping | State::Finishing
+                )
+            {
+                // TODO: Determine whether this can be executed if recursive continue above got called
+                let _ = branch_event_sender.send(());
+            }
+
+            if !matches!(*weel.state.lock().unwrap(), State::Stopping | State::Stopped | State::Finishing) {
+                let thread_info = thread_info_map.get(&thread::current().id()).unwrap().borrow();
+                if let Some(position) = &thread_info.branch_position {
+                    weel.positions.lock().unwrap().retain(|e| {e != position});
+                    let ipc = json!({
+                        "unmark": position
+                    });
+                    drop(thread_info);
+                    ConnectionWrapper::new(weel.clone(), None, None).inform_position_change(Some(ipc))?;
+                }
+            }
             Ok(())
         });
-        setup_done_rx.recv().unwrap();
-        todo!()
+        let child_thread_id = setup_done_rx.recv().unwrap();
+        self.thread_information.lock().unwrap().get(&child_thread_id).unwrap().borrow_mut().join_handle = Some(handle);
+        handle_registered_tx.send(()).unwrap();
+        Ok(())
     }
 
     fn choose(
@@ -626,7 +681,7 @@ impl Weel {
                                     };
                                 }
                                 State::Stopping => {
-                                    self.recursive_join(thread::current().id());
+                                    self.recursive_join(thread::current().id())?;
                                     *state = State::Stopped;
                                     match ConnectionWrapper::new(self.clone(), None, None)
                                         .inform_state_change(State::Stopped)
@@ -655,7 +710,7 @@ impl Weel {
     }
 
     // TODO: look into case where thread is none? What are we doing there?
-    fn recursive_join(&self, thread: ThreadId) {
+    fn recursive_join(&self, thread: ThreadId) -> Result<()>{
         let thread_map = self.thread_information.lock().unwrap();
         let mut thread_info = thread_map
             .get(&thread)
@@ -670,7 +725,7 @@ impl Weel {
                 drop(thread_map);
                 // wait for thread to terminate
                 match handle.join() {
-                    Ok(()) => {}
+                    Ok(res) => res?,
                     Err(err) => {
                         log::error!("error when joining thread with id {:?}: {:?}", thread, err)
                     }
@@ -679,8 +734,9 @@ impl Weel {
         }
         // join all child threads:
         for child in children {
-            self.recursive_join(child);
+            self.recursive_join(child)?;
         }
+        Ok(())
     }
 
     fn abort_start(&self) {
@@ -1425,7 +1481,7 @@ impl Weel {
                                 if thread_info.first_activity_in_thread {
                                     thread_info.no_longer_necessary = true;
                                     drop(thread_info);
-                                    // Should be fine w.r.t. mutable borrows, since this will continue recusively down the hieararchy
+                                    // Should be fine w.r.t. mutable borrows, since this will continue recusively down the hierarchy
                                     recursive_continue(&thread_info_map, &current_thread)
                                 }
                             }
@@ -1873,10 +1929,9 @@ fn recursive_continue(
         .lock()
         .unwrap()
         .enqueue(Signal::None);
-    todo!("Originally the setup barrier was used here:");
-    //if let Some(branch_event) = &thread_info.branch_barrier_setup {
-    //    branch_event.enqueue(());
-    //}
+    if let Some(branch_event) = &thread_info.branch_event_sender {
+        branch_event.send(()).unwrap();
+    }
     for child_id in &thread_info.branches {
         recursive_continue(thread_info_map, child_id);
     }

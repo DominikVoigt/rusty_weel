@@ -7,7 +7,7 @@ use std::{collections::HashMap, path::PathBuf};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::dsl_realization::{Position, Signal};
+use crate::dsl_realization::{Position, Result, Signal};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct HTTPParams {
@@ -171,12 +171,14 @@ pub struct ThreadInfo {
     pub branch_wait_threshold: usize,
     // Counts the number of executed branches w.r.t the parallel wait condition
     pub branch_wait_count: usize,
+    // Counts the number of branches that reached the end of execution (either skipped or executed) 
+    pub branch_finished_count: usize,
     // Used for synon the start of child branches
     pub branch_barrier_start: Option<Arc<BlockingQueue<()>>>,
     // Used by child branches to signal (via sender) to the gateway (via receiver) that the wait condition is fulfilled -> unblock gateway thread
     pub branch_event_sender: Option<mpsc::Sender<()>>,
     // Join handle for the thread, this should only ever be called from parent, and is set by parent after the thread is initialized -> main thread has no join handle -> None
-    pub join_handle: Option<JoinHandle<()>>,
+    pub join_handle: Option<JoinHandle<Result<()>>>,
     // Snapshot of the data at the time of creation of the branch
     pub local: Option<Value>,
 
@@ -221,6 +223,7 @@ impl Default for ThreadInfo {
             local: None,
             alternative_mode: Vec::new(),
             alternative_executed: Vec::new(),
+            branch_finished_count: 0,
         }
     }
 }
