@@ -225,6 +225,7 @@ impl DSL for Weel {
                 .get(&parent_thread)
                 .expect(PRECON_THREAD_INFO)
                 .borrow_mut();
+            log::debug!("Parent thread info is: {:?}", *parent_thread_info);
             parent_thread_info.branches.push(thread::current().id());
             // Get a sender to signal wait end
 

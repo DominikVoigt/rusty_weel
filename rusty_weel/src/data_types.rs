@@ -160,6 +160,7 @@ impl DynamicData {
 }
 
 // TODO: Certain parts here can be moved into true thread local storage to speed up the application
+#[derive(Debug)]
 pub struct ThreadInfo {
     pub parent_thread: Option<ThreadId>,
     pub branches: Vec<ThreadId>,
@@ -228,13 +229,13 @@ impl Default for ThreadInfo {
     }
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Debug)]
 pub enum CancelCondition {
     First,
     Last,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum ChooseVariant {
     Inclusive,
     Exclusive,
