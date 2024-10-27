@@ -2,7 +2,7 @@ use std::{
     collections::{HashMap, HashSet},
     panic::{set_hook, take_hook},
     sync::{Arc, Mutex},
-    thread::{self, sleep, JoinHandle, ThreadId},
+    thread::{self, sleep, JoinHandle},
     time::Duration,
 };
 
@@ -439,7 +439,7 @@ mod test {
     use super::*;
 
     fn init_logger() {
-        env_logger::Builder::from_default_env().init();;
+        env_logger::Builder::from_default_env().init();
     }
 
     /**

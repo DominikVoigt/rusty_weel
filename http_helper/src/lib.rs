@@ -229,7 +229,7 @@ impl Client {
      */
     pub fn add_request_headers(&mut self, headers: HashMap<String, String>) -> Result<()> {
         for (name, value) in headers.into_iter() {
-            self.add_request_header(&name, &value);
+            self.add_request_header(&name, &value)?;
         }
         Ok(())
     }
@@ -429,7 +429,7 @@ fn parse_query_string(query: &str) -> Vec<Parameter> {
 
 fn construct_multipart(
     parameters: Vec<Parameter>,
-    mut request_builder: RequestBuilder,
+    request_builder: RequestBuilder,
 ) -> Result<RequestBuilder> {
     let mut form = Form::new();
     for parameter in parameters {

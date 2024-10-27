@@ -30,6 +30,23 @@ fn main() {
     *WEEL.stop_signal_receiver.lock().unwrap() = Some(stop_signal_receiver);
     let model = || -> Result<()> {
         // inject!("./resources/164-decide.eic");\
+        weel!().call(
+            "a1",
+            "timeout",
+            HTTPParams {
+                label: "Timeout 1",
+                method: Method::GET,
+                arguments: Some(vec![new_key_value_pair("timeout", "5", false)]),
+            },
+            Option::None,
+            Option::None,
+            Some(indoc! {
+                "
+                    data.count -= 1  
+                "
+            }),
+            Option::None,
+        )?;
         weel!().parallel_do(
             None,
             CancelCondition::Last,
