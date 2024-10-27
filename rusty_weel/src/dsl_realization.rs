@@ -1125,7 +1125,7 @@ impl Weel {
                     connection_wrapper.inform_activity_done()?;
                     weel_position.detail = "after".to_owned();
                     let ipc = json!({
-                        "after": weel_position
+                        "after": [weel_position]
                     });
                     ConnectionWrapper::new(self.clone(), None, None)
                         .inform_position_change(Some(ipc))?;
@@ -1364,7 +1364,7 @@ impl Weel {
                             weel_position.handler_passthrough = None;
                             weel_position.detail = "after".to_owned();
                             let content = json!({
-                                "after": weel_position
+                                "after": [weel_position]
                             });
 
                             ConnectionWrapper::new(self.clone(), None, None)
