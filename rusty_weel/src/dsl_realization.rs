@@ -124,7 +124,11 @@ impl DSL for Weel {
         thread_info.branch_barrier_start = Some(barrier_start.clone());
         let (branch_event_tx, branch_event_rx) = mpsc::channel::<()>();
         thread_info.branch_event_sender = Some(branch_event_tx);
-        log::debug!("Setting branch event sender on branch {:?}, sender: {:?}", thread::current().id(), thread_info.branch_event_sender);
+        log::debug!(
+            "Setting branch event sender on branch {:?}, sender: {:?}",
+            thread::current().id(),
+            thread_info.branch_event_sender
+        );
         drop(thread_info);
         drop(thread_map);
         log::debug!("Entering lambda");
@@ -230,7 +234,10 @@ impl DSL for Weel {
             parent_thread_info.branches.push(thread::current().id());
             // Get a sender to signal wait end
 
-            log::debug!("Accessing branch event sender of branch {:?}", parent_thread);
+            log::debug!(
+                "Accessing branch event sender of branch {:?}",
+                parent_thread
+            );
             let branch_event_sender = parent_thread_info
                 .branch_event_sender
                 .as_ref()
@@ -309,22 +316,35 @@ impl DSL for Weel {
                 let _ = branch_event_sender.send(());
             }
 
-            if !matches!(*weel.state.lock().unwrap(), State::Stopping | State::Stopped | State::Finishing) {
-                let thread_info = thread_info_map.get(&thread::current().id()).unwrap().borrow();
+            if !matches!(
+                *weel.state.lock().unwrap(),
+                State::Stopping | State::Stopped | State::Finishing
+            ) {
+                let thread_info = thread_info_map
+                    .get(&thread::current().id())
+                    .unwrap()
+                    .borrow();
                 if let Some(position) = &thread_info.branch_position {
-                    weel.positions.lock().unwrap().retain(|e| {e != position});
+                    weel.positions.lock().unwrap().retain(|e| e != position);
                     let ipc = json!({
                         "unmark": position
                     });
                     drop(thread_info);
-                    log::debug!("Unmarking position: {:?}", ipc);
-                    ConnectionWrapper::new(weel.clone(), None, None).inform_position_change(Some(ipc))?;
+                    log::debug!("Unmarking position from parallel branch: {:?}", ipc);
+                    ConnectionWrapper::new(weel.clone(), None, None)
+                        .inform_position_change(Some(ipc))?;
                 }
             }
             Ok(())
         });
         let child_thread_id = setup_done_rx.recv().unwrap();
-        self.thread_information.lock().unwrap().get(&child_thread_id).unwrap().borrow_mut().join_handle = Some(handle);
+        self.thread_information
+            .lock()
+            .unwrap()
+            .get(&child_thread_id)
+            .unwrap()
+            .borrow_mut()
+            .join_handle = Some(handle);
         Ok(())
     }
 
@@ -676,6 +696,7 @@ impl Weel {
                                     let ipc = json!({
                                         "unmark": positions
                                     });
+                                    log::debug!("Unmarking position from start: {:?}", ipc);
                                     match ConnectionWrapper::new(self.clone(), None, None)
                                         .inform_position_change(Some(ipc))
                                     {
@@ -718,7 +739,7 @@ impl Weel {
     }
 
     // TODO: look into case where thread is none? What are we doing there?
-    fn recursive_join(&self, thread: ThreadId) -> Result<()>{
+    fn recursive_join(&self, thread: ThreadId) -> Result<()> {
         let thread_map = self.thread_information.lock().unwrap();
         let mut thread_info = thread_map
             .get(&thread)
@@ -1125,6 +1146,10 @@ impl Weel {
                     let ipc = json!({
                         "after": weel_position
                     });
+                    log::debug!(
+                        "Unmarking position from weel activity, manipulate: {:?}",
+                        ipc
+                    );
                     ConnectionWrapper::new(self.clone(), None, None)
                         .inform_position_change(Some(ipc))?;
                 }
@@ -1201,10 +1226,12 @@ impl Weel {
                                 None,
                                 None,
                             );
-                            let content = json!({
+                            let ipc = json!({
                                 "wait": weel_position
                             });
-                            connection_wrapper.inform_position_change(Some(content))?;
+
+                            log::debug!("Unmarking position from activity, call: {:?}", ipc);
+                            connection_wrapper.inform_position_change(Some(ipc))?;
                         };
                         drop(connection_wrapper);
 
@@ -1361,12 +1388,13 @@ impl Weel {
                             connection_wrapper.inform_activity_done()?;
                             weel_position.handler_passthrough = None;
                             weel_position.detail = "after".to_owned();
-                            let content = json!({
+                            let ipc = json!({
                                 "after": weel_position
                             });
 
+                            log::debug!("Unmarking position from activity, call: {:?}", ipc);
                             ConnectionWrapper::new(self.clone(), None, None)
-                                .inform_position_change(Some(content))?;
+                                .inform_position_change(Some(ipc))?;
                         }
                         break 'again;
                     }
@@ -1413,6 +1441,7 @@ impl Weel {
                         let ipc = json!({
                             "unmark": [weel_position]
                         });
+                        log::debug!("Unmarking position from activity, call: {:?}", ipc);
                         ConnectionWrapper::new(self.clone(), None, None)
                             .inform_position_change(Some(ipc))?;
                     }
@@ -1835,6 +1864,7 @@ impl Weel {
                     .push(json!(branch_position));
             };
         };
+        log::debug!("Unmarking position from progress: {:?}", ipc);
         ConnectionWrapper::new(self.clone(), None, None).inform_position_change(Some(ipc_node))?;
         Ok(weel_position)
     }
