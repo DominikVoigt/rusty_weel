@@ -40,7 +40,7 @@ weel!().parallel_do(
         }))?;
         weel!().parallel_branch(pƛ!({
             weel!().call(
-                "a4",
+                "a2",
                 "timeout",
                 HTTPParams {
                     label: "Timeout 1",
@@ -57,7 +57,7 @@ weel!().parallel_do(
                 Option::None,
             )?;
             weel!().call(
-                "a2",
+                "a4",
                 "timeout",
                 HTTPParams {
                     label: "Timeout 1",
