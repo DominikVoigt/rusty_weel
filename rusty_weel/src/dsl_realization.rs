@@ -148,6 +148,7 @@ impl DSL for Weel {
         let connection_wrapper = ConnectionWrapper::new(self.clone(), None, None);
         connection_wrapper.split_branches(current_thread_id, Some(&thread_info.branch_traces))?;
 
+        log::debug!("After split notification send...");
         // Now start all branches
         for thread in &thread_info.branches {
             if !thread_info.in_search_mode {
