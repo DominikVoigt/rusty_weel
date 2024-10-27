@@ -103,7 +103,7 @@ impl DSL for Weel {
         self: Arc<Self>,
         wait: Option<usize>,
         cancel: CancelCondition,
-        lambda: Arc<dyn Fn() -> Result<()> + Sync + Send>,
+        lambda: &(dyn Fn() -> Result<()> + Sync + Send),
     ) -> Result<()> {
         let current_thread_id = thread::current().id();
         let thread_map = self.thread_information.lock().unwrap();
@@ -128,7 +128,7 @@ impl DSL for Weel {
         drop(thread_map);
 
         // Startup the branches
-        self.execute_lambda(lambda.as_ref())?;
+        self.execute_lambda(lambda)?;
 
         let thread_map = self.thread_information.lock().unwrap();
         let mut thread_info = thread_map

@@ -43,7 +43,7 @@ pub trait DSL {
         self: Arc<Self>,
         wait: Option<usize>,
         cancel: CancelCondition,
-        lambda: Arc<dyn Fn() -> Result<()> + Sync + Send>,
+        lambda: &(dyn Fn() -> Result<()> + Sync + Send),
     ) -> Result<()>;
 
     /**

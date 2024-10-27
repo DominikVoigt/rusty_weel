@@ -12,7 +12,7 @@ use std::{panic, thread};
 
 use rusty_weel::connection_wrapper::ConnectionWrapper;
 use rusty_weel::data_types::{
-    DynamicData, HTTPParams, KeyValuePair, State, StaticData, Status, ThreadInfo,
+    CancelCondition, DynamicData, HTTPParams, KeyValuePair, State, StaticData, Status, ThreadInfo,
 };
 use rusty_weel::dsl::DSL;
 use rusty_weel::dsl_realization::{Result, Weel};
@@ -29,38 +29,32 @@ fn main() {
     let (stop_signal_sender, stop_signal_receiver) = mpsc::channel::<()>();
     *WEEL.stop_signal_receiver.lock().unwrap() = Some(stop_signal_receiver);
     let model = || -> Result<()> {
-        // inject!("./resources/164-decide.eic");
+        // inject!("./resources/164-decide.eic");\
         weel!().parallel_do(
             None,
-            rusty_weel::data_types::CancelCondition::First,
-            pƛ!({
+            CancelCondition::Last,
+            ƛ!({
                 weel!().parallel_branch(pƛ!({
-                    weel!().loop_exec(
-                        Weel::pre_test("data.count > 0"),
-                        ƛ!({
-                            weel!().call(
-                                "a1",
-                                "timeout",
-                                HTTPParams {
-                                    label: "Timeout 1",
-                                    method: Method::GET,
-                                    arguments: Some(vec![new_key_value_pair(
-                                        "timeout", "5", false,
-                                    )]),
-                                },
-                                Option::None,
-                                Option::None,
-                                Some(indoc! {
-                                    "
-                                        data.count -= 1  
-                                    "
-                                }),
-                                Option::None,
-                            )?;
-                        }),
-                    )?;
-                })
-            )?;
+                    weel!().parallel_branch(pƛ!({
+                        weel!().call(
+                            "a1",
+                            "timeout",
+                            HTTPParams {
+                                label: "Timeout 1",
+                                method: Method::GET,
+                                arguments: Some(vec![new_key_value_pair("timeout", "5", false)]),
+                            },
+                            Option::None,
+                            Option::None,
+                            Some(indoc! {
+                                "
+                                    data.count -= 1  
+                                "
+                            }),
+                            Option::None,
+                        )?;
+                    }))?;
+                }))?;
             }),
         )?;
         Ok(())
@@ -252,33 +246,21 @@ macro_rules! pƛ {
 mod test {
     #[test]
     fn test_lambda() {
-        let lambda = ƛ!(
-            {
-                println!("Inside the lambda");
-                let inner = ƛ!(
-                    {
-                        println!("Inside the lambda2")
-                    }
-                );
-                matches!(inner(), Ok(()));
-            }
-        );
+        let lambda = ƛ!({
+            println!("Inside the lambda");
+            let inner = ƛ!({ println!("Inside the lambda2") });
+            matches!(inner(), Ok(()));
+        });
         matches!(lambda(), Ok(()));
     }
 
     #[test]
     fn test_plambda() {
-        let plambda = pƛ!(
-            {
-                println!("Inside the plambda");
-                let inner = pƛ!(
-                    {
-                        println!("Inside the plambda2")
-                    }
-                );
-                matches!(inner(), Ok(()));
-            }
-        );
+        let plambda = pƛ!({
+            println!("Inside the plambda");
+            let inner = pƛ!({ println!("Inside the plambda2") });
+            matches!(inner(), Ok(()));
+        });
         matches!(plambda(), Ok(()));
     }
 }
