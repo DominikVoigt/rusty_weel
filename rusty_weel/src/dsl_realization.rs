@@ -220,12 +220,14 @@ impl DSL for Weel {
 
         let weel = self.clone();
         let handle = thread::spawn(move || -> Result<()> {
+            log::debug!("Spawned new thread");
             let mut thread_info_map = weel.thread_information.lock().unwrap();
             // Unwrap as we have precondition that thread info is available on spawning
-            let parent_thread_info = thread_info_map
+            let mut parent_thread_info = thread_info_map
                 .get(&parent_thread)
                 .expect(PRECON_THREAD_INFO)
                 .borrow_mut();
+            parent_thread_info.branches.push(thread::current().id());
             // Get a sender to signal wait end
             let branch_event_sender = parent_thread_info
                 .branch_event_sender
