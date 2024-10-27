@@ -245,6 +245,7 @@ impl ConnectionWrapper {
      */
     fn inform(&self, what: &str, content: Option<Value>) -> Result<()> {
         let weel = self.weel();
+        log::debug!("Informing; Topic: {:?}, content: {:?}", what, content);
         weel.redis_notifications_client
             .lock()
             .expect("Could not acquire mutex")
