@@ -1,4 +1,4 @@
-weel().call(
+weel!().call(
             "a1",
             "bookAir",
             HTTPParams {
@@ -18,62 +18,52 @@ weel().call(
             status.update 1, 'Hotel'
             "###}),
             Option::None,
-        )?;
+)?;
 
-weel().choose(Exclusive, || {
-    weel().alternative("data.flag", || {
-        weel().call(
+weel!().choose(Exclusive,  ƛ!({
+    weel!().alternative("data.flag", ƛ!({
+        weel!().call(
             "a2",
             "timeout",
             HTTPParams {
                 label: "Timeout 1",
                 method: Method::GET,
-                arguments: Some(vec![
-                    new_key_value_pair("timeout", "5", false),
-                ]),
+                arguments: Some(vec![new_key_value_pair("timeout", "5", false)]),
             },
             Option::None,
             Option::None,
             None,
             Option::None,
         )?;
-        Ok(())
-    })?;
-    weel().alternative("data.flag", || {
-        weel().call(
+    }))?;
+    weel!().alternative("data.flag", ƛ!({
+        weel!().call(
             "a4",
             "timeout",
             HTTPParams {
                 label: "Timeout 1",
                 method: Method::GET,
-                arguments: Some(vec![
-                    new_key_value_pair("timeout", "5", false),
-                ]),
+                arguments: Some(vec![new_key_value_pair("timeout", "5", false)]),
             },
             Option::None,
             Option::None,
             None,
             Option::None,
         )?;
-        Ok(())
-    })?;
-    weel().otherwise(|| {
-        weel().call(
+    }))?;
+    weel!().otherwise(ƛ!({
+        weel!().call(
             "a3",
             "timeout",
             HTTPParams {
                 label: "Timeout 2",
                 method: Method::GET,
-                arguments: Some(vec![
-                    new_key_value_pair("timeout", "3", false),
-                ]),
+                arguments: Some(vec![new_key_value_pair("timeout", "3", false)]),
             },
             Option::None,
             Option::None,
             None,
             Option::None,
         )?;
-        Ok(())
-    })?;
-    Ok(())
-})?;
+    }))?;
+}))?;

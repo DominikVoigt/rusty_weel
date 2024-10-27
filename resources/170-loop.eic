@@ -1,5 +1,5 @@
-weel().loop_exec(Weel::pre_test("data.count > 0"), || {
-    weel().call(
+weel!().loop_exec(Weel::pre_test("data.count > 0"), ƛ!({
+    weel!().call(
         "a1",
         "timeout",
         HTTPParams {
@@ -18,5 +18,4 @@ weel().loop_exec(Weel::pre_test("data.count > 0"), || {
         }),
         Option::None,
     )?;
-    Ok(())
-})?;
+}))?;
