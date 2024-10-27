@@ -126,9 +126,10 @@ impl DSL for Weel {
         thread_info.branch_event_sender = Some(branch_event_tx);
         drop(thread_info);
         drop(thread_map);
-
+        log::debug!("Entering lambda");
         // Startup the branches
         self.execute_lambda(lambda)?;
+        log::debug!("Exiting lambda");
 
         let thread_map = self.thread_information.lock().unwrap();
         let mut thread_info = thread_map
