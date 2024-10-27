@@ -149,6 +149,7 @@ impl DSL for Weel {
         connection_wrapper.split_branches(current_thread_id, Some(&thread_info.branch_traces))?;
 
         log::debug!("After split notification send...");
+        log::debug!("Branches are: {:?}", thread_info.branches);
         // Now start all branches
         for thread in &thread_info.branches {
             if !thread_info.in_search_mode {
