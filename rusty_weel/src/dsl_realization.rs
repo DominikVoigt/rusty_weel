@@ -153,6 +153,7 @@ impl DSL for Weel {
             if !thread_info.in_search_mode {
                 thread_map.get(thread).unwrap().borrow_mut().in_search_mode = false;
             }
+            log::debug!("Telling branch to execute...");
             barrier_start.enqueue(());
         }
 
@@ -161,6 +162,7 @@ impl DSL for Weel {
             // we now need to let the branches run and let them have access to the thread map -> Cannot go into block with them locked
             drop(thread_info);
             drop(thread_map);
+            log::debug!("Wait for done signal...");
             branch_event_rx.recv().unwrap();
         }
 
