@@ -1,6 +1,6 @@
 weel!().parallel_do(
     Some(1),
-    First,
+    Last,
     ƛ!({
         weel!().parallel_branch(pƛ!({
             weel!().call(
