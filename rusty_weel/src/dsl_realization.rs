@@ -317,6 +317,7 @@ impl DSL for Weel {
                         "unmark": position
                     });
                     drop(thread_info);
+                    log::debug!("Unmarking position: {:?}", ipc);
                     ConnectionWrapper::new(weel.clone(), None, None).inform_position_change(Some(ipc))?;
                 }
             }
