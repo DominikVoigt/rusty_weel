@@ -124,6 +124,7 @@ impl DSL for Weel {
         thread_info.branch_barrier_start = Some(barrier_start.clone());
         let (branch_event_tx, branch_event_rx) = mpsc::channel::<()>();
         thread_info.branch_event_sender = Some(branch_event_tx);
+        log::debug!("Setting branch event sender on branch {:?}, sender: {:?}", thread::current().id(), thread_info.branch_event_sender);
         drop(thread_info);
         drop(thread_map);
         log::debug!("Entering lambda");
@@ -215,9 +216,6 @@ impl DSL for Weel {
         // We cannot let this run on further as we need to get a handle on the thread_info_map, if we do not do this here,
         // then we would need to ensure in parallel gateway that the thread info is dropped again before waiting for ready
         let (setup_done_tx, setup_done_rx) = mpsc::channel::<ThreadId>();
-        // The spawned thread has to wait shortly to register the handle before executing its branch
-        let (handle_registered_tx, handle_registered_rx) = mpsc::channel::<()>();
-
         let weel = self.clone();
         let handle = thread::spawn(move || -> Result<()> {
             log::debug!("Spawned new thread");
@@ -229,6 +227,8 @@ impl DSL for Weel {
                 .borrow_mut();
             parent_thread_info.branches.push(thread::current().id());
             // Get a sender to signal wait end
+
+            log::debug!("Accessing branch event sender of branch {:?}", parent_thread);
             let branch_event_sender = parent_thread_info
                 .branch_event_sender
                 .as_ref()
@@ -256,7 +256,6 @@ impl DSL for Weel {
             drop(thread_info_map);
             // Notify parallel gateway that the thread has completed setup
             setup_done_tx.send(thread::current().id()).unwrap();
-
             if !weel.terminating() {
                 // wait for run signal from parallel gateway
                 branch_barrier_start.dequeue();
@@ -323,7 +322,6 @@ impl DSL for Weel {
         });
         let child_thread_id = setup_done_rx.recv().unwrap();
         self.thread_information.lock().unwrap().get(&child_thread_id).unwrap().borrow_mut().join_handle = Some(handle);
-        handle_registered_tx.send(()).unwrap();
         Ok(())
     }
 
