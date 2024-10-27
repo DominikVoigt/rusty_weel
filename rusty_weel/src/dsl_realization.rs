@@ -312,7 +312,9 @@ impl DSL for Weel {
             if !matches!(*weel.state.lock().unwrap(), State::Stopping | State::Stopped | State::Finishing) {
                 let thread_info = thread_info_map.get(&thread::current().id()).unwrap().borrow();
                 if let Some(position) = &thread_info.branch_position {
+                    log::debug!("Positions before retain in parallel branch {:?}", weel.positions.lock().unwrap());
                     weel.positions.lock().unwrap().retain(|e| {e != position});
+                    log::debug!("Positions after retain in parallel branch {:?}", weel.positions.lock().unwrap());
                     let ipc = json!({
                         "unmark": position
                     });
