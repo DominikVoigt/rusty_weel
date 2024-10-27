@@ -54,25 +54,23 @@ fn main() {
             Last,
             ƛ!({
                 weel!().parallel_branch(pƛ!({
-                    weel!().parallel_branch(pƛ!({
-                        weel!().call(
-                            "a1",
-                            "timeout",
-                            HTTPParams {
-                                label: "Timeout 1",
-                                method: Method::GET,
-                                arguments: Some(vec![new_key_value_pair("timeout", "5", false)]),
-                            },
-                            Option::None,
-                            Option::None,
-                            Some(indoc! {
-                                "
+                    weel!().call(
+                        "a1",
+                        "timeout",
+                        HTTPParams {
+                            label: "Timeout 1",
+                            method: Method::GET,
+                            arguments: Some(vec![new_key_value_pair("timeout", "5", false)]),
+                        },
+                        Option::None,
+                        Option::None,
+                        Some(indoc! {
+                            "
                                     data.count -= 1  
                                 "
-                            }),
-                            Option::None,
-                        )?;
-                    }))?;
+                        }),
+                        Option::None,
+                    )?;
                 }))?;
             }),
         )?;
