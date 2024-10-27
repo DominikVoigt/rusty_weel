@@ -21,7 +21,7 @@ weel!().parallel_do(
     ƛ!({
         weel!().parallel_branch(pƛ!({
             weel!().call(
-                "a1",
+                "a2",
                 "timeout",
                 HTTPParams {
                     label: "Timeout 1",
