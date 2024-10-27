@@ -1,11 +1,13 @@
+#![allow(unused_imports)]
+// We allow unused imports here as they depend on the injected code
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
-use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{mpsc, Arc, Mutex};
 
 use indoc::indoc;
 use lazy_static::lazy_static;
+use rusty_weel::data_types::CancelCondition::{First, Last};
 use rusty_weel::data_types::ChooseVariant::{Exclusive, Inclusive};
 
 use std::{panic, thread};
@@ -49,7 +51,7 @@ fn main() {
         )?;
         weel!().parallel_do(
             None,
-            CancelCondition::Last,
+            Last,
             ƛ!({
                 weel!().parallel_branch(pƛ!({
                     weel!().parallel_branch(pƛ!({
