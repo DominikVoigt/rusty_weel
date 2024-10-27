@@ -27,11 +27,12 @@ use std::io::Write;
 lazy_static! {
     static ref WEEL: Arc<Weel> = startup();
 }
+
 fn main() {
     let (stop_signal_sender, stop_signal_receiver) = mpsc::channel::<()>();
     *WEEL.stop_signal_receiver.lock().unwrap() = Some(stop_signal_receiver);
     let model = || -> Result<()> {
-        inject!("./resources/219-parallel_finish_early_first.eic");
+        inject!("./resources/222-parallel_finish_early_last.eic");
         Ok(())
     };
 
