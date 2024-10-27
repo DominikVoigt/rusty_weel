@@ -139,7 +139,6 @@ impl ConnectionWrapper {
     }
 
     pub fn inform_position_change(&self, ipc: Option<Value>) -> Result<()> {
-        log::debug!("Position change called with ipc: {:?} on thread: {:?}", ipc, thread::current().id());
         self.inform("position/change", ipc)
     }
 
