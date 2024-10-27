@@ -316,7 +316,7 @@ impl DSL for Weel {
                     weel.positions.lock().unwrap().retain(|e| {*e != position});
                     log::debug!("Positions after retain in parallel branch {:?}", weel.positions.lock().unwrap());
                     let ipc = json!({
-                        "unmark": position
+                        "unmark": [position]
                     });
                     drop(thread_info);
                     log::debug!("Unmarking position: {:?}", ipc);
