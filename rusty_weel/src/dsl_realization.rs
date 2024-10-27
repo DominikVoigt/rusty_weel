@@ -1992,7 +1992,7 @@ pub enum ActivityType {
     Manipulate,
 }
 
-#[derive(PartialEq, Eq, Debug, Clone, Hash, Serialize)]
+#[derive(Debug, Clone, Hash, Serialize)]
 pub struct Position {
     position: String,
     uuid: String,
@@ -2014,6 +2014,14 @@ impl Position {
         }
     }
 }
+
+impl PartialEq for Position {
+    fn eq(&self, other: &Self) -> bool {
+        self.position == other.position && self.uuid == other.uuid
+    }
+}
+
+impl Eq for Position{}
 
 pub type Result<T> = std::result::Result<T, Error>;
 
