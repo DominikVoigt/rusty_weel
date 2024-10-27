@@ -1,0 +1,78 @@
+weel!().parallel_do(
+    Some(1),
+    First,
+    ƛ!({
+        weel!().parallel_branch(pƛ!({
+            weel!().call(
+                "a1",
+                "timeout",
+                HTTPParams {
+                    label: "Timeout 1",
+                    method: Method::GET,
+                    arguments: Some(vec![new_key_value_pair("timeout", "8", false)]),
+                },
+                Option::None,
+                Option::None,
+                Some(indoc! {
+                    "
+                            data.count -= 1  
+                        "
+                }),
+                Option::None,
+            )?;
+            weel!().call(
+                "a3",
+                "timeout",
+                HTTPParams {
+                    label: "Timeout 1",
+                    method: Method::GET,
+                    arguments: Some(vec![new_key_value_pair("timeout", "5", false)]),
+                },
+                Option::None,
+                Option::None,
+                Some(indoc! {
+                    "
+                            data.count -= 1  
+                        "
+                }),
+                Option::None,
+            )?;
+        }))?;
+        weel!().parallel_branch(pƛ!({
+            weel!().call(
+                "a4",
+                "timeout",
+                HTTPParams {
+                    label: "Timeout 1",
+                    method: Method::GET,
+                    arguments: Some(vec![new_key_value_pair("timeout", "2", false)]),
+                },
+                Option::None,
+                Option::None,
+                Some(indoc! {
+                    "
+                            data.count -= 1  
+                        "
+                }),
+                Option::None,
+            )?;
+            weel!().call(
+                "a2",
+                "timeout",
+                HTTPParams {
+                    label: "Timeout 1",
+                    method: Method::GET,
+                    arguments: Some(vec![new_key_value_pair("timeout", "2", false)]),
+                },
+                Option::None,
+                Option::None,
+                Some(indoc! {
+                    "
+                            data.count -= 1  
+                        "
+                }),
+                Option::None,
+            )?;
+        }))?;
+    }),
+)?;
