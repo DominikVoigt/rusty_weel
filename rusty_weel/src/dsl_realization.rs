@@ -179,11 +179,12 @@ impl DSL for Weel {
 
         // TODO: in original code we did not check on no_longer necessary here, should we or not?
         if !self.terminating() {
-            for thread in &thread_info.branches {
+            for child in &thread_info.branches {
                 let mut child_info: std::cell::RefMut<'_, ThreadInfo> =
-                    thread_map.get(thread).unwrap().borrow_mut();
+                    thread_map.get(child).unwrap().borrow_mut();
                 child_info.no_longer_necessary = true;
-                recursive_continue(&thread_map, thread);
+                drop(child_info);
+                recursive_continue(&thread_map, child);
             }
             drop(thread_info);
             drop(thread_map);
