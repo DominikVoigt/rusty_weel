@@ -1,5 +1,6 @@
 use std::collections::VecDeque;
 use std::fs;
+use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::thread::{JoinHandle, ThreadId};
 use std::{collections::HashMap, path::PathBuf};
@@ -174,6 +175,10 @@ pub struct ThreadInfo {
     pub branch_wait_count: usize,
     // Counts the number of branches that reached the end of execution (either skipped or executed) 
     pub branch_finished_count: usize,
+    // Sends a signal if the branch terminated
+    pub terminated_signal_sender: Option<Sender<()>>,
+    // Used to check whether the branch executed the lambda already
+    pub terminated_signal_receiver: Option<Receiver<()>>,
     // Used for synon the start of child branches
     pub branch_barrier_start: Option<Arc<BlockingQueue<()>>>,
     // Used by child branches to signal (via sender) to the gateway (via receiver) that the wait condition is fulfilled -> unblock gateway thread
@@ -225,6 +230,8 @@ impl Default for ThreadInfo {
             alternative_mode: Vec::new(),
             alternative_executed: Vec::new(),
             branch_finished_count: 0,
+            terminated_signal_sender: None,
+            terminated_signal_receiver: None,
         }
     }
 }

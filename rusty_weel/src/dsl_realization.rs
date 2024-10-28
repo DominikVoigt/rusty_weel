@@ -241,6 +241,9 @@ impl DSL for Weel {
             thread_info.in_search_mode = weel.search_positions.lock().unwrap().is_empty();
             thread_info.parent_thread = Some(parent_thread);
             thread_info.local = Some(weel.context.lock().unwrap().data.clone());
+            let (terminate_tx, terminate_rx) = mpsc::channel();
+            thread_info.terminated_signal_sender = Some(terminate_tx);
+            thread_info.terminated_signal_receiver = Some(terminate_rx);
             let branch_barrier_start = parent_thread_info
                 .branch_barrier_start
                 .clone()
@@ -267,18 +270,22 @@ impl DSL for Weel {
                 weel.execute_lambda(lambda.as_ref())?;
             }
 
+
             // Now the parallel branch terminates
             let thread_info_map = weel.thread_information.lock().unwrap();
             let mut parent_thread_info = thread_info_map
                 .get(&parent_thread)
                 .expect(PRECON_THREAD_INFO)
                 .borrow_mut();
+            let thread_info = thread_info_map
+                .get(&thread::current().id())
+                .expect(PRECON_THREAD_INFO)
+                .borrow_mut();
             parent_thread_info.branch_finished_count += 1;
-
-            if matches!(
-                parent_thread_info.parallel_wait_condition,
-                CancelCondition::Last
-            ) {
+            thread_info.terminated_signal_sender.as_ref().expect(PRECON_THREAD_INFO).send(()).unwrap();
+            drop(thread_info);
+            // Signal that this thread has terminated
+            if parent_thread_info.parallel_wait_condition == CancelCondition::Last {
                 let reached_wait_threshold = parent_thread_info.branch_finished_count
                     == parent_thread_info.branch_wait_threshold;
                 if reached_wait_threshold
@@ -289,10 +296,23 @@ impl DSL for Weel {
                 {
                     for child in &parent_thread_info.branches {
                         let mut child_info = thread_info_map.get(child).unwrap().borrow_mut();
-                        if child_info.first_activity_in_thread == true {
-                            child_info.no_longer_necessary = true;
-                            drop(child_info);
-                            recursive_continue(&thread_info_map, child);
+                        match child_info.terminated_signal_receiver.as_ref().expect(PRECON_THREAD_INFO).try_recv() {
+                            Ok(()) => {
+                                // Branch already done, nothing to do here
+                            },
+                            Err(err) => {
+                                match err {
+                                    mpsc::TryRecvError::Empty => {
+                                        // We did not hear back yet, this means that the branch did not finish yet, so we will cancel it
+                                        child_info.no_longer_necessary = true;
+                                        drop(child_info);
+                                        recursive_continue(&thread_info_map, child);
+                                    },
+                                    mpsc::TryRecvError::Disconnected => {
+                                        log::error!("Tried to check whether the branch was terminated, but the sender became disconnected")
+                                    },
+                                }
+                            },
                         }
                     }
                 }
@@ -305,21 +325,20 @@ impl DSL for Weel {
                     State::Stopping | State::Finishing
                 )
             {
-                // TODO: Determine whether this can be executed if recursive continue above got called
-                let _ = branch_event_sender.send(());
+                match branch_event_sender.send(()) {
+                    Ok(()) => {},
+                    Err(err) => log::error!("Encountered error when sending branch_event: {:?}", err),
+                }
             }
 
             if !matches!(*weel.state.lock().unwrap(), State::Stopping | State::Stopped | State::Finishing) {
                 let mut thread_info = thread_info_map.get(&thread::current().id()).unwrap().borrow_mut();
                 if let Some(position) = thread_info.branch_position.take() {
-                    log::debug!("Positions before retain in parallel branch {:?}", weel.positions.lock().unwrap());
                     weel.positions.lock().unwrap().retain(|e| {*e != position});
-                    log::debug!("Positions after retain in parallel branch {:?}", weel.positions.lock().unwrap());
                     let ipc = json!({
                         "unmark": [position]
                     });
                     drop(thread_info);
-                    log::debug!("Unmarking position: {:?}", ipc);
                     ConnectionWrapper::new(weel.clone(), None, None).inform_position_change(Some(ipc))?;
                 }
             }
@@ -1449,65 +1468,73 @@ impl Weel {
                 }
             };
         };
-        {
-            // Check whether we need to handle interactions due to the parallel gate
-            let current_thread = thread::current().id();
-            let thread_info_map = self.thread_information.lock().unwrap();
-            // Unwrap as we have precondition that thread info is available on spawning
-            let mut thread_info = thread_info_map
-                .get(&current_thread)
-                .expect(PRECON_THREAD_INFO)
-                .borrow_mut();
-
-            if let Some(parent_id) = thread_info.parent_thread {
-                let mut parent_info = thread_info_map
-                    .get(&parent_id)
-                    .expect(PRECON_THREAD_INFO)
-                    .borrow_mut();
-
-                if parent_info.parallel_wait_condition == CancelCondition::First {
-                    if thread_info.first_activity_in_thread
-                        && parent_info.branch_wait_threshold < parent_info.branch_wait_count
-                    {
-                        thread_info.first_activity_in_thread = false;
-                        parent_info.branch_wait_count = parent_info.branch_wait_count + 1;
-                    }
-                }
-                let state_not_stopping_or_finishing = match *self.state.lock().unwrap() {
-                    State::Stopping | State::Finishing => false,
-                    _other => true,
-                };
-                // Drop to reacquire under parent
-                drop(thread_info);
-                // if we reach the threshold, we can put all the other threads on no longer necessary
-                if parent_info.branch_wait_threshold == parent_info.branch_wait_count
-                    && state_not_stopping_or_finishing
-                {
-                    // Will iteratively mark all children as no longer necessary
-                    for child_id in &parent_info.branches {
-                        match thread_info_map.get(child_id) {
-                            Some(thread_info) => {
-                                let mut thread_info = thread_info.borrow_mut();
-                                if thread_info.first_activity_in_thread {
-                                    thread_info.no_longer_necessary = true;
-                                    drop(thread_info);
-                                    // Should be fine w.r.t. mutable borrows, since this will continue recusively down the hierarchy
-                                    recursive_continue(&thread_info_map, &current_thread)
-                                }
-                            }
-                            None => {
-                                log::error!("Child Thread of Thread {:?} with id: {:?} does not have any thread info", parent_id, child_id);
-                                log::error!("{}", PRECON_THREAD_INFO)
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        
+        self.finalize_call_activity();
 
         Ok(())
     }
 
+    fn finalize_call_activity(self: Arc<Self>) {
+        // Check whether we need to handle interactions due to the parallel gate
+        let current_thread = thread::current().id();
+        let thread_info_map = self.thread_information.lock().unwrap();
+        // Unwrap as we have precondition that thread info is available on spawning
+        let thread_info = thread_info_map
+            .get(&current_thread)
+            .expect(PRECON_THREAD_INFO)
+            .borrow_mut();
+    
+        // If we have a parent thread, that means we are not in the main thread -> We are spawned by a parallel gateway in the parent thread
+        if let Some(parent_id) = thread_info.parent_thread {
+            self.parallel_gateway_update(&thread_info_map, parent_id, thread_info, current_thread);
+        }
+    }
+    
+    fn parallel_gateway_update(&self, thread_info_map: &MutexGuard<'_, HashMap<ThreadId, RefCell<ThreadInfo>>>, parent_id: ThreadId, mut thread_info: std::cell::RefMut<'_, ThreadInfo>, current_thread: ThreadId) {
+        let mut parent_info = thread_info_map
+            .get(&parent_id)
+            .expect(PRECON_THREAD_INFO)
+            .borrow_mut();
+    
+        if parent_info.parallel_wait_condition == CancelCondition::First {
+            if thread_info.first_activity_in_thread
+                && parent_info.branch_wait_count < parent_info.branch_wait_threshold
+            {
+                thread_info.first_activity_in_thread = false;
+                parent_info.branch_wait_count = parent_info.branch_wait_count + 1;
+            }
+        }
+        let state_not_stopping_or_finishing = match *self.state.lock().unwrap() {
+            State::Stopping | State::Finishing => false,
+            _other => true,
+        };
+        // Drop to reacquire under parent
+        drop(thread_info);
+        // if we reach the threshold, we can put all the other threads on no longer necessary
+        if parent_info.branch_wait_threshold == parent_info.branch_wait_count
+            && state_not_stopping_or_finishing
+        {
+            // Will iteratively mark all children as no longer necessary
+            for child_id in &parent_info.branches {
+                match thread_info_map.get(child_id) {
+                    Some(thread_info) => {
+                        let mut thread_info = thread_info.borrow_mut();
+                        if thread_info.first_activity_in_thread {
+                            thread_info.no_longer_necessary = true;
+                            drop(thread_info);
+                            // Should be fine w.r.t. mutable borrows, since this will continue recusively down the hierarchy
+                            recursive_continue(&thread_info_map, &current_thread)
+                        }
+                    }
+                    None => {
+                        log::error!("Child Thread of Thread {:?} with id: {:?} does not have any thread info", parent_id, child_id);
+                        log::error!("{}", PRECON_THREAD_INFO)
+                    }
+                }
+            }
+        }
+    }
+    
     /**
      * Will execute the provided ruby code using the eval_helper and the evaluation backend
      *
