@@ -5,7 +5,7 @@ members = [
     "http_helper"
 ]
 resolver = "2"
-include = ["/resources"]
+package.include = ["/resources"]
 
 
 [profile.release]
