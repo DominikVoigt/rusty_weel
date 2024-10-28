@@ -1,29 +1,7 @@
-weel!().call(
-            "a1",
-            "bookAir",
-            HTTPParams {
-                label: "Book Airline 1",
-                method: Method::GET,
-                arguments: Some(vec![
-                    //new_key_value_pair("from", "data.from", true),
-                    //new_key_value_pair("to", "data.to", true),
-                    //new_key_value_pair("persons", "data.persons", true),
-                ]),
-            },
-            Option::None,
-            Option::None,
-            Some(indoc! {r###"
-            data.airline = result.value('id')
-            data.costs += result.value('costs').to_f
-            status.update 1, 'Hotel'
-            "###}),
-            Option::None,
-)?;
-
 weel!().choose(Exclusive,  ƛ!({
     weel!().alternative("data.flag", ƛ!({
         weel!().call(
-            "a2",
+            "a1",
             "timeout",
             HTTPParams {
                 label: "Timeout 1",
@@ -38,7 +16,7 @@ weel!().choose(Exclusive,  ƛ!({
     }))?;
     weel!().alternative("data.flag", ƛ!({
         weel!().call(
-            "a4",
+            "a2",
             "timeout",
             HTTPParams {
                 label: "Timeout 1",
@@ -58,7 +36,7 @@ weel!().choose(Exclusive,  ƛ!({
             HTTPParams {
                 label: "Timeout 2",
                 method: Method::GET,
-                arguments: Some(vec![new_key_value_pair("timeout", "3", false)]),
+                arguments: Some(vec![new_key_value_pair("timeout", "5", false)]),
             },
             Option::None,
             Option::None,
