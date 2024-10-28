@@ -313,7 +313,10 @@ impl DSL for Weel {
                     }
                 }
             }
-
+            log::debug!("Reached to before branch event send on thread {:?}, should run branch event: {:?}", 
+                thread::current().id(), 
+                parent_thread_info.branch_finished_count == parent_thread_info.branches.len()
+            );
             // Case when the wait count is the number of branches?
             if parent_thread_info.branch_finished_count == parent_thread_info.branches.len()
                 && !matches!(
@@ -327,6 +330,10 @@ impl DSL for Weel {
                 }
             }
 
+            log::debug!("Reached to after branch event send on thread {:?}, should run branch event: {:?}", 
+                thread::current().id(), 
+                parent_thread_info.branch_finished_count == parent_thread_info.branches.len()
+            );
             if !matches!(*weel.state.lock().unwrap(), State::Stopping | State::Stopped | State::Finishing) {
                 let mut thread_info = thread_info_map.get(&thread::current().id()).unwrap().borrow_mut();
                 if let Some(position) = thread_info.branch_position.take() {
@@ -338,6 +345,7 @@ impl DSL for Weel {
                     ConnectionWrapper::new(weel.clone(), None, None).inform_position_change(Some(ipc))?;
                 }
             }
+            log::debug!("Reached end of thread: {:?}", thread::current().id());
             Ok(())
         });
         let child_thread_id = setup_done_rx.recv().unwrap();
