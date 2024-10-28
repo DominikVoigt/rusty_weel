@@ -1190,6 +1190,7 @@ impl Weel {
                             *self.state.lock().unwrap(),
                             State::Stopping | State::Finishing
                         );
+                        log::debug!("Reached to vote sync before");
 
                         // Drop info before we enter blocking vote_sync_before
                         drop(thread_info);
@@ -1211,6 +1212,8 @@ impl Weel {
                                 .map(|x| x.as_str()),
                             parameters,
                         )?;
+
+                        log::debug!("Reached to after activity handle");
                         let connection_wrapper = connection_wrapper_mutex.lock().unwrap();
                         weel_position.handler_passthrough =
                             connection_wrapper.handler_passthrough.clone();
@@ -1229,6 +1232,7 @@ impl Weel {
                         drop(connection_wrapper);
 
                         'inner: loop {
+                            log::debug!("Reached to inner loop");
                             let current_thread = thread::current().id();
                             let thread_info_map = self.thread_information.lock().unwrap();
                             // Unwrap as we have precondition that thread info is available on spawning
@@ -1283,6 +1287,7 @@ impl Weel {
                                 State::Stopping | State::Stopped | State::Finishing
                             );
                             if state_stopping_or_finishing {
+                                log::debug!("Reached to activity stop");
                                 connection_wrapper.activity_stop()?;
                                 weel_position.handler_passthrough =
                                     connection_wrapper.activity_passthrough_value();
