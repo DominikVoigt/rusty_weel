@@ -260,7 +260,7 @@ impl DSL for Weel {
             if !weel.should_skip_locking() {
                 weel.execute_lambda(lambda.as_ref())?;
             }
-
+            log::debug!("Reached end of parallel branch on thread: {:?}", thread::current().id());
 
             // Now the parallel branch terminates
             let thread_info_map = weel.thread_information.lock().unwrap();
