@@ -5,6 +5,8 @@ members = [
     "http_helper"
 ]
 
+package.include = ["/resources"]
+
 
 [profile.release]
 strip = true # Strips symbols from the binary
