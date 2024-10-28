@@ -1477,7 +1477,7 @@ impl Weel {
                 }
             };
         };
-        
+        log::debug!("Reached to finalize on thread: {:?}", thread::current().id());
         self.finalize_call_activity();
 
         Ok(())
