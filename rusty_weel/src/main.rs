@@ -1,4 +1,5 @@
 #![allow(unused_imports)]
+#![allow(uncommon_codepoints)]
 // We allow unused imports here as they depend on the injected code
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
