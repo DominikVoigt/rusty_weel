@@ -278,7 +278,6 @@ impl<T: Default> BlockingQueue<T> {
         let mut queue = self.queue.lock().unwrap();
         // Even though can wake up spuriously, not a problem if we check the condition repeatedly on whether the queue is non-empty
         while queue.is_empty() {
-            log::info!("Queue empty, have to wait...");
             *self.num_waiting.lock().unwrap() += 1;
             queue = self.signal.wait(queue).unwrap();
         }
@@ -292,7 +291,6 @@ impl<T: Default> BlockingQueue<T> {
 
     pub fn wake_all(&self) {
         let mut queue = self.queue.lock().unwrap();
-        println!("Trying to wake all");
         let waiting = self.num_waiting.lock().unwrap();
         for _i in 0..*waiting {
             queue.push_back(T::default());

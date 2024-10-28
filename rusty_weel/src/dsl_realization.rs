@@ -124,13 +124,10 @@ impl DSL for Weel {
         thread_info.branch_barrier_start = Some(barrier_start.clone());
         let (branch_event_tx, branch_event_rx) = mpsc::channel::<()>();
         thread_info.branch_event_sender = Some(branch_event_tx);
-        log::debug!("Setting branch event sender on branch {:?}, sender: {:?}", thread::current().id(), thread_info.branch_event_sender);
         drop(thread_info);
         drop(thread_map);
-        log::debug!("Entering lambda");
         // Startup the branches
         self.execute_lambda(lambda)?;
-        log::debug!("Exiting lambda");
 
         let thread_map = self.thread_information.lock().unwrap();
         let mut thread_info = thread_map
@@ -149,14 +146,11 @@ impl DSL for Weel {
         let connection_wrapper = ConnectionWrapper::new(self.clone(), None, None);
         connection_wrapper.split_branches(current_thread_id, Some(&thread_info.branch_traces))?;
 
-        log::debug!("After split notification send...");
-        log::debug!("Branches are: {:?}", thread_info.branches);
         // Now start all branches
         for thread in &thread_info.branches {
             if !thread_info.in_search_mode {
                 thread_map.get(thread).unwrap().borrow_mut().in_search_mode = false;
             }
-            log::debug!("Telling branch to execute...");
             barrier_start.enqueue(());
         }
 
@@ -165,7 +159,6 @@ impl DSL for Weel {
             // we now need to let the branches run and let them have access to the thread map -> Cannot go into block with them locked
             drop(thread_info);
             drop(thread_map);
-            log::debug!("Wait for done signal...");
             branch_event_rx.recv().unwrap();
         }
 
@@ -219,18 +212,15 @@ impl DSL for Weel {
         let (setup_done_tx, setup_done_rx) = mpsc::channel::<ThreadId>();
         let weel = self.clone();
         let handle = thread::spawn(move || -> Result<()> {
-            log::debug!("Spawned new thread");
             let mut thread_info_map = weel.thread_information.lock().unwrap();
             // Unwrap as we have precondition that thread info is available on spawning
             let mut parent_thread_info = thread_info_map
                 .get(&parent_thread)
                 .expect(PRECON_THREAD_INFO)
                 .borrow_mut();
-            log::debug!("Parent thread info is: {:?}", *parent_thread_info);
             parent_thread_info.branches.push(thread::current().id());
             // Get a sender to signal wait end
 
-            log::debug!("Accessing branch event sender of branch {:?}", parent_thread);
             let branch_event_sender = parent_thread_info
                 .branch_event_sender
                 .as_ref()
@@ -1070,6 +1060,9 @@ impl Weel {
                 _ => true,
             };
             if in_invalid_state || thread_info.no_longer_necessary {
+                if thread_info.no_longer_necessary {
+                    log::info!("Service {} no longer necessary, returning...", activity_id)
+                }
                 return Ok(());
             }
 

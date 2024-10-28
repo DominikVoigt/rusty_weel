@@ -488,7 +488,6 @@ impl ConnectionWrapper {
      *  - redis_notification_client (shortly)
      */
     pub fn curl(selfy: &Arc<Mutex<Self>>, parameters: &HTTPParams, weel: Arc<Weel>) -> Result<()> {
-        log::info!("Calling curl with parameters: {:?}", parameters);
         let mut this = selfy.lock().unwrap();
         let callback_id = generate_random_key();
         this.handler_passthrough = Some(callback_id.clone());
@@ -547,14 +546,12 @@ impl ConnectionWrapper {
                 .unwrap_or("".to_owned());
             content.insert("activity".to_owned(), serde_json::Value::String(position));
             weel.register_callback(Arc::clone(selfy), &callback_id, content_node)?;
-            log::debug!("Before endpoint handling");
 
             let mut method = parameters.method.clone();
             let mut https_enabled = false;
             let endpoint = match this.handler_endpoints.get(0) {
                 // TODO: Set method by matched method in url
                 Some(endpoint) => {
-                    log::info!("processing endpoint");
                     match protocol_regex.captures(&endpoint) {
                         Some(capture) => {
                             match capture.get(1) {
@@ -567,7 +564,6 @@ impl ConnectionWrapper {
                             }
                             match capture.get(2) {
                                 Some(captured_method) => {
-                                    log::info!("Captured method: {}", captured_method.as_str());
                                     match captured_method.as_str().to_lowercase().as_str() {
                                         "post" => {
                                             method = Method::POST;
@@ -612,19 +608,6 @@ impl ConnectionWrapper {
             client.add_parameters(params);
 
             let response = client.execute_raw()?;
-
-            log::debug!(
-                indoc::indoc! {
-                        "
-            Received response for service call of activity: 
-            Name: {}
-            Response headers: {:?},
-            Response body: {:?}             
-            "},
-                parameters.label,
-                response.headers,
-                response.body
-            );
 
             status = response.status_code;
             log::info!(
@@ -846,7 +829,6 @@ impl ConnectionWrapper {
         body: &[u8],
         options: HashMap<String, String>, // Headers
     ) -> Result<()> {
-        log::info!("Handling callback");
         let weel = self.weel();
         let recv =
             eval_helper::structurize_result(&weel.opts.eval_backend_structurize, &options, body)?;
@@ -891,7 +873,6 @@ impl ConnectionWrapper {
         }
 
         if contains_non_empty(&options, "CPEE_EVENT") {
-            log::info!("Was event callback");
             let event_regex = match regex::Regex::new(r"[^\w_-]") {
                 Ok(regex) => regex,
                 Err(err) => {
@@ -919,7 +900,6 @@ impl ConnectionWrapper {
                 weel.get_instance_meta_data(),
             )?;
         } else {
-            log::info!("Setting handler return value to: {recv}");
             self.handler_return_status = status;
             self.handler_return_value = Some(recv);
             self.handler_return_options = Some(options.clone());
@@ -959,7 +939,6 @@ impl ConnectionWrapper {
                     None => log::error!("Received CPEE_STOP but handler_continue is empty?"),
                 }
             } else {
-                log::info!("Unblock thread");
                 match &self.handler_continue {
                     Some(x) => x.lock().unwrap().enqueue(Signal::None),
                     None => log::error!(
