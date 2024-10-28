@@ -277,6 +277,8 @@ impl DSL for Weel {
             thread_info.terminated_signal_sender.as_ref().expect(PRECON_THREAD_INFO).send(()).unwrap();
             drop(thread_info);
             // Signal that this thread has terminated
+
+            log::debug!("Reached to parent info");
             if parent_thread_info.parallel_wait_condition == CancelCondition::Last {
                 let reached_wait_threshold = parent_thread_info.branch_finished_count
                     == parent_thread_info.branch_wait_threshold;
@@ -286,6 +288,7 @@ impl DSL for Weel {
                         State::Stopping | State::Finishing
                     )
                 {
+                    log::debug!("Reached to child iteration");
                     for child in &parent_thread_info.branches {
                         let mut child_info = thread_info_map.get(child).unwrap().borrow_mut();
                         match child_info.terminated_signal_receiver.as_ref().expect(PRECON_THREAD_INFO).try_recv() {
