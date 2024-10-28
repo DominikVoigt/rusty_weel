@@ -1981,6 +1981,7 @@ fn recursive_continue(
     thread_info_map: &MutexGuard<HashMap<ThreadId, RefCell<ThreadInfo>>>,
     thread_id: &ThreadId,
 ) {
+    log::debug!("Calling recusive continue on thread: {:?}", thread::current().id());
     let thread_info = thread_info_map
         .get(thread_id)
         .expect(PRECON_THREAD_INFO)
