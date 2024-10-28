@@ -20,7 +20,6 @@ use rusty_weel::data_types::{
 use rusty_weel::dsl::DSL;
 use rusty_weel::dsl_realization::{Result, Weel};
 use rusty_weel::redis_helper::RedisHelper;
-// Needed for inject!
 use http_helper::Method;
 use rusty_weel_macro::inject;
 use std::io::Write;
@@ -33,7 +32,7 @@ fn main() {
     let (stop_signal_sender, stop_signal_receiver) = mpsc::channel::<()>();
     *WEEL.stop_signal_receiver.lock().unwrap() = Some(stop_signal_receiver);
     let model = || -> Result<()> {
-        inject!("./resources/parallel_last.eic");
+        inject!("./resources/parallel_first.eic");
         Ok(())
     };
 
