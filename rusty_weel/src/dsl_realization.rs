@@ -1962,6 +1962,7 @@ impl Weel {
         }
         *state = new_state;
 
+        log::debug!("Reached matches");
         if matches!(new_state, State::Stopping | State::Finishing) {
             let status = self.status.lock().unwrap();
             status.nudge.wake_all();
