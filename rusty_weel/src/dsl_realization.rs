@@ -161,6 +161,7 @@ impl DSL for Weel {
             drop(thread_map);
             branch_event_rx.recv().unwrap();
         }
+        log::debug!("Reached to after branch event");
 
         let thread_map = self.thread_information.lock().unwrap();
         let thread_info = thread_map
@@ -189,6 +190,7 @@ impl DSL for Weel {
                 child_info.no_longer_necessary = true;
                 drop(child_info);
                 drop(thread_map);
+                log::debug!("Reached to recursive join");
 
                 self.recursive_join(child_thread)?;
             }
@@ -260,7 +262,6 @@ impl DSL for Weel {
             if !weel.should_skip_locking() {
                 weel.execute_lambda(lambda.as_ref())?;
             }
-            log::debug!("Reached end of parallel branch on thread: {:?}", thread::current().id());
 
             // Now the parallel branch terminates
             let thread_info_map = weel.thread_information.lock().unwrap();
