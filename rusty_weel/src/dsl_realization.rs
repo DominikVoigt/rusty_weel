@@ -671,12 +671,14 @@ impl Weel {
                     }
                     // TODO: implement the __weel_control_flow error handling logic in the handle_error/handle_join error
                     let result = model();
+                    log::debug!("Model execution done");
                     // Signal stop thread that execution of model ended:
                     let send_result = stop_signal_sender.send(());
                     if matches!(send_result, Err(_)) {
                         log::error!("Error sending termination signal for model thread. Receiver must have been dropped.")
                     }
 
+                    log::debug!("Process result");
                     match result {
                         // TODO: Implement __weel_control_flow completely
                         Ok(()) => {
@@ -767,15 +769,17 @@ impl Weel {
 
     pub fn stop_weel(&self) -> Result<()> {
         {
-            log::info!("Entered stop function of weel");
+            log::debug!("Entered stop function of weel");
             let mut state = self.state.lock().expect("Could not lock state mutex");
-            log::info!("Acquired lock for state");
+            log::debug!("Acquired lock for state");
             match *state {
                 State::Ready => *state = State::Stopped,
                 State::Running => {
+                    log::debug!("State is running, setting to stopping");
                     *state = State::Stopping;
                     // Wait for instance to stop
                     drop(state);
+                    log::info!("Wait for termination signal...");
                     let rec_result = self
                         .stop_signal_receiver
                         .lock()
@@ -783,6 +787,8 @@ impl Weel {
                         .as_ref()
                         .expect("Has been set after init")
                         .recv();
+
+                    log::debug!("Received for termination signal...");
                     if matches!(rec_result, Err(_)) {
                         log::error!("Error receiving termination signal for model thread. Sender must have been dropped.")
                     }
