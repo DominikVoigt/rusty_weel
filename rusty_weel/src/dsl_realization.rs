@@ -212,6 +212,7 @@ impl DSL for Weel {
         let (setup_done_tx, setup_done_rx) = mpsc::channel::<ThreadId>();
         let weel = self.clone();
         let handle = thread::spawn(move || -> Result<()> {
+            log::debug!("Spawned thread {:?}", thread::current().id());
             let mut thread_info_map = weel.thread_information.lock().unwrap();
             // Unwrap as we have precondition that thread info is available on spawning
             let mut parent_thread_info = thread_info_map
