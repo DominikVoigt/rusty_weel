@@ -939,6 +939,7 @@ impl ConnectionWrapper {
                     None => log::error!("Received CPEE_STOP but handler_continue is empty?"),
                 }
             } else {
+                log::debug!("Reached handler continue");
                 match &self.handler_continue {
                     Some(x) => x.lock().unwrap().enqueue(Signal::None),
                     None => log::error!(
