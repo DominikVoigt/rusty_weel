@@ -1404,7 +1404,7 @@ impl Weel {
 
         let connection_wrapper = connection_wrapper_mutex.lock().unwrap();
         if let Err(error) = result {
-            log::error!("Matching error: {:?}", error);
+            log::error!("Matching error: {:?} on thread: {:?}", error, thread::current().id());
             match error {
                 Error::Signal(signal) => match signal {
                     Signal::Proceed | Signal::SkipManipulate => {
@@ -1421,7 +1421,7 @@ impl Weel {
                             self.set_state(State::Stopping)?;
                             weel_position.detail = "unmark".to_owned();
                         }
-                        log::debug!("After vote sync after");
+                        log::debug!("After vote sync after on thread: {:?}", thread::current().id());
                     }
                     Signal::NoLongerNecessary => {
                         connection_wrapper.inform_activity_cancelled()?;
