@@ -280,6 +280,7 @@ impl DSL for Weel {
 
             log::debug!("Reached to parent info");
             if parent_thread_info.parallel_wait_condition == CancelCondition::Last {
+                log::debug!("Threshold is: {:?} Count is: {:?}", parent_thread_info.branch_wait_threshold, parent_thread_info.branch_finished_count);
                 let reached_wait_threshold = parent_thread_info.branch_finished_count
                     == parent_thread_info.branch_wait_threshold;
                 if reached_wait_threshold
