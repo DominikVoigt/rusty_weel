@@ -324,6 +324,8 @@ impl DSL for Weel {
                     State::Stopping | State::Finishing
                 )
             {
+
+                log::debug!("Sending branch event on thread {:?}", thread::current().id()); 
                 match branch_event_sender.send(()) {
                     Ok(()) => {},
                     Err(err) => log::error!("Encountered error when sending branch_event: {:?}", err),
