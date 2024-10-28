@@ -1291,6 +1291,7 @@ impl Weel {
                                 connection_wrapper.activity_stop()?;
                                 weel_position.handler_passthrough =
                                     connection_wrapper.activity_passthrough_value();
+                                log::debug!("Reached to proceed");
                                 break 'raise Err(Signal::Proceed.into());
                             };
 
