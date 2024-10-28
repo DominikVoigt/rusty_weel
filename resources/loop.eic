@@ -6,7 +6,7 @@ weel!().loop_exec(Weel::pre_test("data.count > 0"), ƛ!({
             label: "Timeout 1",
             method: Method::GET,
             arguments: Some(vec![
-                new_key_value_pair("timeout", "5", false),
+                new_key_value_pair("timeout", "2", false),
             ]),
         },
         Option::None,

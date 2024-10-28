@@ -324,7 +324,6 @@ impl DSL for Weel {
                     State::Stopping | State::Finishing
                 )
             {
-
                 log::debug!("Sending branch event on thread {:?}", thread::current().id()); 
                 match branch_event_sender.send(()) {
                     Ok(()) => {},
@@ -2129,7 +2128,7 @@ mod test {
             }
         };
         let stat = StaticData {
-            instance_id: 238,
+            instance_id: 243,
             host: "localhost".to_owned(),
             cpee_base_url: "https://echo.bpm.in.tum.de/flow/engine".to_owned(),
             redis_url: None,
@@ -2170,7 +2169,7 @@ mod test {
             "to": "Prague",
             "persons": 3,
             "costs": 0,
-            "count": 4,
+            "count": 3,
             "flag": true
         });
         let dynamic = DynamicData {
