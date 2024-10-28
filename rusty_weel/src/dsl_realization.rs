@@ -782,18 +782,18 @@ impl Weel {
         *state = State::Stopped;
     }
 
-    pub fn stop_weel(&self) -> Result<()> {
+    pub fn stop_weel(self: &Arc<Self>) -> Result<()> {
         {
-            log::debug!("Entered stop function of weel");
-            let mut state = self.state.lock().expect("Could not lock state mutex");
-            log::debug!("Acquired lock for state");
+            let state = self.state.lock().expect("Could not lock state mutex");
+            
             match *state {
-                State::Ready => *state = State::Stopped,
-                State::Running => {
-                    log::debug!("State is running, setting to stopping");
-                    *state = State::Stopping;
-                    // Wait for instance to stop
+                State::Ready => {
                     drop(state);
+                    self.set_state(State::Stopped)?;
+                },
+                State::Running => {
+                    drop(state);
+                    self.set_state(State::Stopping)?;
                     log::info!("Wait for termination signal...");
                     let rec_result = self
                         .stop_signal_receiver
