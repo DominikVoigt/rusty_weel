@@ -1404,6 +1404,7 @@ impl Weel {
 
         let connection_wrapper = connection_wrapper_mutex.lock().unwrap();
         if let Err(error) = result {
+            log::error!("Matching error: {:?}", error);
             match error {
                 Error::Signal(signal) => match signal {
                     Signal::Proceed | Signal::SkipManipulate => {
