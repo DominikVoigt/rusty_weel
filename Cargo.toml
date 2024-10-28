@@ -4,9 +4,8 @@ members = [
     "rusty_weel_macro",
     "http_helper"
 ]
-
-package.include = ["/resources"]
-workspace.resolver = "2"
+resolver = "2"
+include = ["/resources"]
 
 
 [profile.release]
