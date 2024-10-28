@@ -1408,17 +1408,20 @@ impl Weel {
             match error {
                 Error::Signal(signal) => match signal {
                     Signal::Proceed | Signal::SkipManipulate => {
+                        log::debug!("Reached to state lock");
                         let state_stopping_or_finishing = matches!(
                             *self.state.lock().unwrap(),
                             State::Stopping | State::Finishing
                         );
-
+                        log::debug!("Reached to vote sync after");
                         if !state_stopping_or_finishing
                             && !self.vote_sync_after(&connection_wrapper)?
                         {
+                            log::debug!("Reached inner part of vote sync after");
                             self.set_state(State::Stopping)?;
                             weel_position.detail = "unmark".to_owned();
                         }
+                        log::debug!("After vote sync after");
                     }
                     Signal::NoLongerNecessary => {
                         connection_wrapper.inform_activity_cancelled()?;
