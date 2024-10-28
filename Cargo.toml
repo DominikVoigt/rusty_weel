@@ -6,6 +6,7 @@ members = [
 ]
 
 package.include = ["/resources"]
+workspace.resolver = "2"
 
 
 [profile.release]
