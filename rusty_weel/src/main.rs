@@ -154,11 +154,12 @@ fn set_panic_hook() -> () {
 
 fn setup_signal_handler(weel: &Arc<Weel>) {
     let weel = Arc::clone(weel);
+    let main_thread_id = thread::current().id();
 
     if let Err(err) = ctrlc::set_handler(move || {
         log::info!("Received SIGINT/SIGTERM/SIGHUP. Set state to stopping...");
         log::info!("Handling signal on thread: {:?}", thread::current().id());
-        let res = weel.stop_weel();
+        let res = weel.stop_weel(main_thread_id);
         match res {
             Ok(_) => {
                 log::info!("Successfuly executed stop function on weel")

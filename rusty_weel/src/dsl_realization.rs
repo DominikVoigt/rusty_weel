@@ -274,13 +274,22 @@ impl DSL for Weel {
                 .expect(PRECON_THREAD_INFO)
                 .borrow_mut();
             parent_thread_info.branch_finished_count += 1;
-            thread_info.terminated_signal_sender.as_ref().expect(PRECON_THREAD_INFO).send(()).unwrap();
+            thread_info
+                .terminated_signal_sender
+                .as_ref()
+                .expect(PRECON_THREAD_INFO)
+                .send(())
+                .unwrap();
             drop(thread_info);
             // Signal that this thread has terminated
 
             log::debug!("Reached to parent info");
             if parent_thread_info.parallel_wait_condition == CancelCondition::Last {
-                log::debug!("Threshold is: {:?} Count is: {:?}", parent_thread_info.branch_wait_threshold, parent_thread_info.branch_finished_count);
+                log::debug!(
+                    "Threshold is: {:?} Count is: {:?}",
+                    parent_thread_info.branch_wait_threshold,
+                    parent_thread_info.branch_finished_count
+                );
                 let reached_wait_threshold = parent_thread_info.branch_finished_count
                     == parent_thread_info.branch_wait_threshold;
                 if reached_wait_threshold
@@ -292,10 +301,15 @@ impl DSL for Weel {
                     log::debug!("Reached to child iteration");
                     for child in &parent_thread_info.branches {
                         let mut child_info = thread_info_map.get(child).unwrap().borrow_mut();
-                        match child_info.terminated_signal_receiver.as_ref().expect(PRECON_THREAD_INFO).try_recv() {
+                        match child_info
+                            .terminated_signal_receiver
+                            .as_ref()
+                            .expect(PRECON_THREAD_INFO)
+                            .try_recv()
+                        {
                             Ok(()) => {
                                 // Branch already done, nothing to do here
-                            },
+                            }
                             Err(err) => {
                                 match err {
                                     mpsc::TryRecvError::Empty => {
@@ -303,18 +317,19 @@ impl DSL for Weel {
                                         child_info.no_longer_necessary = true;
                                         drop(child_info);
                                         recursive_continue(&thread_info_map, child);
-                                    },
+                                    }
                                     mpsc::TryRecvError::Disconnected => {
                                         log::error!("Tried to check whether the branch was terminated, but the sender became disconnected")
-                                    },
+                                    }
                                 }
-                            },
+                            }
                         }
                     }
                 }
             }
-            log::debug!("Reached to before branch event send on thread {:?}, should run branch event: {:?}", 
-                thread::current().id(), 
+            log::debug!(
+                "Reached to before branch event send on thread {:?}, should run branch event: {:?}",
+                thread::current().id(),
                 parent_thread_info.branch_finished_count == parent_thread_info.branches.len()
             );
             // Case when the wait count is the number of branches?
@@ -324,33 +339,52 @@ impl DSL for Weel {
                     State::Stopping | State::Finishing
                 )
             {
-                log::debug!("Sending branch event on thread {:?}", thread::current().id()); 
+                log::debug!(
+                    "Sending branch event on thread {:?}",
+                    thread::current().id()
+                );
                 match branch_event_sender.send(()) {
-                    Ok(()) => {},
-                    Err(err) => log::error!("Encountered error when sending branch_event: {:?}", err),
+                    Ok(()) => {}
+                    Err(err) => {
+                        log::error!("Encountered error when sending branch_event: {:?}", err)
+                    }
                 }
             }
 
-            log::debug!("Reached to after branch event send on thread {:?}, should run branch event: {:?}", 
-                thread::current().id(), 
+            log::debug!(
+                "Reached to after branch event send on thread {:?}, should run branch event: {:?}",
+                thread::current().id(),
                 parent_thread_info.branch_finished_count == parent_thread_info.branches.len()
             );
-            if !matches!(*weel.state.lock().unwrap(), State::Stopping | State::Stopped | State::Finishing) {
-                let mut thread_info = thread_info_map.get(&thread::current().id()).unwrap().borrow_mut();
+            if !matches!(
+                *weel.state.lock().unwrap(),
+                State::Stopping | State::Stopped | State::Finishing
+            ) {
+                let mut thread_info = thread_info_map
+                    .get(&thread::current().id())
+                    .unwrap()
+                    .borrow_mut();
                 if let Some(position) = thread_info.branch_position.take() {
-                    weel.positions.lock().unwrap().retain(|e| {*e != position});
+                    weel.positions.lock().unwrap().retain(|e| *e != position);
                     let ipc = json!({
                         "unmark": [position]
                     });
                     drop(thread_info);
-                    ConnectionWrapper::new(weel.clone(), None, None).inform_position_change(Some(ipc))?;
+                    ConnectionWrapper::new(weel.clone(), None, None)
+                        .inform_position_change(Some(ipc))?;
                 }
             }
             log::debug!("Reached end of thread: {:?}", thread::current().id());
             Ok(())
         });
         let child_thread_id = setup_done_rx.recv().unwrap();
-        self.thread_information.lock().unwrap().get(&child_thread_id).unwrap().borrow_mut().join_handle = Some(handle);
+        self.thread_information
+            .lock()
+            .unwrap()
+            .get(&child_thread_id)
+            .unwrap()
+            .borrow_mut()
+            .join_handle = Some(handle);
         Ok(())
     }
 
@@ -746,7 +780,7 @@ impl Weel {
     }
 
     // TODO: look into case where thread is none? What are we doing there?
-    fn recursive_join(&self, thread: ThreadId) -> Result<()>{
+    fn recursive_join(&self, thread: ThreadId) -> Result<()> {
         let thread_map = self.thread_information.lock().unwrap();
         let mut thread_info = thread_map
             .get(&thread)
@@ -782,18 +816,18 @@ impl Weel {
         *state = State::Stopped;
     }
 
-    pub fn stop_weel(self: &Arc<Self>) -> Result<()> {
+    pub fn stop_weel(self: &Arc<Self>, main_thread_id: ThreadId) -> Result<()> {
         {
             let state = self.state.lock().expect("Could not lock state mutex");
-            
+
             match *state {
                 State::Ready => {
                     drop(state);
-                    self.set_state(State::Stopped)?;
-                },
+                    self.set_state_on_thread(main_thread_id, State::Stopped)?;
+                }
                 State::Running => {
                     drop(state);
-                    self.set_state(State::Stopping)?;
+                    self.set_state_on_thread(main_thread_id, State::Stopping)?;
                     log::info!("Wait for termination signal...");
                     let rec_result = self
                         .stop_signal_receiver
@@ -1419,7 +1453,11 @@ impl Weel {
 
         let connection_wrapper = connection_wrapper_mutex.lock().unwrap();
         if let Err(error) = result {
-            log::error!("Matching error: {:?} on thread: {:?}", error, thread::current().id());
+            log::error!(
+                "Matching error: {:?} on thread: {:?}",
+                error,
+                thread::current().id()
+            );
             match error {
                 Error::Signal(signal) => match signal {
                     Signal::Proceed | Signal::SkipManipulate => {
@@ -1436,7 +1474,10 @@ impl Weel {
                             self.set_state(State::Stopping)?;
                             weel_position.detail = "unmark".to_owned();
                         }
-                        log::debug!("After vote sync after on thread: {:?}", thread::current().id());
+                        log::debug!(
+                            "After vote sync after on thread: {:?}",
+                            thread::current().id()
+                        );
                     }
                     Signal::NoLongerNecessary => {
                         connection_wrapper.inform_activity_cancelled()?;
@@ -1492,7 +1533,10 @@ impl Weel {
                 }
             };
         };
-        log::debug!("Reached to finalize on thread: {:?}", thread::current().id());
+        log::debug!(
+            "Reached to finalize on thread: {:?}",
+            thread::current().id()
+        );
         self.finalize_call_activity();
 
         Ok(())
@@ -1507,19 +1551,25 @@ impl Weel {
             .get(&current_thread)
             .expect(PRECON_THREAD_INFO)
             .borrow_mut();
-    
+
         // If we have a parent thread, that means we are not in the main thread -> We are spawned by a parallel gateway in the parent thread
         if let Some(parent_id) = thread_info.parent_thread {
             self.parallel_gateway_update(&thread_info_map, parent_id, thread_info, current_thread);
         }
     }
-    
-    fn parallel_gateway_update(&self, thread_info_map: &MutexGuard<'_, HashMap<ThreadId, RefCell<ThreadInfo>>>, parent_id: ThreadId, mut thread_info: std::cell::RefMut<'_, ThreadInfo>, current_thread: ThreadId) {
+
+    fn parallel_gateway_update(
+        &self,
+        thread_info_map: &MutexGuard<'_, HashMap<ThreadId, RefCell<ThreadInfo>>>,
+        parent_id: ThreadId,
+        mut thread_info: std::cell::RefMut<'_, ThreadInfo>,
+        current_thread: ThreadId,
+    ) {
         let mut parent_info = thread_info_map
             .get(&parent_id)
             .expect(PRECON_THREAD_INFO)
             .borrow_mut();
-    
+
         if parent_info.parallel_wait_condition == CancelCondition::First {
             if thread_info.first_activity_in_thread
                 && parent_info.branch_wait_count < parent_info.branch_wait_threshold
@@ -1558,7 +1608,7 @@ impl Weel {
             }
         }
     }
-    
+
     /**
      * Will execute the provided ruby code using the eval_helper and the evaluation backend
      *
@@ -1952,6 +2002,15 @@ impl Weel {
      * Locks: state and potentially positions and status
      */
     fn set_state(self: &Arc<Self>, new_state: State) -> Result<()> {
+        self.set_state_on_thread(thread::current().id(), new_state)
+    }
+
+    /**
+     * Sets the state of the weel
+     *
+     * Locks: state and potentially positions and status
+     */
+    fn set_state_on_thread(self: &Arc<Self>, thread_id: ThreadId, new_state: State) -> Result<()> {
         let mut state = self.state.lock().unwrap();
         if *state == new_state && !matches!(*state, State::Ready) {
             return Ok(());
@@ -1966,10 +2025,7 @@ impl Weel {
         if matches!(new_state, State::Stopping | State::Finishing) {
             let status = self.status.lock().unwrap();
             status.nudge.wake_all();
-            recursive_continue(
-                &self.thread_information.lock().unwrap(),
-                &thread::current().id(),
-            );
+            recursive_continue(&self.thread_information.lock().unwrap(), &thread_id);
         }
 
         ConnectionWrapper::new(self.clone(), None, None).inform_state_change(new_state)?;
@@ -1981,7 +2037,10 @@ fn recursive_continue(
     thread_info_map: &MutexGuard<HashMap<ThreadId, RefCell<ThreadInfo>>>,
     thread_id: &ThreadId,
 ) {
-    log::debug!("Calling recusive continue on thread: {:?}", thread::current().id());
+    log::debug!(
+        "Calling recusive continue on thread: {:?}",
+        thread::current().id()
+    );
     let thread_info = thread_info_map
         .get(thread_id)
         .expect(PRECON_THREAD_INFO)
