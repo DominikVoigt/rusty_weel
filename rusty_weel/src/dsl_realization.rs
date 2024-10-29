@@ -1110,15 +1110,12 @@ impl Weel {
                 .borrow_mut();
 
             // Check early return
-            let in_invalid_state = match *self.state.lock().unwrap() {
-                State::Running => false,
-                _ => true,
-            };
+            let in_invalid_state = matches!(*self.state.lock().unwrap(), State::Stopping | State::Stopped | State::Finishing);
             if in_invalid_state || thread_info.no_longer_necessary {
                 if thread_info.no_longer_necessary {
-                    log::info!("Service {} no longer necessary, returning...", activity_id)
+                    log::info!("Service {} no longer necessary, finalizing...", activity_id)
                 }
-                return Ok(());
+                break 'raise Ok(()) ; // Will execute the finalize (ensure block)
             }
 
             thread_info.callback_signals = Arc::new(Mutex::new(BlockingQueue::new()));
