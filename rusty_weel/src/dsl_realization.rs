@@ -2206,7 +2206,7 @@ mod test {
 
     #[test]
     fn create_opts() {
-        let mut file = match fs::File::create("./opts.yaml") {
+        let mut file = match fs::File::create("./opts.json") {
             Ok(file) => file,
             Err(err) => {
                 log::error!("Error creating the opts.yaml file: {:?}", err);
