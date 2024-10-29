@@ -195,7 +195,7 @@ pub struct ThreadInfo {
     pub no_longer_necessary: bool,
 
     pub in_search_mode: bool,
-    pub branch_position: Option<Position>,
+    pub branch_position: Option<Arc<Position>>,
     pub switched_to_execution: bool,
     // Continue structure in original code
     pub callback_signals: Arc<Mutex<BlockingQueue<Signal>>>,

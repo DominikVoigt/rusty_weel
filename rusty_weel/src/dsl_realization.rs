@@ -41,7 +41,8 @@ pub struct Weel {
     pub context: Mutex<DynamicData>,
     pub state: Mutex<State>,
     pub status: Mutex<Status>,
-    pub positions: Mutex<Vec<Position>>,
+    // Positions are shared witin the program
+    pub positions: Mutex<Vec<Arc<Position>>>,
     // The positions we search for -> Positions from which we start the execution
     pub search_positions: Mutex<HashMap<String, Position>>,
     // Contains all open callbacks from async connections, ArcMutex as it is shared between the instance (to insert callbacks) and the callback thread (RedisHelper)
@@ -367,7 +368,7 @@ impl DSL for Weel {
                 if let Some(position) = thread_info.branch_position.take() {
                     weel.positions.lock().unwrap().retain(|e| *e != position);
                     let ipc = json!({
-                        "unmark": [position]
+                        "unmark": [*position]
                     });
                     drop(thread_info);
                     ConnectionWrapper::new(weel.clone(), None, None)
@@ -734,7 +735,9 @@ impl Weel {
                             let mut state = self.state.lock().unwrap();
                             match *state {
                                 State::Running | State::Finishing => {
-                                    let positions = self.positions.lock().unwrap().clone();
+                                    let positions: Vec<PositionDTO> = self.positions.lock().unwrap().iter().map(|e| {
+                                        PositionDTO { position: e.position.clone(), uuid: e.uuid.clone(), detail: e.detail.lock().unwrap().clone(), handler_passthrough: e.handler_passthrough.lock().unwrap().clone() }
+                                    }).collect();
                                     let ipc = json!({
                                         "unmark": positions
                                     });
@@ -1094,7 +1097,7 @@ impl Weel {
             ConnectionWrapper::new(self.clone(), Some(position.to_owned()), None);
         let connection_wrapper_mutex = Arc::new(Mutex::new(connection_wrapper));
 
-        let mut weel_position: Option<Position> = None;
+        let mut weel_position: Option<Arc<Position>> = None;
 
         /*
          * We use a block computation here to mimick the exception handling -> If an exception in the original ruby code is raised, we return it here
@@ -1190,9 +1193,9 @@ impl Weel {
                         None => (),
                     };
                     connection_wrapper.inform_activity_done()?;
-                    weel_position.as_mut().unwrap().detail = "after".to_owned();
+                    *weel_position.as_ref().unwrap().detail.lock().unwrap() = "after".to_owned();
                     let ipc = json!({
-                        "after": [weel_position.as_ref().unwrap()]
+                        "after": [**weel_position.as_ref().unwrap()]
                     });
                     ConnectionWrapper::new(self.clone(), None, None)
                         .inform_position_change(Some(ipc))?;
@@ -1260,16 +1263,16 @@ impl Weel {
                                 .as_mut()
                                 .unwrap()
                                 .handler_passthrough
-                                .as_ref()
+                                .lock().unwrap().as_ref()
                                 .map(|x| x.as_str()),
                             parameters,
                         )?;
 
                         log::debug!("Reached to after activity handle");
                         let connection_wrapper = connection_wrapper_mutex.lock().unwrap();
-                        weel_position.as_mut().unwrap().handler_passthrough =
+                        *weel_position.as_ref().unwrap().handler_passthrough.lock().unwrap() =
                             connection_wrapper.handler_passthrough.clone();
-                        if let Some(_) = &weel_position.as_mut().unwrap().handler_passthrough {
+                        if let Some(_) = &*(*weel_position.as_ref().unwrap()).handler_passthrough.lock().unwrap() {
                             let connection_wrapper = ConnectionWrapper::new(
                                 self.clone(),
                                 // Do not need this data for the inform:
@@ -1277,7 +1280,7 @@ impl Weel {
                                 None,
                             );
                             let content = json!({
-                                "wait": weel_position.as_ref().unwrap()
+                                "wait": **weel_position.as_ref().unwrap()
                             });
                             connection_wrapper.inform_position_change(Some(content))?;
                         };
@@ -1341,9 +1344,9 @@ impl Weel {
                             if state_stopping_or_finishing {
                                 log::debug!("Reached to activity stop");
                                 connection_wrapper.activity_stop()?;
-                                weel_position.as_mut().unwrap().handler_passthrough =
+                                *weel_position.as_mut().unwrap().handler_passthrough.lock().unwrap() =
                                     connection_wrapper.activity_passthrough_value();
-                                if weel_position.as_ref().unwrap().handler_passthrough.is_some() {
+                                if weel_position.as_ref().unwrap().handler_passthrough.lock().unwrap().is_some() {
                                     break 'raise Err(Signal::Proceed.into());
                                 }
                             };
@@ -1438,10 +1441,10 @@ impl Weel {
                         let connection_wrapper = connection_wrapper_mutex.lock().unwrap();
                         if connection_wrapper.activity_passthrough_value().is_none() {
                             connection_wrapper.inform_activity_done()?;
-                            weel_position.as_mut().unwrap().handler_passthrough = None;
-                            weel_position.as_mut().unwrap().detail = "after".to_owned();
+                            *weel_position.as_ref().unwrap().handler_passthrough.lock().unwrap() = None;
+                            *weel_position.as_ref().unwrap().detail.lock().unwrap() = "after".to_owned();
                             let content = json!({
-                                "after": [weel_position.as_ref().unwrap()]
+                                "after": [**weel_position.as_ref().unwrap()]
                             });
 
                             ConnectionWrapper::new(self.clone(), None, None)
@@ -1464,7 +1467,7 @@ impl Weel {
             );
             match error {
                 Error::Signal(signal) => {
-                    let mut weel_position = weel_position.expect(&format!("Somehow reached signal handling on signal: {:?} without initializing position", signal));
+                    let weel_position = weel_position.expect(&format!("Somehow reached signal handling on signal: {:?} without initializing position", signal));
                     match signal {
                         Signal::Proceed | Signal::SkipManipulate => {
                             log::debug!("Reached to state lock");
@@ -1478,7 +1481,7 @@ impl Weel {
                             {
                                 log::debug!("Reached inner part of vote sync after");
                                 self.set_state(State::Stopping)?;
-                                weel_position.detail = "unmark".to_owned();
+                                *weel_position.detail.lock().unwrap() = "unmark".to_owned();
                             }
                             log::debug!(
                                 "After vote sync after on thread: {:?}",
@@ -1501,11 +1504,11 @@ impl Weel {
                                 .borrow_mut();
                             thread_info.branch_position = None;
                             
-                            weel_position.handler_passthrough = None;
-                            weel_position.detail = "unmark".to_owned();
+                            *weel_position.handler_passthrough.lock().unwrap() = None;
+                            *weel_position.detail.lock().unwrap() = "unmark".to_owned();
 
                             let ipc = json!({
-                                "unmark": [weel_position]
+                                "unmark": [*weel_position]
                             });
                             ConnectionWrapper::new(self.clone(), None, None)
                                 .inform_position_change(Some(ipc))?;
@@ -1817,12 +1820,12 @@ impl Weel {
                     thread_info.switched_to_execution = true;
                 }
                 // checked earlier for membership, thus we can simply unwrap:
-                self.search_positions
+                *self.search_positions
                     .lock()
                     .unwrap()
                     .get(activity_id)
                     .unwrap()
-                    .detail
+                    .detail.lock().unwrap()
                     == "after"
             } else {
                 true
@@ -1844,7 +1847,7 @@ impl Weel {
         position: String,
         uuid: String,
         skip: bool,
-    ) -> Result<Position> {
+    ) -> Result<Arc<Position>> {
         let mut ipc_node = json!({});
         let ipc = ipc_node
             .as_object_mut()
@@ -1869,11 +1872,11 @@ impl Weel {
                     .lock()
                     .unwrap()
                     .retain(|x| *x != *branch_position);
-                ipc.insert("unmark".to_owned(), json!([branch_position]));
+                ipc.insert("unmark".to_owned(), json!([**branch_position]));
             };
             let mut search_positions = self.search_positions.lock().unwrap();
             let search_position = search_positions.remove(&position);
-            let passthrough = search_position.map(|pos| pos.handler_passthrough).flatten();
+            let passthrough = search_position.map(|pos| pos.handler_passthrough.lock().unwrap().clone()).flatten();
             let weel_position = if current_thread_info.switched_to_execution {
                 current_thread_info.switched_to_execution = false;
                 Position::new(
@@ -1916,10 +1919,11 @@ impl Weel {
                         .push(json!(value));
                 });
             }
-            self.positions.lock().unwrap().push(weel_position.clone());
-            current_thread_info.branch_position = Some(weel_position.clone());
+            let position = Arc::new(weel_position);
+            self.positions.lock().unwrap().push(position.clone());
+            current_thread_info.branch_position = Some(position.clone());
 
-            (current_thread_info.parent_thread, weel_position)
+            (current_thread_info.parent_thread, position)
         };
         if let Some(parent_thread_id) = parent_thread_id {
             let mut parent_thread_info = match thread_info_map.get(&parent_thread_id) {
@@ -1945,7 +1949,7 @@ impl Weel {
                     .expect("has to be present")
                     .as_array_mut()
                     .expect("Has to be array")
-                    .push(json!(branch_position));
+                    .push(json!(*branch_position));
             };
         };
         ConnectionWrapper::new(self.clone(), None, None).inform_position_change(Some(ipc_node))?;
@@ -2119,12 +2123,20 @@ pub enum ActivityType {
     Manipulate,
 }
 
-#[derive(PartialEq, Eq, Debug, Clone, Hash, Serialize)]
-pub struct Position {
+#[derive(Debug, Serialize)]
+pub struct PositionDTO {
     position: String,
     uuid: String,
     detail: String,
     handler_passthrough: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct Position {
+    position: String,
+    uuid: String,
+    detail: Mutex<String>,
+    handler_passthrough: Mutex<Option<String>>,
 }
 impl Position {
     fn new(
@@ -2136,9 +2148,15 @@ impl Position {
         Self {
             position,
             uuid,
-            detail,
-            handler_passthrough,
+            detail: Mutex::new(detail),
+            handler_passthrough: Mutex::new(handler_passthrough),
         }
+    }
+}
+
+impl PartialEq for Position {
+    fn eq(&self, other: &Self) -> bool {
+        self.position == other.position && self.uuid == other.uuid && *self.detail.lock().unwrap() == *other.detail.lock().unwrap() && *self.handler_passthrough.lock().unwrap() == *other.handler_passthrough.lock().unwrap()
     }
 }
 
