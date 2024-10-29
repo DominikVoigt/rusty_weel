@@ -1550,6 +1550,7 @@ impl Weel {
     }
 
     fn finalize_call_activity(self: Arc<Self>) {
+        log::debug!("Running call finalize");
         // Check whether we need to handle interactions due to the parallel gate
         let current_thread = thread::current().id();
         let thread_info_map = self.thread_information.lock().unwrap();
