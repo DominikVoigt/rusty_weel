@@ -2227,8 +2227,7 @@ mod test {
             eval_backend_exec_full: "http://localhost:9302/exec-full".to_owned(),
             eval_backend_structurize: "http://localhost:9302/structurize".to_owned(),
         };
-        file.write("---\n".as_bytes()).unwrap();
-        serde_json::to_writer(file, &stat).unwrap();
+        serde_json::to_writer_pretty(file, &stat).unwrap();
     }
 
     #[test]
