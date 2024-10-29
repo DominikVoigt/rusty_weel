@@ -43,8 +43,8 @@ pub struct Weel {
     pub status: Mutex<Status>,
     // Positions are shared witin the program
     pub positions: Mutex<Vec<Arc<Position>>>,
-    // The positions we search for -> Positions from which we start the execution (only the identifiers)
-    pub search_positions: Mutex<HashSet<String>>,
+    // The positions we search for -> Positions from which we start the execution
+    pub search_positions: Mutex<HashMap<String, Position>>,
     // Contains all open callbacks from async connections, ArcMutex as it is shared between the instance (to insert callbacks) and the callback thread (RedisHelper)
     pub callback_keys: Arc<Mutex<std::collections::HashMap<String, Arc<Mutex<ConnectionWrapper>>>>>,
     pub redis_notifications_client: Mutex<RedisHelper>,
@@ -1804,13 +1804,13 @@ impl Weel {
                 .search_positions
                 .lock()
                 .unwrap()
-                .contains(&activity_id.to_owned());
+                .contains_key(&activity_id.to_owned());
             if found_position {
                 // We found the first position on this branch -> We do not need to search futher along this branch of execution
                 thread_info.in_search_mode = false;
                 thread_info.switched_to_execution = true;
-                // Recursion upwards:
                 while let Some(parent) = thread_info.parent_thread {
+                    // Each parent thread has to have some thread information. In general all threads should, when they spawn via weel register and add their thread information
                     // Communicate to ancestor branches that in one of its childs a label was found and the search is done.
                     thread_info = thread_info_map
                         .get(&parent)
@@ -1819,11 +1819,6 @@ impl Weel {
                     thread_info.in_search_mode = false;
                     thread_info.switched_to_execution = true;
                 }
-
-                thread_info = thread_info_map
-                    .get(&thread.id())
-                    .expect(PRECON_THREAD_INFO)
-                    .borrow_mut();
                 // checked earlier for membership, thus we can simply unwrap:
                 *self.search_positions
                     .lock()
@@ -2211,7 +2206,7 @@ mod test {
 
     #[test]
     fn create_opts() {
-        let file = match fs::File::create("./opts.json") {
+        let mut file = match fs::File::create("./opts.json") {
             Ok(file) => file,
             Err(err) => {
                 log::error!("Error creating the opts.yaml file: {:?}", err);
