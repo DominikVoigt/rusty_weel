@@ -13,14 +13,14 @@ use rusty_weel::data_types::ChooseVariant::{Exclusive, Inclusive};
 
 use std::{panic, thread};
 
+use http_helper::Method;
 use rusty_weel::connection_wrapper::ConnectionWrapper;
 use rusty_weel::data_types::{
     CancelCondition, DynamicData, HTTPParams, KeyValuePair, State, StaticData, Status, ThreadInfo,
 };
 use rusty_weel::dsl::DSL;
-use rusty_weel::dsl_realization::{Result, Weel};
+use rusty_weel::dsl_realization::{Position, Result, Weel};
 use rusty_weel::redis_helper::RedisHelper;
-use http_helper::Method;
 use rusty_weel_macro::inject;
 use std::io::Write;
 
@@ -140,8 +140,18 @@ fn init_logger() -> () {
 fn get_search_positions(
     context: &Mutex<DynamicData>,
 ) -> HashMap<String, rusty_weel::dsl_realization::Position> {
-    // TODO: implement this, for now we do not support it
-    return HashMap::new();
+    context
+        .lock()
+        .unwrap()
+        .search_positions
+        .iter()
+        .map(|(identifier, position_dto)| (identifier.clone(), Position::new(
+            position_dto.position.clone(),
+            position_dto.uuid.clone(),
+            position_dto.detail.clone(),
+            position_dto.handler_passthrough.clone()
+        )))
+        .collect()
 }
 
 fn set_panic_hook() -> () {

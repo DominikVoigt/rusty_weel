@@ -8,7 +8,7 @@ use std::{collections::HashMap, path::PathBuf};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::dsl_realization::{Position, Result, Signal};
+use crate::dsl_realization::{Position, PositionDTO, Result, Signal};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct HTTPParams {
@@ -71,6 +71,7 @@ pub struct StaticData {
 pub struct DynamicData {
     pub endpoints: HashMap<String, String>,
     pub data: Value,
+    pub search_positions: HashMap<String, PositionDTO>
 }
 
 #[derive(Debug, Default)]

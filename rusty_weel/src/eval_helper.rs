@@ -632,6 +632,7 @@ mod test {
                 "name": "Testhodor",
                 "age": 29
             }),
+            search_positions: HashMap::new()
         };
 
         let static_data = StaticData {

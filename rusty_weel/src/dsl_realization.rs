@@ -2123,23 +2123,23 @@ pub enum ActivityType {
     Manipulate,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PositionDTO {
-    position: String,
-    uuid: String,
-    detail: String,
-    handler_passthrough: Option<String>,
+    pub position: String,
+    pub uuid: String,
+    pub detail: String,
+    pub handler_passthrough: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct Position {
     position: String,
     uuid: String,
-    detail: Mutex<String>,
-    handler_passthrough: Mutex<Option<String>>,
+    pub detail: Mutex<String>,
+    pub handler_passthrough: Mutex<Option<String>>,
 }
 impl Position {
-    fn new(
+    pub fn new(
         position: String,
         uuid: String,
         detail: String,
@@ -2200,13 +2200,13 @@ pub fn generate_random_key() -> String {
 
 #[cfg(test)]
 mod test {
-    use std::{fs, io::Write};
+    use std::fs;
 
     use super::*;
 
     #[test]
     fn create_opts() {
-        let mut file = match fs::File::create("./opts.json") {
+        let file = match fs::File::create("./opts.json") {
             Ok(file) => file,
             Err(err) => {
                 log::error!("Error creating the opts.yaml file: {:?}", err);
@@ -2260,6 +2260,7 @@ mod test {
         let dynamic = DynamicData {
             endpoints: test_endpoints,
             data: test_data,
+            search_positions: HashMap::new()
         };
         serde_json::to_writer_pretty(file, &dynamic).unwrap();
     }

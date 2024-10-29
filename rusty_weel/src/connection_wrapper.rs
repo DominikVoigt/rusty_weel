@@ -282,6 +282,7 @@ impl ConnectionWrapper {
                     endpoints: result
                         .endpoints
                         .unwrap_or(weel.context.lock().unwrap().endpoints.clone()),
+                    search_positions: HashMap::new() // We can ignore them as they are not relevant to the evaluation context
                 }
             }
             None => {
@@ -289,6 +290,7 @@ impl ConnectionWrapper {
                 DynamicData {
                     data: dynamic_data.data.clone(),
                     endpoints: dynamic_data.endpoints.clone(),
+                    search_positions: HashMap::new() // We can ignore them as they are not relevant to the evaluation context
                 }
             }
         };
