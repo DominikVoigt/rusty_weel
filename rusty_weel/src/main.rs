@@ -51,7 +51,7 @@ fn startup() -> Arc<Weel> {
     init_logger();
     set_panic_hook();
 
-    let opts = StaticData::load("opts.yaml");
+    let opts = StaticData::load("opts.json");
     let context = Mutex::new(DynamicData::load("context.json"));
     let callback_keys: Arc<Mutex<HashMap<String, Arc<Mutex<ConnectionWrapper>>>>> =
         Arc::new(Mutex::new(HashMap::new()));

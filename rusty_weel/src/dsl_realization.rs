@@ -2228,7 +2228,7 @@ mod test {
             eval_backend_structurize: "http://localhost:9302/structurize".to_owned(),
         };
         file.write("---\n".as_bytes()).unwrap();
-        serde_yaml::to_writer(file, &stat).unwrap();
+        serde_json::to_writer(file, &stat).unwrap();
     }
 
     #[test]

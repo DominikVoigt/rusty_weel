@@ -130,7 +130,7 @@ pub struct TaskMetaData {
 impl StaticData {
     pub fn load(path: &str) -> Self {
         let config = fs::read_to_string(path).expect("Could not read configuration file!");
-        let config: Self = serde_yaml::from_str(&config).expect("Could not parse Configuration");
+        let config: Self = serde_json::from_str(&config).expect("Could not parse Configuration");
         config
     }
 
@@ -155,7 +155,7 @@ impl DynamicData {
     pub fn load(path: &str) -> DynamicData {
         let context = fs::read_to_string(path).expect("Could not read context file!");
         let context: DynamicData =
-            serde_yaml::from_str(&context).expect("Could not parse Configuration");
+            serde_json::from_str(&context).expect("Could not parse Configuration");
         context
     }
 }
