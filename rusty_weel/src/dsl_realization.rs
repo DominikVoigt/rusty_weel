@@ -366,7 +366,7 @@ impl DSL for Weel {
                     .unwrap()
                     .borrow_mut();
                 if let Some(position) = thread_info.branch_position.take() {
-                    weel.positions.lock().unwrap().retain(|e| *e != position);
+                    weel.positions.lock().unwrap().retain(|e| !Arc::ptr_eq(e, &position));
                     let ipc = json!({
                         "unmark": [*position]
                     });
@@ -1494,7 +1494,7 @@ impl Weel {
                             self.positions
                                 .lock()
                                 .unwrap()
-                                .retain(|pos| *pos != weel_position);
+                                .retain(|pos| !Arc::ptr_eq(pos,  &weel_position));
                             let current_thread = thread::current().id();
                             let thread_info_map = self.thread_information.lock().unwrap();
                             // Unwrap as we have precondition that thread info is available on spawning
@@ -1871,7 +1871,7 @@ impl Weel {
                 self.positions
                     .lock()
                     .unwrap()
-                    .retain(|x| *x != *branch_position);
+                    .retain(|x| !Arc::ptr_eq(x,  branch_position));
                 ipc.insert("unmark".to_owned(), json!([**branch_position]));
             };
             let mut search_positions = self.search_positions.lock().unwrap();
@@ -1941,7 +1941,7 @@ impl Weel {
                 self.positions
                     .lock()
                     .unwrap()
-                    .retain(|x| *x != branch_position);
+                    .retain(|x| !Arc::ptr_eq(x, &branch_position));
                 if !ipc.contains_key("unmark") {
                     ipc.insert("unmark".to_owned(), json!([]));
                 }
@@ -2151,12 +2151,6 @@ impl Position {
             detail: Mutex::new(detail),
             handler_passthrough: Mutex::new(handler_passthrough),
         }
-    }
-}
-
-impl PartialEq for Position {
-    fn eq(&self, other: &Self) -> bool {
-        self.position == other.position && self.uuid == other.uuid && *self.detail.lock().unwrap() == *other.detail.lock().unwrap() && *self.handler_passthrough.lock().unwrap() == *other.handler_passthrough.lock().unwrap()
     }
 }
 
