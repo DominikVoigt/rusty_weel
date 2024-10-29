@@ -1165,6 +1165,7 @@ impl Weel {
                     if !self.vote_sync_before(&connection_wrapper, None)? {
                         break 'raise Err(Signal::Stop.into());
                     } else if state_stopping_or_finishing {
+                        log::debug!("Stopping here -> skip");
                         break 'raise Err(Signal::Skip.into());
                     }
                     match finalize_code {
@@ -1247,6 +1248,7 @@ impl Weel {
                         if !self.vote_sync_before(&connection_wrapper, None)? {
                             break 'raise Err(Signal::Stop.into());
                         } else if state_stopping_or_finishing {
+                            log::debug!("Stopping here -> skip");
                             break 'raise Err(Signal::Skip.into());
                         }
 
