@@ -2063,7 +2063,10 @@ fn recursive_continue(
         .unwrap()
         .enqueue(Signal::None);
     if let Some(branch_event) = &thread_info.branch_event_sender {
-        branch_event.send(()).unwrap();
+        match branch_event.send(()) {
+            Ok(()) => {},
+            Err(err) => log::error!("Send failed: {:?}, parallel gateway must have terminated already", err),
+        };
     }
     for child_id in &thread_info.branches {
         recursive_continue(thread_info_map, child_id);
