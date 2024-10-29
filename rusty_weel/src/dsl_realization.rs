@@ -1095,7 +1095,7 @@ impl Weel {
             ConnectionWrapper::new(self.clone(), Some(position.to_owned()), None);
         let connection_wrapper_mutex = Arc::new(Mutex::new(connection_wrapper));
 
-        let mut weel_position;
+        let mut weel_position: Option<Position> = None;
 
         /*
          * We use a block computation here to mimick the exception handling -> If an exception in the original ruby code is raised, we return it here
@@ -1110,12 +1110,15 @@ impl Weel {
                 .borrow_mut();
 
             // Check early return
-            let in_invalid_state = matches!(*self.state.lock().unwrap(), State::Stopping | State::Stopped | State::Finishing);
+            let in_invalid_state = matches!(
+                *self.state.lock().unwrap(),
+                State::Stopping | State::Stopped | State::Finishing
+            );
             if in_invalid_state || thread_info.no_longer_necessary {
                 if thread_info.no_longer_necessary {
                     log::info!("Service {} no longer necessary, finalizing...", activity_id)
                 }
-                break 'raise Ok(()) ; // Will execute the finalize (ensure block)
+                break 'raise Ok(()); // Will execute the finalize (ensure block)
             }
 
             thread_info.callback_signals = Arc::new(Mutex::new(BlockingQueue::new()));
@@ -1148,11 +1151,11 @@ impl Weel {
             // Drop the thread_info here already as for a manipulate we do not need it at all and a call we need to acquire the lock every 'again loop anyway
             drop(thread_info);
             drop(thread_info_map);
-            weel_position = self.weel_progress(
+            weel_position = Some(self.weel_progress(
                 position.to_owned(),
                 connection_wrapper.handler_activity_uuid.clone(),
                 false,
-            )?;
+            )?);
             match activity_type {
                 ActivityType::Manipulate => {
                     let state_stopping_or_finishing = matches!(
@@ -1187,9 +1190,9 @@ impl Weel {
                         None => (),
                     };
                     connection_wrapper.inform_activity_done()?;
-                    weel_position.detail = "after".to_owned();
+                    weel_position.as_mut().unwrap().detail = "after".to_owned();
                     let ipc = json!({
-                        "after": [weel_position]
+                        "after": [weel_position.as_ref().unwrap()]
                     });
                     ConnectionWrapper::new(self.clone(), None, None)
                         .inform_position_change(Some(ipc))?;
@@ -1253,6 +1256,8 @@ impl Weel {
                         ConnectionWrapper::activity_handle(
                             &connection_wrapper_mutex,
                             weel_position
+                                .as_mut()
+                                .unwrap()
                                 .handler_passthrough
                                 .as_ref()
                                 .map(|x| x.as_str()),
@@ -1261,9 +1266,9 @@ impl Weel {
 
                         log::debug!("Reached to after activity handle");
                         let connection_wrapper = connection_wrapper_mutex.lock().unwrap();
-                        weel_position.handler_passthrough =
+                        weel_position.as_mut().unwrap().handler_passthrough =
                             connection_wrapper.handler_passthrough.clone();
-                        if let Some(_) = &weel_position.handler_passthrough {
+                        if let Some(_) = &weel_position.as_mut().unwrap().handler_passthrough {
                             let connection_wrapper = ConnectionWrapper::new(
                                 self.clone(),
                                 // Do not need this data for the inform:
@@ -1271,7 +1276,7 @@ impl Weel {
                                 None,
                             );
                             let content = json!({
-                                "wait": weel_position
+                                "wait": weel_position.as_ref().unwrap()
                             });
                             connection_wrapper.inform_position_change(Some(content))?;
                         };
@@ -1335,7 +1340,7 @@ impl Weel {
                             if state_stopping_or_finishing {
                                 log::debug!("Reached to activity stop");
                                 connection_wrapper.activity_stop()?;
-                                weel_position.handler_passthrough =
+                                weel_position.as_mut().unwrap().handler_passthrough =
                                     connection_wrapper.activity_passthrough_value();
                                 log::debug!("Reached to proceed");
                                 break 'raise Err(Signal::Proceed.into());
@@ -1431,10 +1436,10 @@ impl Weel {
                         let connection_wrapper = connection_wrapper_mutex.lock().unwrap();
                         if connection_wrapper.activity_passthrough_value().is_none() {
                             connection_wrapper.inform_activity_done()?;
-                            weel_position.handler_passthrough = None;
-                            weel_position.detail = "after".to_owned();
+                            weel_position.as_mut().unwrap().handler_passthrough = None;
+                            weel_position.as_mut().unwrap().detail = "after".to_owned();
                             let content = json!({
-                                "after": [weel_position]
+                                "after": [weel_position.as_ref().unwrap()]
                             });
 
                             ConnectionWrapper::new(self.clone(), None, None)
@@ -1456,59 +1461,64 @@ impl Weel {
                 thread::current().id()
             );
             match error {
-                Error::Signal(signal) => match signal {
-                    Signal::Proceed | Signal::SkipManipulate => {
-                        log::debug!("Reached to state lock");
-                        let state_stopping_or_finishing = matches!(
-                            *self.state.lock().unwrap(),
-                            State::Stopping | State::Finishing
-                        );
-                        log::debug!("Reached to vote sync after");
-                        if !state_stopping_or_finishing
-                            && !self.vote_sync_after(&connection_wrapper)?
-                        {
-                            log::debug!("Reached inner part of vote sync after");
-                            self.set_state(State::Stopping)?;
-                            weel_position.detail = "unmark".to_owned();
+                Error::Signal(signal) => {
+                    let mut weel_position = weel_position.expect(&format!("Somehow reached signal handling on signal: {:?} without initializing position", signal));
+                    match signal {
+                        Signal::Proceed | Signal::SkipManipulate => {
+                            log::debug!("Reached to state lock");
+                            let state_stopping_or_finishing = matches!(
+                                *self.state.lock().unwrap(),
+                                State::Stopping | State::Finishing
+                            );
+                            log::debug!("Reached to vote sync after");
+                            if !state_stopping_or_finishing
+                                && !self.vote_sync_after(&connection_wrapper)?
+                            {
+                                log::debug!("Reached inner part of vote sync after");
+                                self.set_state(State::Stopping)?;
+                                weel_position.detail = "unmark".to_owned();
+                            }
+                            log::debug!(
+                                "After vote sync after on thread: {:?}",
+                                thread::current().id()
+                            );
                         }
-                        log::debug!(
-                            "After vote sync after on thread: {:?}",
-                            thread::current().id()
-                        );
+                        Signal::NoLongerNecessary => {
+                            connection_wrapper.inform_activity_cancelled()?;
+                            connection_wrapper.inform_activity_done()?;
+                            self.positions
+                                .lock()
+                                .unwrap()
+                                .retain(|pos| *pos != weel_position);
+                            let current_thread = thread::current().id();
+                            let thread_info_map = self.thread_information.lock().unwrap();
+                            // Unwrap as we have precondition that thread info is available on spawning
+                            let mut thread_info = thread_info_map
+                                .get(&current_thread)
+                                .expect(PRECON_THREAD_INFO)
+                                .borrow_mut();
+                            thread_info.branch_position = None;
+                            
+                            weel_position.handler_passthrough = None;
+                            weel_position.detail = "unmark".to_owned();
+
+                            let ipc = json!({
+                                "unmark": [weel_position]
+                            });
+                            ConnectionWrapper::new(self.clone(), None, None)
+                                .inform_position_change(Some(ipc))?;
+                        }
+                        Signal::Stop | Signal::StopSkipManipulate => {
+                            self.set_state(State::Stopping)?;
+                        }
+                        Signal::Skip => {
+                            log::info!("Received skip signal. Do nothing")
+                        }
+                        x => {
+                            log::error!("Received unexpected signal: {:?}", x);
+                        }
                     }
-                    Signal::NoLongerNecessary => {
-                        connection_wrapper.inform_activity_cancelled()?;
-                        connection_wrapper.inform_activity_done()?;
-                        self.positions
-                            .lock()
-                            .unwrap()
-                            .retain(|pos| *pos != weel_position);
-                        let current_thread = thread::current().id();
-                        let thread_info_map = self.thread_information.lock().unwrap();
-                        // Unwrap as we have precondition that thread info is available on spawning
-                        let mut thread_info = thread_info_map
-                            .get(&current_thread)
-                            .expect(PRECON_THREAD_INFO)
-                            .borrow_mut();
-                        thread_info.branch_position = None;
-                        weel_position.handler_passthrough = None;
-                        weel_position.detail = "unmark".to_owned();
-                        let ipc = json!({
-                            "unmark": [weel_position]
-                        });
-                        ConnectionWrapper::new(self.clone(), None, None)
-                            .inform_position_change(Some(ipc))?;
-                    }
-                    Signal::Stop | Signal::StopSkipManipulate => {
-                        self.set_state(State::Stopping)?;
-                    }
-                    Signal::Skip => {
-                        log::info!("Received skip signal. Do nothing")
-                    }
-                    x => {
-                        log::error!("Received unexpected signal: {:?}", x);
-                    }
-                },
+                }
                 Error::EvalError(eval_error) => match eval_error {
                     EvalError::SyntaxError(message) => {
                         connection_wrapper.inform_activity_failed(Error::EvalError(
