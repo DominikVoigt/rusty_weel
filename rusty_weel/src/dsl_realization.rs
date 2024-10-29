@@ -752,7 +752,8 @@ impl Weel {
                                 }
                                 State::Stopping => {
                                     self.recursive_join(thread::current().id())?;
-                                    *state = State::Stopped;
+                                    drop(state);
+                                    self.set_state(State::Stopped)?;
                                     match ConnectionWrapper::new(self.clone(), None, None)
                                         .inform_state_change(State::Stopped)
                                     {
@@ -836,8 +837,6 @@ impl Weel {
                         .as_ref()
                         .expect("Has been set after init")
                         .recv();
-
-                    log::debug!("Received for termination signal...");
                     if matches!(rec_result, Err(_)) {
                         log::error!("Error receiving termination signal for model thread. Sender must have been dropped.")
                     }
