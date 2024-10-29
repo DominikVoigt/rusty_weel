@@ -370,7 +370,7 @@ mod test_data {
             eval_backend_structurize: "ruby_backend_url".to_owned(),
         };
         let file = fs::File::create_new(path).unwrap();
-        serde_yaml::to_writer(file, &config).unwrap();
+        serde_json::to_writer(file, &config).unwrap();
         config
     }
 
