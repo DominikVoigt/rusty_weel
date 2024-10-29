@@ -71,6 +71,7 @@ pub struct StaticData {
 pub struct DynamicData {
     pub endpoints: HashMap<String, String>,
     pub data: Value,
+    pub search_positions: Vec<String>
 }
 
 #[derive(Debug, Default)]

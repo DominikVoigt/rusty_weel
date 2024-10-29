@@ -282,6 +282,7 @@ impl ConnectionWrapper {
                     endpoints: result
                         .endpoints
                         .unwrap_or(weel.context.lock().unwrap().endpoints.clone()),
+                    search_positions: vec![]
                 }
             }
             None => {
@@ -289,6 +290,7 @@ impl ConnectionWrapper {
                 DynamicData {
                     data: dynamic_data.data.clone(),
                     endpoints: dynamic_data.endpoints.clone(),
+                    search_positions: dynamic_data.search_positions.clone()
                 }
             }
         };
