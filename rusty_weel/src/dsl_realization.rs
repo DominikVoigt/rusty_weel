@@ -1344,8 +1344,9 @@ impl Weel {
                                 connection_wrapper.activity_stop()?;
                                 weel_position.as_mut().unwrap().handler_passthrough =
                                     connection_wrapper.activity_passthrough_value();
-                                log::debug!("Reached to proceed");
-                                break 'raise Err(Signal::Proceed.into());
+                                if weel_position.as_ref().unwrap().handler_passthrough.is_some() {
+                                    break 'raise Err(Signal::Proceed.into());
+                                }
                             };
 
                             let signaled_update_again = wait_result
