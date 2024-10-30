@@ -32,7 +32,7 @@ fn main() {
     let (stop_signal_sender, stop_signal_receiver) = mpsc::channel::<()>();
     *WEEL.stop_signal_receiver.lock().unwrap() = Some(stop_signal_receiver);
     let model = || -> Result<()> {
-        inject!("./resources/parallel_last_loop.eic");
+        inject!("./resources/sequence.eic");
         Ok(())
     };
 
