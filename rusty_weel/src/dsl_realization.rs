@@ -1475,11 +1475,6 @@ impl Weel {
 
         let connection_wrapper = connection_wrapper_mutex.lock().unwrap();
         if let Err(error) = result {
-            log::error!(
-                "Matching error: {:?} on thread: {:?}",
-                error,
-                thread::current().id()
-            );
             match error {
                 Error::Signal(signal) => {
                     let weel_position = weel_position.expect(&format!("Somehow reached signal handling on signal: {:?} without initializing position", signal));
