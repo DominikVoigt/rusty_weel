@@ -7,7 +7,6 @@ members = [
 resolver = "2"
 package.include = ["/resources"]
 
-
 [profile.release]
 strip = true # Strips symbols from the binary
 opt-level = "z" #optimize for size

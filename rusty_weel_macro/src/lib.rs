@@ -8,8 +8,9 @@ use quote::quote;
  */
 #[proc_macro]
 pub fn inject(input: TokenStream) -> TokenStream {
+    let path = std::env!("EIC_FILE");
     // Strip "-symbol from string literal:
-    let path = input.to_string().replace("\"", "");
+    //let path = input.to_string().replace("\"", "");
     let main_content = open_file(&path);
     // Correct indentiation
     // let main_content = format!("\t{}", main_content.replace("\n", "\n\t"));
