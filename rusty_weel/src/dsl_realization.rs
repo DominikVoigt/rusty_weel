@@ -726,7 +726,7 @@ impl Weel {
                     match result {
                         // TODO: Implement __weel_control_flow completely
                         Ok(()) => {
-                            let mut state = self.state.lock().unwrap();
+                            let state = self.state.lock().unwrap();
                             match *state {
                                 State::Running | State::Finishing => {
                                     let positions: Vec<PositionDTO> = self.positions.lock().unwrap().iter().map(|e| {
@@ -1297,6 +1297,7 @@ impl Weel {
                         'inner: loop {
                             log::debug!("Reached to inner loop on thread: {:?}", thread::current().id());
                             let current_thread = thread::current().id();
+                            log::debug!("Trying to lock thread_info_map on thread: {:?} state: {:?}", thread::current().id(), self.thread_information.try_lock());
                             let thread_info_map = self.thread_information.lock().unwrap();
                             log::debug!("Captured thread info map on thread: {:?}", thread::current().id());
                             // Unwrap as we have precondition that thread info is available on spawning
