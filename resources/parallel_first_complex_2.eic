@@ -13,11 +13,11 @@ weel!().parallel_do(
                 },
                 None,
                 None,
-                Some(indoc! {
+                code! {
                     "
-                            data.count -= 1  
-                        "
-                }),
+                        data.count -= 1  
+                    "
+                },
                 None,
             )?;
             weel!().call(
@@ -30,11 +30,11 @@ weel!().parallel_do(
                 },
                 None,
                 None,
-                Some(indoc! {
+                code! {
                     "
-                            data.count -= 1  
-                        "
-                }),
+                        data.count -= 1  
+                    "
+                },
                 None,
             )?;
         }))?;
@@ -49,11 +49,11 @@ weel!().parallel_do(
                 },
                 None,
                 None,
-                Some(indoc! {
+                code! {
                     "
-                            data.count -= 1  
-                        "
-                }),
+                        data.count -= 1  
+                    "
+                },
                 None,
             )?;
             weel!().call(
@@ -66,11 +66,11 @@ weel!().parallel_do(
                 },
                 None,
                 None,
-                Some(indoc! {
+                code! {
                     "
-                            data.count -= 1  
-                        "
-                }),
+                        data.count -= 1  
+                    "
+                },
                 None,
             )?;
         }))?;
@@ -85,11 +85,11 @@ weel!().parallel_do(
                 },
                 None,
                 None,
-                Some(indoc! {
+                code! {
                     "
-                            data.count -= 1  
-                        "
-                }),
+                        data.count -= 1  
+                    "
+                },
                 None,
             )?;
             weel!().call(
@@ -102,11 +102,11 @@ weel!().parallel_do(
                 },
                 None,
                 None,
-                Some(indoc! {
+                code! {
                     "
-                            data.count -= 1  
-                        "
-                }),
+                        data.count -= 1  
+                    "
+                },
                 None,
             )?;
         }))?;
@@ -122,10 +122,10 @@ weel!().call(
     },
     None,
     None,
-    Some(indoc! {
+    code! {
         "
-                data.count -= 1  
-            "
-    }),
+            data.count -= 1  
+        "
+    },
     None,
 )?;

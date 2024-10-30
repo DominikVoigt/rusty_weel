@@ -13,11 +13,11 @@ weel!().parallel_do(
                 },
                 None,
                 None,
-                Some(indoc! {
+                code! {
                     "
-                            data.count -= 1  
-                        "
-                }),
+                        data.count -= 1  
+                    "
+                },
                 None,
             )?;
             weel!().call(
@@ -30,11 +30,11 @@ weel!().parallel_do(
                 },
                 None,
                 None,
-                Some(indoc! {
+                code! {
                     "
-                            data.count -= 1  
-                        "
-                }),
+                        data.count -= 1  
+                    "
+                },
                 None,
             )?;
         }))?;
@@ -49,30 +49,30 @@ weel!().parallel_do(
                 },
                 None,
                 None,
-                Some(indoc! {
+                code! {
                     "
-                            data.count -= 1  
-                        "
-                }),
+                        data.count -= 1  
+                    "
+                },
                 None,
             )?;
         }))?;
     }),
 )?;
 weel!().call(
-                "a4",
-                "timeout",
-                HTTPParams {
-                    label: "Timeout 1",
-                    method: Method::GET,
-                    arguments: Some(vec![new_key_value_pair("timeout", "3", false)]),
-                },
-                None,
-                None,
-                Some(indoc! {
-                    "
-                            data.count -= 1  
-                        "
-                }),
-                None,
-            )?;
+    "a4",
+    "timeout",
+    HTTPParams {
+        label: "Timeout 1",
+        method: Method::GET,
+        arguments: Some(vec![new_key_value_pair("timeout", "3", false)]),
+    },
+    None,
+    None,
+    code! {
+        "
+            data.count -= 1  
+        "
+    },
+    None,
+)?;

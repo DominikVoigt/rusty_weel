@@ -50,8 +50,8 @@ weel!().call(
     None,
     code!{
         "
-                data.count -= 1  
-            "
+            data.count -= 1  
+        "
     },
     None,
 )?;
