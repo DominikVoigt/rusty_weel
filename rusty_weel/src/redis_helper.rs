@@ -313,7 +313,7 @@ fn connect_to_redis(
         .arg(&connection_name)
         .query::<String>(&mut connection)
     {
-        Ok(resp) => log::debug!("Setting Client Name to {connection_name} Response: {}", resp),
+        Ok(_resp) => {},
         Err(err) => log::error!("Error occured when setting client name: {}", err),
     };
     Ok(connection)
