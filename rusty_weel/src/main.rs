@@ -180,7 +180,6 @@ fn setup_signal_handler(weel: &Arc<Weel>) {
                 panic!("Could not stop -> Crash instead of failing silently")
             }
         }
-        log::info!("Set state to stopping");
     }) {
         panic!("Could not setup SIGINT/SIGTERM/SIGHUP handler: {err}")
     }
