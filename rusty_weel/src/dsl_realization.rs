@@ -160,9 +160,10 @@ impl DSL for Weel {
             // we now need to let the branches run and let them have access to the thread map -> Cannot go into block with them locked
             drop(thread_info);
             drop(thread_map);
+            log::debug!("Waiting on branch event on thread: {:?}", thread::current().id());
             branch_event_rx.recv().unwrap();
         }
-        log::debug!("Reached to after branch event");
+        log::debug!("Reached to after branch event on thread: {:?}", thread::current().id());
 
         let thread_map = self.thread_information.lock().unwrap();
         let thread_info = thread_map
