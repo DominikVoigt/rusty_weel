@@ -754,8 +754,10 @@ impl Weel {
                                     };
                                 }
                                 State::Stopping => {
+                                    log::debug!("Before recursive join");
                                     self.recursive_join(thread::current().id())?;
                                     drop(state);
+                                    log::debug!("After recursive join");
                                     self.set_state(State::Stopped)?;
                                     match ConnectionWrapper::new(self.clone(), None, None)
                                         .inform_state_change(State::Stopped)
@@ -869,6 +871,7 @@ impl Weel {
                 Some(serde_json::Value::Bool(true)),
             )?;
         }
+        log::info!("Exit end of stop_weel function");
         Ok(())
     }
 
