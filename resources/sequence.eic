@@ -1,0 +1,52 @@
+
+weel!().call(
+    "a1",
+    "timeout",
+    HTTPParams {
+        label: "Timeout 1",
+        method: Method::GET,
+        arguments: Some(vec![new_key_value_pair("timeout", "5", false)]),
+    },
+    None,
+    None,
+    code!{
+        "
+            data.count -= 1
+        "
+    },
+    None,
+)?;
+weel!().call(
+    "a2",
+    "timeout",
+    HTTPParams {
+        label: "Timeout 1",
+        method: Method::GET,
+        arguments: Some(vec![new_key_value_pair("timeout", "5", false)]),
+    },
+    None,
+    None,
+    code!{
+        "
+            data.count -= 1
+        "
+    },
+    None,
+)?;
+weel!().call(
+    "a3",
+    "timeout",
+    HTTPParams {
+        label: "Timeout 1",
+        method: Method::GET,
+        arguments: Some(vec![new_key_value_pair("timeout", "5", false)]),
+    },
+    None,
+    None,
+    code!{
+        "
+            data.count -= 1
+        "
+    },
+    None,
+)?;

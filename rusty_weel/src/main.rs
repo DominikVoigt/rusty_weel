@@ -44,6 +44,7 @@ fn main() {
         Err(err) => weel!().handle_error(err),
     }
     log::info!("At the end of main");
+    log::info!("Data elements are now: {:?}", weel!().context.lock().unwrap())
 }
 
 fn startup() -> Arc<Weel> {
@@ -227,6 +228,15 @@ macro_rules! pƛ {
             $block
             Ok(())
     })
+    };
+}
+
+#[macro_export]
+macro_rules! code {
+    ($str: tt) => {
+        Some(indoc!{
+            $str
+        })
     };
 }
 
