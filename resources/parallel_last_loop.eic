@@ -14,11 +14,7 @@ weel!().parallel_do(
                     },
                     None,
                     None,
-                    code!{
-                        "
-                            data.count -= 1  
-                        "
-                    },
+                    None,
                     None,
                 )?;
                 weel!().call(
@@ -36,6 +32,14 @@ weel!().parallel_do(
                 )?;
             }))?;
         }))?;
+        weel!().manipulate(
+            "a4",
+            code!{
+                "
+                    data.count -= 1
+                "
+            }
+        )
     })
 )?;
 weel!().call(
