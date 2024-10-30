@@ -2045,7 +2045,10 @@ impl Weel {
         if matches!(new_state, State::Stopping | State::Finishing) {
             let status = self.status.lock().unwrap();
             status.nudge.wake_all();
+            log::debug!("Calling recursive continue in set_state");
             recursive_continue(&self.thread_information.lock().unwrap(), &thread_id);
+            log::debug!("After Calling recursive continue in set_state");
+
         }
 
         ConnectionWrapper::new(self.clone(), None, None).inform_state_change(new_state)?;
