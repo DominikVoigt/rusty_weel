@@ -116,7 +116,7 @@ fn startup() -> Arc<Weel> {
 
 fn init_logger() -> () {
     env_logger::Builder::from_default_env()
-        .filter_level(log::LevelFilter::Debug)
+        .filter_level(log::LevelFilter::Info)
         .format(|buf, record| {
             let style = buf.default_level_style(record.level());
             //buf.default_level_style(record.level());
