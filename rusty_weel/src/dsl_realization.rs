@@ -1293,9 +1293,10 @@ impl Weel {
                         drop(connection_wrapper);
 
                         'inner: loop {
-                            log::debug!("Reached to inner loop");
+                            log::debug!("Reached to inner loop on thread: {:?}", thread::current().id());
                             let current_thread = thread::current().id();
                             let thread_info_map = self.thread_information.lock().unwrap();
+                            log::debug!("Captured thread info map on thread: {:?}", thread::current().id());
                             // Unwrap as we have precondition that thread info is available on spawning
                             let thread_info = thread_info_map
                                 .get(&current_thread)
