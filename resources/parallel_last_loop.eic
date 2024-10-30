@@ -31,7 +31,6 @@ weel!().parallel_do(
                     None,
                 )?;
             }))?;
-        }))?;
         weel!().manipulate(
             "a4",
             code!{
@@ -40,6 +39,7 @@ weel!().parallel_do(
                 "
             }
         );
+        }))?;
     })
 )?;
 weel!().call(
