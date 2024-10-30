@@ -33,7 +33,7 @@ fn main() {
     *WEEL.stop_signal_receiver.lock().unwrap() = Some(stop_signal_receiver);
     let model = || -> Result<()> {
         // inject!("./resources/parallel_first_complex_1.eic");
-        inject!("./resources/loop.eic");
+        inject!("./resources/parallel_first_complex_1.eic");
         Ok(())
     };
 
