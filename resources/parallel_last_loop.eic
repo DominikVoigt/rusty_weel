@@ -38,7 +38,7 @@ weel!().parallel_do(
                     data.count -= 1
                 "
             }
-        );
+        )?;
         }))?;
     })
 )?;
