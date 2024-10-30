@@ -34,7 +34,6 @@ pub fn test_condition(
         value: code.to_owned(),
         param_type: http_helper::ParameterType::Body,
     });
-    log::info!("For evaluation, sending data: {:?}", dynamic_context.data);
     client.add_complex_parameter(
         "dataelements",
         APPLICATION_JSON,
@@ -62,11 +61,6 @@ pub fn test_condition(
     let mut result = client.execute()?;
 
     let status = result.status_code;
-    // Error in the provided code
-    log::info!(
-        "Received response headers from eval request: {:?}",
-        result.headers
-    );
 
     let status_ok = status >= 200 || status < 300;
 
@@ -146,8 +140,6 @@ pub fn test_condition(
                     };
                 }
                 x => {
-                    log::info!("Eval endpoint send unexpected part: {x}");
-                    log::info!("Content: {}", p_content);
                     continue;
                 }
             }
@@ -207,7 +199,6 @@ pub fn evaluate_expression(
     call_headers: Option<HashMap<String, String>>,
     location: &str,
 ) -> Result<EvaluationResult> {
-    log::info!("Evaluating expression: {expression}");
     // This url has to be the full path to the exec-full endpoint
     let mut client = Client::new(
         &static_context.eval_backend_exec_full,
@@ -220,7 +211,6 @@ pub fn evaluate_expression(
             value: expression.to_owned(),
             param_type: http_helper::ParameterType::Body,
         });
-        log::info!("For evaluation, sending data: {:?}", dynamic_context.data);
         client.add_complex_parameter(
             "dataelements",
             APPLICATION_JSON,
@@ -417,8 +407,6 @@ pub fn evaluate_expression(
                         };
                     }
                     x => {
-                        log::info!("Eval endpoint send unexpected part: {x}");
-                        log::info!("Content: {}", content);
                         continue;
                     }
                 };

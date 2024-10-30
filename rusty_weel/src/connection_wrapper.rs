@@ -520,7 +520,6 @@ impl ConnectionWrapper {
         loop {
             // Compute parameters
             let mut params = Vec::new();
-            let activity_label = parameters.label;
             // Params could contain file handles (complex parameters) and thus cannot be cloned -> We cannot clone so we recompute them here
             match parameters.arguments.as_ref() {
                 Some(args) => args.iter().for_each(|arg| {
@@ -604,7 +603,6 @@ impl ConnectionWrapper {
                     ))
                 }
             };
-            log::info!("Calling {:?} on endpoint: {}", method, &endpoint);
             let mut client = http_helper::Client::new(&endpoint, method)?;
             client.set_request_headers(headers.clone());
             client.add_parameters(params);

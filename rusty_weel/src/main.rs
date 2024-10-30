@@ -169,15 +169,12 @@ fn setup_signal_handler(weel: &Arc<Weel>) {
     let main_thread_id = thread::current().id();
 
     if let Err(err) = ctrlc::set_handler(move || {
-        log::info!("Received SIGINT/SIGTERM/SIGHUP. Set state to stopping...");
-        log::info!("Handling signal on thread: {:?}", thread::current().id());
+        println!("Received SIGINT/SIGTERM/SIGHUP. Set state to stopping...");
         let res = weel.stop_weel(main_thread_id);
         match res {
             Ok(_) => {
-                log::info!("Successfuly executed stop function on weel")
             }
-            Err(err) => {
-                log::error!("Error occured when trying to stop: {:?}", err);
+            Err(_err) => {
                 panic!("Could not stop -> Crash instead of failing silently")
             }
         }

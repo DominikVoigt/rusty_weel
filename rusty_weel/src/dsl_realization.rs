@@ -159,21 +159,8 @@ impl DSL for Weel {
         drop(thread_map);
         // Wait for the "final" thread to fulfill the wait condition (wait_threshold = wait_count)
         if !(self.terminating() || spawned_branches == 0) {
-            log::debug!(
-                "Waiting on branch event on thread: {:?}",
-                thread::current().id()
-            );
             branch_event_rx.recv().unwrap();
         }
-        log::debug!(
-            "Reached to after branch event on thread: {:?}",
-            thread::current().id()
-        );
-        log::debug!(
-            "Reached to after branch event on thread: {:?}, locking the threadmap result: {:?}",
-            thread::current().id(),
-            self.thread_information
-        );
         let thread_map = self.thread_information.lock().unwrap();
         let thread_info = thread_map
             .get(&current_thread_id)
@@ -200,7 +187,6 @@ impl DSL for Weel {
                 child_info.no_longer_necessary = true;
                 drop(child_info);
                 drop(thread_map);
-                log::debug!("Reached to recursive join");
 
                 self.recursive_join(child_thread)?;
             }
@@ -224,7 +210,6 @@ impl DSL for Weel {
         let (setup_done_tx, setup_done_rx) = mpsc::channel::<ThreadId>();
         let weel = self.clone();
         let handle = thread::spawn(move || -> Result<()> {
-            log::debug!("Spawned thread {:?}", thread::current().id());
             let mut thread_info_map = weel.thread_information.lock().unwrap();
             // Unwrap as we have precondition that thread info is available on spawning
             let mut parent_thread_info = thread_info_map
@@ -266,18 +251,12 @@ impl DSL for Weel {
             setup_done_tx.send(thread::current().id()).unwrap();
             if !weel.terminating() {
                 // wait for run signal from parallel gateway
-                log::debug!("Waiting on thread {:?} for the start signal", thread::current().id());
                 branch_barrier_start.dequeue();
             }
 
-            log::debug!("Continued on thread {:?} after receiving start signal", thread::current().id());
-            log::debug!("Before skip locking: {:?}, thread_info_state: {:?}", thread::current().id(), weel.thread_information.try_lock());
             if !weel.should_skip_locking() {
-                log::debug!("test");
-                log::debug!("Before execute lambda on thread: {:?}, thread_info_state: {:?}", thread::current().id(), weel.thread_information.try_lock());
                 weel.execute_lambda(lambda.as_ref())?;
             }
-            log::debug!("After execute lambda on thread: {:?}", thread::current().id());
 
             // Now the parallel branch terminates
             let thread_info_map = weel.thread_information.lock().unwrap();
@@ -299,13 +278,7 @@ impl DSL for Weel {
             drop(thread_info);
             // Signal that this thread has terminated
 
-            log::debug!("Reached to parent info");
             if parent_thread_info.parallel_wait_condition == CancelCondition::Last {
-                log::debug!(
-                    "Threshold is: {:?} Count is: {:?}",
-                    parent_thread_info.branch_wait_threshold,
-                    parent_thread_info.branch_finished_count
-                );
                 let reached_wait_threshold = parent_thread_info.branch_finished_count
                     == parent_thread_info.branch_wait_threshold;
                 if reached_wait_threshold
@@ -314,7 +287,6 @@ impl DSL for Weel {
                         State::Stopping | State::Finishing
                     )
                 {
-                    log::debug!("Reached to child iteration");
                     for child in &parent_thread_info.branches {
                         let mut child_info = thread_info_map.get(child).unwrap().borrow_mut();
                         match child_info
@@ -343,11 +315,6 @@ impl DSL for Weel {
                     }
                 }
             }
-            log::debug!(
-                "Reached to before branch event send on thread {:?}, should run branch event: {:?}",
-                thread::current().id(),
-                parent_thread_info.branch_finished_count == parent_thread_info.branches.len()
-            );
             // Case when the wait count is the number of branches?
             if parent_thread_info.branch_finished_count == parent_thread_info.branches.len()
                 && !matches!(
@@ -355,10 +322,6 @@ impl DSL for Weel {
                     State::Stopping | State::Finishing
                 )
             {
-                log::debug!(
-                    "Sending branch event on thread {:?}",
-                    thread::current().id()
-                );
                 match branch_event_sender.send(()) {
                     Ok(()) => {}
                     Err(err) => {
@@ -367,11 +330,6 @@ impl DSL for Weel {
                 }
             }
 
-            log::debug!(
-                "Reached to after branch event send on thread {:?}, should run branch event: {:?}",
-                thread::current().id(),
-                parent_thread_info.branch_finished_count == parent_thread_info.branches.len()
-            );
             if !matches!(
                 *weel.state.lock().unwrap(),
                 State::Stopping | State::Stopped | State::Finishing
@@ -393,7 +351,6 @@ impl DSL for Weel {
                         .inform_position_change(Some(ipc))?;
                 }
             }
-            log::debug!("Reached end of thread: {:?}", thread::current().id());
             Ok(())
         });
         let child_thread_id = setup_done_rx.recv().unwrap();
@@ -739,7 +696,6 @@ impl Weel {
                     }
                     // TODO: implement the __weel_control_flow error handling logic in the handle_error/handle_join error
                     let result = model();
-                    log::debug!("Process result");
                     match result {
                         // TODO: Implement __weel_control_flow completely
                         Ok(()) => {
@@ -779,9 +735,7 @@ impl Weel {
                                 }
                                 State::Stopping => {
                                     drop(state);
-                                    log::debug!("Before recursive join");
                                     self.recursive_join(thread::current().id())?;
-                                    log::debug!("After recursive join");
                                     self.set_state(State::Stopped)?;
                                     match ConnectionWrapper::new(self.clone(), None, None)
                                         .inform_state_change(State::Stopped)
@@ -817,7 +771,6 @@ impl Weel {
 
     // TODO: look into case where thread is none? What are we doing there?
     fn recursive_join(&self, thread: ThreadId) -> Result<()> {
-        log::debug!("Entering recursive join with target thread: {:?}", thread);
         let children: Vec<ThreadId>;
         let mut joined_thread = false;
         {
@@ -827,14 +780,12 @@ impl Weel {
                 .expect(PRECON_THREAD_INFO)
                 .borrow_mut();
             children = thread_info.branches.clone();
-            log::debug!("Got thread info");
             // We cannot wait on the main thread
             if thread != thread::current().id() {
                 if let Some(handle) = thread_info.join_handle.take() {
                     // Release lock on thread info map to allow threads to run to the end (in case they need to acquire the lock)
                     drop(thread_info);
                     drop(thread_map);
-                    log::debug!("Joining thread: {:?}", thread);
                     // wait for thread to terminate
                     match handle.join() {
                         Ok(res) => {
@@ -851,7 +802,6 @@ impl Weel {
 
         // join all child threads:
         for child in children {
-            log::debug!("Recursive join on child: {:?}", child);
             self.recursive_join(child)?;
         }
         if joined_thread {
@@ -880,7 +830,6 @@ impl Weel {
                 State::Running => {
                     drop(state);
                     self.set_state_on_thread(main_thread_id, State::Stopping)?;
-                    log::info!("Wait for termination signal...");
                     let rec_result = self
                         .stop_signal_receiver
                         .lock()
@@ -897,7 +846,6 @@ impl Weel {
                     *state
                 ),
             }
-            log::info!("Exit stop function of weel");
         }
 
         let mut redis = self
@@ -917,7 +865,6 @@ impl Weel {
                 Some(serde_json::Value::Bool(true)),
             )?;
         }
-        log::info!("Exit end of stop_weel function");
         Ok(())
     }
 
@@ -1145,10 +1092,6 @@ impl Weel {
         if in_search_mode {
             return Ok(());
         }
-        log::debug!(
-            "Executing activity: {activity_id} on thread: {:?}",
-            thread::current().id()
-        );
         let connection_wrapper =
             ConnectionWrapper::new(self.clone(), Some(position.to_owned()), None);
         let connection_wrapper_mutex = Arc::new(Mutex::new(connection_wrapper));
@@ -1173,9 +1116,6 @@ impl Weel {
                 State::Stopping | State::Stopped | State::Finishing
             );
             if in_invalid_state || thread_info.no_longer_necessary {
-                if thread_info.no_longer_necessary {
-                    log::info!("Service {} no longer necessary, finalizing...", activity_id)
-                }
                 break 'raise Ok(()); // Will execute the finalize (ensure block)
             }
 
@@ -1223,7 +1163,6 @@ impl Weel {
                     if !self.vote_sync_before(&connection_wrapper, None)? {
                         break 'raise Err(Signal::Stop.into());
                     } else if state_stopping_or_finishing {
-                        log::debug!("Stopping here -> skip");
                         break 'raise Err(Signal::Skip.into());
                     }
                     match finalize_code {
@@ -1298,10 +1237,6 @@ impl Weel {
                             *self.state.lock().unwrap(),
                             State::Stopping | State::Finishing
                         );
-                        log::debug!(
-                            "Reached to vote sync before on thread {:?}",
-                            thread::current().id()
-                        );
 
                         // Drop info before we enter blocking vote_sync_before
                         drop(thread_info);
@@ -1309,16 +1244,11 @@ impl Weel {
                         if !self.vote_sync_before(&connection_wrapper, None)? {
                             break 'raise Err(Signal::Stop.into());
                         } else if state_stopping_or_finishing {
-                            log::debug!("Stopping here -> skip");
                             break 'raise Err(Signal::Skip.into());
                         }
 
                         // Will be locked in the activity_handle again
                         drop(connection_wrapper);
-                        log::debug!(
-                            "Reached before activity handle on thread: {:?}",
-                            thread::current().id()
-                        );
                         // This executes the actual call
                         ConnectionWrapper::activity_handle(
                             &connection_wrapper_mutex,
@@ -1332,10 +1262,6 @@ impl Weel {
                                 .map(|x| x.as_str()),
                             parameters,
                         )?;
-                        log::debug!(
-                            "Reached after activity handle on thread: {:?}",
-                            thread::current().id()
-                        );
 
                         let connection_wrapper = connection_wrapper_mutex.lock().unwrap();
                         *weel_position
@@ -1363,21 +1289,8 @@ impl Weel {
                         drop(connection_wrapper);
 
                         'inner: loop {
-                            log::debug!(
-                                "Reached to inner loop on thread: {:?}",
-                                thread::current().id()
-                            );
                             let current_thread = thread::current().id();
-                            log::debug!(
-                                "Trying to lock thread_info_map on thread: {:?} state: {:?}",
-                                thread::current().id(),
-                                self.thread_information.try_lock()
-                            );
                             let thread_info_map = self.thread_information.lock().unwrap();
-                            log::debug!(
-                                "Captured thread info map on thread: {:?}",
-                                thread::current().id()
-                            );
                             // Unwrap as we have precondition that thread info is available on spawning
                             let thread_info = thread_info_map
                                 .get(&current_thread)
@@ -1402,9 +1315,7 @@ impl Weel {
                             drop(connection_wrapper);
 
                             if should_block {
-                                log::info!("Waiting...");
                                 wait_result = Some(thread_queue.lock().unwrap().dequeue());
-                                log::info!("Waited")
                             };
 
                             // Reacquire locks after waiting
@@ -1430,7 +1341,6 @@ impl Weel {
                                 State::Stopping | State::Stopped | State::Finishing
                             );
                             if state_stopping_or_finishing {
-                                log::debug!("Reached to activity stop");
                                 connection_wrapper.activity_stop()?;
                                 *weel_position
                                     .as_mut()
@@ -1575,23 +1485,16 @@ impl Weel {
                     let weel_position = weel_position.expect(&format!("Somehow reached signal handling on signal: {:?} without initializing position", signal));
                     match signal {
                         Signal::Proceed | Signal::SkipManipulate => {
-                            log::debug!("Reached to state lock");
                             let state_stopping_or_finishing = matches!(
                                 *self.state.lock().unwrap(),
                                 State::Stopping | State::Finishing
                             );
-                            log::debug!("Reached to vote sync after");
                             if !state_stopping_or_finishing
                                 && !self.vote_sync_after(&connection_wrapper)?
                             {
-                                log::debug!("Reached inner part of vote sync after");
                                 self.set_state(State::Stopping)?;
                                 *weel_position.detail.lock().unwrap() = "unmark".to_owned();
                             }
-                            log::debug!(
-                                "After vote sync after on thread: {:?}",
-                                thread::current().id()
-                            );
                         }
                         Signal::NoLongerNecessary => {
                             connection_wrapper.inform_activity_cancelled()?;
@@ -1622,7 +1525,7 @@ impl Weel {
                             self.set_state(State::Stopping)?;
                         }
                         Signal::Skip => {
-                            log::info!("Received skip signal. Do nothing")
+                            
                         }
                         x => {
                             log::error!("Received unexpected signal: {:?}", x);
@@ -1650,17 +1553,12 @@ impl Weel {
                 }
             };
         };
-        log::debug!(
-            "Reached to finalize on thread: {:?}",
-            thread::current().id()
-        );
         self.finalize_call_activity();
 
         Ok(())
     }
 
     fn finalize_call_activity(self: Arc<Self>) {
-        log::debug!("Running call finalize");
         // Check whether we need to handle interactions due to the parallel gate
         let current_thread = thread::current().id();
         let thread_info_map = self.thread_information.lock().unwrap();
@@ -1750,8 +1648,6 @@ impl Weel {
         call_result: Option<String>,
         call_headers: Option<HashMap<String, String>>,
     ) -> Result<eval_helper::EvaluationResult> {
-        log::info!("Execute code got called with code: {code}");
-        log::info!("With call result: {:?}", call_result);
         // We clone the dynamic data and status dto here which is expensive but allows us to not block the whole weel until the eval call returns
         let dynamic_data = self.context.lock().unwrap().clone();
         let status = self.status.lock().unwrap().to_dto();
@@ -2145,13 +2041,10 @@ impl Weel {
         }
         *state = new_state;
 
-        log::debug!("Reached matches");
         if matches!(new_state, State::Stopping | State::Finishing) {
             let status = self.status.lock().unwrap();
             status.nudge.wake_all();
-            log::debug!("Calling recursive continue in set_state");
             recursive_continue(&self.thread_information.lock().unwrap(), &thread_id);
-            log::debug!("After Calling recursive continue in set_state");
         }
 
         ConnectionWrapper::new(self.clone(), None, None).inform_state_change(new_state)?;
@@ -2163,11 +2056,6 @@ fn recursive_continue(
     thread_info_map: &MutexGuard<HashMap<ThreadId, RefCell<ThreadInfo>>>,
     thread_id: &ThreadId,
 ) {
-    log::debug!(
-        "Calling recusive continue on thread: {:?} target thread: {:?}",
-        thread::current().id(),
-        thread_id
-    );
     let thread_info = thread_info_map
         .get(thread_id)
         .expect(PRECON_THREAD_INFO)
