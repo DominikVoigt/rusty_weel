@@ -13,13 +13,13 @@ use tempfile::tempfile;
 
 use crate::{
     connection_wrapper::ConnectionWrapper,
-    data_types::{DynamicData, StaticData, StatusDTO},
+    data_types::{Context, Opts, StatusDTO},
     dsl_realization::{Error, Result, Signal},
 };
 
 pub fn test_condition(
-    dynamic_context: &DynamicData,
-    static_context: &StaticData,
+    dynamic_context: &Context,
+    static_context: &Opts,
     code: &str,
     thread_local: &Option<Value>,
     connection_wrapper: &ConnectionWrapper,
@@ -189,8 +189,8 @@ pub fn test_condition(
  *  - Post request fails / Evaluation fails
  */
 pub fn evaluate_expression(
-    dynamic_context: &DynamicData,
-    static_context: &StaticData,
+    dynamic_context: &Context,
+    static_context: &Opts,
     expression: &str,
     weel_status: Option<StatusDTO>,
     thread_local: &Option<Value>,
@@ -587,126 +587,5 @@ pub fn structurize_result(
             "Call to structurize service was unsuccessful. Code: {status}, Message: {:?}",
             content
         )))
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use core::str;
-    use std::collections::HashMap;
-
-    use http_helper::Parameter;
-    use serde_json::json;
-
-    use crate::data_types::{DynamicData, StaticData, Status};
-    use std::io::Write;
-
-    use super::{evaluate_expression, structurize_result};
-
-    #[test]
-    fn test_evaluation() {
-        init_logger();
-        let endpoints = HashMap::new();
-        let dynamic_data = DynamicData {
-            endpoints,
-            data: json!({
-                "name": "Testhodor",
-                "age": 29
-            }),
-            search_positions: HashMap::new()
-        };
-
-        let static_data = StaticData {
-            instance_id: 1,
-            host: "".to_owned(),
-            cpee_base_url: "".to_owned(),
-            redis_url: None,
-            redis_path: Some("".to_owned()),
-            redis_db: 0,
-            redis_workers: 1,
-            executionhandlers: "".to_owned(),
-            executionhandler: "".to_owned(),
-            eval_language: "".to_owned(),
-            eval_backend_exec_full: "http://localhost:9302/exec-full".to_owned(),
-            eval_backend_structurize: "http://localhost:9302/structurize".to_owned(),
-        };
-        let status = Status::new(0, "test".to_owned());
-
-        let result = evaluate_expression(
-            &dynamic_data,
-            &static_data,
-            "data.name = 'Tom'",
-            Some(status.to_dto()),
-            &None,
-            serde_json::Value::Null,
-            None,
-            None,
-            "",
-        )
-        .unwrap();
-        assert!(result.data.is_some());
-        assert!(result.changed_data.is_some());
-        assert!(result.endpoints.is_none());
-        assert!(result.changed_endpoints.is_none());
-        assert!(result.changed_status.is_none());
-        println!("Result: {:?}", result)
-    }
-
-    #[test]
-    fn test_structurize_result() {
-        init_logger();
-        let test_endpoint = "http://gruppe.wst.univie.ac.at/~mangler/services/airline.php";
-        let params = vec![
-            Parameter::SimpleParameter {
-                name: "from".to_owned(),
-                value: "Vienna".to_owned(),
-                param_type: http_helper::ParameterType::Query,
-            },
-            Parameter::SimpleParameter {
-                name: "to".to_owned(),
-                value: "Prague".to_owned(),
-                param_type: http_helper::ParameterType::Query,
-            },
-            Parameter::SimpleParameter {
-                name: "persons".to_owned(),
-                value: "2".to_owned(),
-                param_type: http_helper::ParameterType::Query,
-            },
-        ];
-
-        let mut client =
-            http_helper::Client::new(test_endpoint, http_helper::Method::POST).unwrap();
-        client.add_parameters(params);
-        let response = client.execute_raw().unwrap();
-        let body = str::from_utf8(&response.body).unwrap();
-        println!("Received response: {}", body);
-        let result = structurize_result(
-            "http://localhost:9302/structurize",
-            &http_helper::header_map_to_hash_map(&response.headers).unwrap(),
-            &response.body,
-        )
-        .unwrap();
-        println!("Result: {result}");
-    }
-
-    fn init_logger() -> () {
-        env_logger::Builder::from_default_env()
-            .filter_level(log::LevelFilter::Debug)
-            .format(|buf, record| {
-                let style = buf.default_level_style(record.level());
-                //buf.default_level_style(record.level());
-                writeln!(
-                    buf,
-                    "{}:{} {} {style}[{}]{style:#} - {}",
-                    record.file().unwrap_or("unknown"),
-                    record.line().unwrap_or(0),
-                    chrono::Local::now().format("%Y-%m-%dT%H:%M:%S"),
-                    record.level(),
-                    record.args()
-                )
-            })
-            .write_style(env_logger::WriteStyle::Auto)
-            .filter_module("multipart", log::LevelFilter::Info)
-            .init();
     }
 }

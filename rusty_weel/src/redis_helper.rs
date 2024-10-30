@@ -8,7 +8,7 @@ use std::{
 
 use crate::{
     connection_wrapper::ConnectionWrapper,
-    data_types::{InstanceMetaData, StaticData},
+    data_types::{InstanceMetaData, Opts},
     dsl_realization::{Error, Result},
 };
 use http_helper::Parameter;
@@ -34,7 +34,7 @@ impl RedisHelper {
      *  Panics if this fails
      * connection_name: Name of the connection displayed within the redis instance
      */
-    pub fn new(static_data: &StaticData, connection_name: &str) -> Result<Self> {
+    pub fn new(static_data: &Opts, connection_name: &str) -> Result<Self> {
         let number_workers = if static_data.redis_workers > 99 { 99 } else { static_data.redis_workers };
         let connection = connect_to_redis(static_data, connection_name)?;
 
@@ -141,7 +141,7 @@ impl RedisHelper {
      * This method should be called exactly once, if it is called a second time, it will panic to prevent an accidental invokation.
      */
     pub fn establish_callback_subscriptions(
-        static_data: &StaticData,
+        static_data: &Opts,
         callback_keys: Arc<Mutex<HashMap<String, Arc<Mutex<ConnectionWrapper>>>>>,
     ) -> JoinHandle<Result<()>> {
         // Should only be called once in main!
@@ -273,19 +273,6 @@ impl RedisHelper {
         }
         Ok(())
     }
-
-    pub fn get_attributes(&mut self, instance_id: u32) -> Result<HashMap<String, String>> {
-        let attributes_key = format!("instance:{instance_id}/attributes");
-        let attribute_names: Vec<String> = self.connection.zrange(&attributes_key, 0, -1)?;
-        let mut attributes = HashMap::with_capacity(attribute_names.len());
-        for ele in attribute_names {
-            attributes.insert(
-                ele.clone(),
-                self.connection.get(format!("{attributes_key}/{ele}"))?,
-            );
-        }
-        Ok(attributes)
-    }
 }
 
 /**
@@ -296,7 +283,7 @@ impl RedisHelper {
  * unix:///<path>[?db=<db>][&pass=<password>][&user=<username>]]
  */
 fn connect_to_redis(
-    configuration: &StaticData,
+    configuration: &Opts,
     connection_name: &str,
 ) -> Result<redis::Connection> {
     // Note: Socket takes precedence as it is way faster
@@ -611,14 +598,14 @@ mod test {
         Ok(())
     }
 
-    fn get_unix_socket_configuration() -> StaticData {
+    fn get_unix_socket_configuration() -> Opts {
         let home = std::env::var("HOME").unwrap();
         let expanded_path = format!("{}/redis/redis.sock", home);
         let mut attributes = HashMap::new();
         attributes.insert("uuid".to_owned(), "test_uuid".to_owned());
         attributes.insert("info".to_owned(), "test_info".to_owned());
 
-        StaticData {
+        Opts {
             instance_id: 12,
             host: "localhost".to_owned(),
             cpee_base_url: "localhost/cpee".to_owned(),
@@ -631,11 +618,12 @@ mod test {
             eval_language: "".to_owned(),
             eval_backend_exec_full: "".to_owned(),
             eval_backend_structurize: "".to_owned(),
+            attributes,
         }
     }
 
-    fn get_tcp_configuration() -> StaticData {
-        StaticData {
+    fn get_tcp_configuration() -> Opts {
+        Opts {
             instance_id: 12,
             host: "localhost".to_owned(),
             cpee_base_url: "localhost/cpee".to_owned(),
@@ -649,6 +637,7 @@ mod test {
             eval_language: "".to_owned(),
             eval_backend_exec_full: "".to_owned(),
             eval_backend_structurize: "".to_owned(),
+            attributes: HashMap::new(),
         }
     }
 }

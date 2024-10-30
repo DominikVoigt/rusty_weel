@@ -20,8 +20,8 @@ use rusty_weel_macro::get_str_from_value;
 
 use crate::connection_wrapper::ConnectionWrapper;
 use crate::data_types::{
-    BlockingQueue, CancelCondition, ChooseVariant, DynamicData, HTTPParams, InstanceMetaData,
-    State, StaticData, Status, ThreadInfo,
+    BlockingQueue, CancelCondition, ChooseVariant, Context, HTTPParams, InstanceMetaData,
+    State, Opts, Status, ThreadInfo,
 };
 use crate::dsl::DSL;
 use crate::eval_helper::{self, EvalError};
@@ -35,10 +35,8 @@ static PRECON_THREAD_INFO: &str = indoc! {
     "};
 
 pub struct Weel {
-    pub opts: StaticData,
-    // Also static, but is persisted within redis and thus a separate struct
-    pub attributes: HashMap<String, String>,
-    pub context: Mutex<DynamicData>,
+    pub opts: Opts,
+    pub context: Mutex<Context>,
     pub state: Mutex<State>,
     pub status: Mutex<Status>,
     // Positions are shared witin the program
@@ -940,7 +938,7 @@ impl Weel {
             content.insert(
                 "attributes".to_owned(),
                 // TODO: Check whether these are already "translated"
-                json!(self.attributes),
+                json!(self.opts.attributes),
             );
             content.insert("subscription".to_owned(), json!(client));
             votes.push(vote_id);
@@ -1994,18 +1992,18 @@ impl Weel {
             instance_url: self.opts.instance_url(),
             instance_uuid: self.uuid().to_owned(),
             info: self.info().to_owned(),
-            attributes: self.attributes.clone(),
+            attributes: self.opts.attributes.clone(),
         }
     }
 
     pub fn uuid(&self) -> &str {
-        self.attributes
+        self.opts.attributes
             .get("uuid")
             .expect("Attributes do not contain uuid")
     }
 
     pub fn info(&self) -> &str {
-        self.attributes
+        self.opts.attributes
             .get("info")
             .expect("Attributes do not contain info")
     }
@@ -2194,72 +2192,4 @@ pub fn generate_random_key() -> String {
         .take(KEY_LENGTH)
         .map(char::from)
         .collect()
-}
-
-#[cfg(test)]
-mod test {
-    use std::fs;
-
-    use super::*;
-
-    #[test]
-    fn create_opts() {
-        let file = match fs::File::create("./opts.json") {
-            Ok(file) => file,
-            Err(err) => {
-                log::error!("Error creating the opts.yaml file: {:?}", err);
-                panic!("Could not create opts.yaml file")
-            }
-        };
-        let stat = StaticData {
-            instance_id: 245,
-            host: "localhost".to_owned(),
-            cpee_base_url: "https://echo.bpm.in.tum.de/flow/engine".to_owned(),
-            redis_url: None,
-            redis_path: Some(format!("unix:///home/mangler/run/flow/redis.sock")),
-            redis_db: 0,
-            redis_workers: 1,
-            executionhandlers: "/home/mangler/run/flow/executionhandlers".to_owned(),
-            executionhandler: "rust".to_owned(),
-            eval_language: "rust".to_owned(),
-            eval_backend_exec_full: "http://localhost:9302/exec-full".to_owned(),
-            eval_backend_structurize: "http://localhost:9302/structurize".to_owned(),
-        };
-        serde_json::to_writer_pretty(file, &stat).unwrap();
-    }
-
-    #[test]
-    fn create_context() {
-        let file = match fs::File::create("./context.json") {
-            Ok(file) => file,
-            Err(err) => {
-                log::error!("Error creating the context.json file: {:?}", err);
-                panic!("Could not create context.yaml file")
-            }
-        };
-        let mut test_endpoints = HashMap::new();
-        test_endpoints.insert(
-            "bookAir".to_owned(),
-            "http://gruppe.wst.univie.ac.at/~mangler/services/airline.php".to_owned(),
-        );
-        test_endpoints.insert(
-            "timeout".to_owned(),
-            "https-post://cpee.org/services/timeout.php".to_owned(),
-        );
-
-        let test_data = json!({
-            "from": "Vienna",
-            "to": "Prague",
-            "persons": 3,
-            "costs": 0,
-            "count": 80,
-            "flag": true
-        });
-        let dynamic = DynamicData {
-            endpoints: test_endpoints,
-            data: test_data,
-            search_positions: HashMap::new(),
-        };
-        serde_json::to_writer_pretty(file, &dynamic).unwrap();
-    }
 }

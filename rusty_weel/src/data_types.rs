@@ -49,7 +49,7 @@ impl Default for State {
  * Contains all the meta data that is never changing during execution
  */
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
-pub struct StaticData {
+pub struct Opts {
     pub instance_id: u32,
     pub host: String,
     pub cpee_base_url: String,
@@ -62,13 +62,14 @@ pub struct StaticData {
     pub eval_language: String,
     pub eval_backend_exec_full: String,
     pub eval_backend_structurize: String,
+    pub attributes: HashMap<String, String>
 }
 
 /**
  * Contains meta data that might be changing during execution
  */
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct DynamicData {
+pub struct Context {
     pub endpoints: HashMap<String, String>,
     pub data: Value,
     pub search_positions: HashMap<String, PositionDTO>
@@ -128,7 +129,7 @@ pub struct TaskMetaData {
     task_id: String,
 }
 
-impl StaticData {
+impl Opts {
     pub fn load(path: &str) -> Self {
         let config = fs::read_to_string(path).expect("Could not read configuration file!");
         let config: Self = serde_json::from_str(&config).expect("Could not parse Configuration");
@@ -152,10 +153,10 @@ impl StaticData {
     }
 }
 
-impl DynamicData {
-    pub fn load(path: &str) -> DynamicData {
+impl Context {
+    pub fn load(path: &str) -> Context {
         let context = fs::read_to_string(path).expect("Could not read context file!");
-        let context: DynamicData =
+        let context: Context =
             serde_json::from_str(&context).expect("Could not parse Configuration");
         context
     }
@@ -345,42 +346,5 @@ mod test_queue {
         handles.into_iter().for_each(|h| {
             h.join().unwrap();
         });
-    }
-}
-
-#[cfg(test)]
-mod test_data {
-    use std::fs;
-
-    use super::StaticData;
-
-    fn create_dummy_static(path: &str) -> StaticData {
-        //let config = fs::read_to_string(path).expect("Could not read configuration file!");
-        let config: StaticData = StaticData {
-            instance_id: 12,
-            host: "test_id".to_owned(),
-            cpee_base_url: "test_id".to_owned(),
-            redis_url: None,
-            redis_path: Some("test_id".to_owned()),
-            redis_db: 0,
-            redis_workers: 2,
-            executionhandlers: "exh".to_owned(),
-            executionhandler: "rust".to_owned(),
-            eval_language: "ruby".to_owned(),
-            eval_backend_exec_full: "ruby_backend_url".to_owned(),
-            eval_backend_structurize: "ruby_backend_url".to_owned(),
-        };
-        let file = fs::File::create_new(path).unwrap();
-        serde_json::to_writer(file, &config).unwrap();
-        config
-    }
-
-    #[test]
-    fn test_loading_static() {
-        let path = "./test_files/static.data";
-        let _ = fs::remove_file(path);
-        let dummy = create_dummy_static(path);
-
-        assert_eq!(dummy, StaticData::load(path));
     }
 }

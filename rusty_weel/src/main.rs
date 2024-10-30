@@ -16,7 +16,7 @@ use std::{panic, thread};
 use http_helper::Method;
 use rusty_weel::connection_wrapper::ConnectionWrapper;
 use rusty_weel::data_types::{
-    CancelCondition, DynamicData, HTTPParams, KeyValuePair, State, StaticData, Status, ThreadInfo,
+    CancelCondition, Context, HTTPParams, KeyValuePair, State, Opts, Status, ThreadInfo,
 };
 use rusty_weel::dsl::DSL;
 use rusty_weel::dsl_realization::{Position, Result, Weel};
@@ -52,25 +52,12 @@ fn startup() -> Arc<Weel> {
     init_logger();
     set_panic_hook();
 
-    let opts = StaticData::load("opts.json");
-    let context = Mutex::new(DynamicData::load("context.json"));
+    let opts = Opts::load("opts.json");
+    let context = Mutex::new(Context::load("context.json"));
     let callback_keys: Arc<Mutex<HashMap<String, Arc<Mutex<ConnectionWrapper>>>>> =
         Arc::new(Mutex::new(HashMap::new()));
     let redis_helper = match RedisHelper::new(&opts, "notifications") {
         Ok(redis) => redis,
-        Err(err) => {
-            log::error!("Error during startup when connecting to redis: {:?}", err);
-            panic!("Error during startup")
-        }
-    };
-    let attributes = match RedisHelper::new(&opts, "attributes") {
-        Ok(mut redis) => match redis.get_attributes(opts.instance_id) {
-            Ok(attributes) => attributes,
-            Err(err) => {
-                log::error!("Error during startup when connecting to redis: {:?}", err);
-                panic!("Error during startup")
-            }
-        },
         Err(err) => {
             log::error!("Error during startup when connecting to redis: {:?}", err);
             panic!("Error during startup")
@@ -93,7 +80,6 @@ fn startup() -> Arc<Weel> {
         thread_information: Mutex::new(HashMap::new()),
         stop_signal_receiver: Mutex::new(None),
         critical_section_mutexes: once_map::OnceMap::new(),
-        attributes,
     };
     let current_thread = thread::current();
 
@@ -139,7 +125,7 @@ fn init_logger() -> () {
  * Will get the search positions out of the provided context file
  */
 fn get_search_positions(
-    context: &Mutex<DynamicData>,
+    context: &Mutex<Context>,
 ) -> HashMap<String, rusty_weel::dsl_realization::Position> {
     context
         .lock()

@@ -1,5 +1,5 @@
 use crate::{
-    data_types::{BlockingQueue, DynamicData, HTTPParams, InstanceMetaData, KeyValuePair},
+    data_types::{BlockingQueue, Context, HTTPParams, InstanceMetaData, KeyValuePair},
     dsl_realization::{generate_random_key, Error, Result, Signal, Weel},
     eval_helper::{self, evaluate_expression, EvalError},
 };
@@ -78,7 +78,7 @@ impl ConnectionWrapper {
      * If too many request are issued to an address by the same wrapper, will throttle these requests
      */
     pub fn loop_guard(weel: Arc<Weel>, id: &str) {
-        let attributes = &weel.attributes;
+        let attributes = &weel.opts.attributes;
         let loop_guard_attribute = attributes.get("nednoamol");
         if loop_guard_attribute.is_some_and(|attrib| attrib == "true") {
             return;
@@ -277,7 +277,7 @@ impl ConnectionWrapper {
                 let result =
                     weel.execute_code(true, code, thread_local, self, "prepare", None, None)?;
                 // Create snapshot of the context after the code is executed, if nothing changes, use the current dynamic data
-                DynamicData {
+                Context {
                     data: result
                         .data
                         .unwrap_or(weel.context.lock().unwrap().data.clone()),
@@ -289,7 +289,7 @@ impl ConnectionWrapper {
             }
             None => {
                 let dynamic_data = weel.context.lock().unwrap();
-                DynamicData {
+                Context {
                     data: dynamic_data.data.clone(),
                     endpoints: dynamic_data.endpoints.clone(),
                     search_positions: HashMap::new() // We can ignore them as they are not relevant to the evaluation context
@@ -301,7 +301,7 @@ impl ConnectionWrapper {
         if endpoint_names.len() > 0 {
             self.resolve_endpoints(&contex_snapshot.endpoints, endpoint_names);
 
-            match weel.attributes.get("sim_engine") {
+            match weel.opts.attributes.get("sim_engine") {
                 Some(sim_engine_url) => {
                     if !sim_engine_url.is_empty() {
                         self.handler_endpoint_origin = self.handler_endpoints.clone();
@@ -616,7 +616,7 @@ impl ConnectionWrapper {
             body = response.body;
 
             if status == 561 {
-                match weel.attributes.get("sim_translate") {
+                match weel.opts.attributes.get("sim_translate") {
                     Some(sim_translate) => {
                         Self::handle_sim_translate(sim_translate, &mut headers, &mut this)?;
                     }
@@ -1097,7 +1097,7 @@ impl ConnectionWrapper {
         let data = &weel.opts;
         json!(
             {
-                "attributes": self.weel().attributes,
+                "attributes": self.weel().opts.attributes,
                 "cpee": {
                     "base": data.cpee_base_url,
                     "instance": data.instance_id,
@@ -1130,7 +1130,7 @@ impl ConnectionWrapper {
             "instance_uuid": self.weel().uuid(),
             "code": code,
             "condition": condition, 
-            "ecid": convert_thread_id(thread::current().id())
+            "ecid": convert_thread_id(id)
         });
 
         self.inform("gateway/decide", Some(content))
@@ -1139,7 +1139,7 @@ impl ConnectionWrapper {
     pub fn join_branches(&self, id: ThreadId, branch_traces: Option<&HashMap<ThreadId, Vec<String>>>) -> Result<()> {
         let mut content = json!({
             "instance_uuid": self.weel().uuid(),
-            "ecid": convert_thread_id(thread::current().id())
+            "ecid": convert_thread_id(id)
         });
 
         if let Some(branch_traces) = branch_traces {
