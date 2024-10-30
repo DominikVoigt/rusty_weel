@@ -1249,7 +1249,7 @@ impl Weel {
                             *self.state.lock().unwrap(),
                             State::Stopping | State::Finishing
                         );
-                        log::debug!("Reached to vote sync before");
+                        log::debug!("Reached to vote sync before on thread {:?}", thread::current().id());
 
                         // Drop info before we enter blocking vote_sync_before
                         drop(thread_info);
