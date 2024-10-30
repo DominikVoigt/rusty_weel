@@ -268,8 +268,10 @@ impl DSL for Weel {
             setup_done_tx.send(thread::current().id()).unwrap();
             if !weel.terminating() {
                 // wait for run signal from parallel gateway
+                log::debug!("Waiting on thread {:?} for the start signal", thread::current().id());
                 branch_barrier_start.dequeue();
             }
+            log::debug!("Continued on thread {:?} after receiving start signal", thread::current().id());
 
             if !weel.should_skip_locking() {
                 weel.execute_lambda(lambda.as_ref())?;
