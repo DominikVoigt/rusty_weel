@@ -794,11 +794,12 @@ impl Weel {
             .borrow_mut();
         let children = thread_info.branches.clone();
         // Release lock on thread info map to allow threads to run to the end (in case they need to acquire the lock)
-
+        log::debug!("Got thread info");
         if thread != thread::current().id() {
             if let Some(handle) = thread_info.join_handle.take() {
                 drop(thread_info);
                 drop(thread_map);
+                log::debug!("Joining thread: {:?}", thread);
                 // wait for thread to terminate
                 match handle.join() {
                     Ok(res) => res?,
@@ -810,6 +811,7 @@ impl Weel {
         }
         // join all child threads:
         for child in children {
+            log::debug!("Recursive join on: {:?}", child);
             self.recursive_join(child)?;
         }
         Ok(())
