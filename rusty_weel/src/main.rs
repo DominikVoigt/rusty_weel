@@ -43,7 +43,8 @@ fn main() {
         Err(err) => weel!().handle_error(err),
     }
     log::info!("At the end of main");
-    log::info!("Data elements are now: {:?}", weel!().context.lock().unwrap())
+    log::info!("Data elements are now: {:?}", weel!().context.lock().unwrap());
+    log::info!("Thread info at end of main: {:?}", weel!().thread_information.lock().unwrap())
 }
 
 fn startup() -> Arc<Weel> {
