@@ -224,7 +224,8 @@ impl ConnectionWrapper {
             let content = content_node
                 .as_object_mut()
                 .expect("Construct basic content has to return json object");
-            content.insert("changed".to_owned(), changed_data);
+            content.insert("changed".to_owned(), json!(changed_data.as_object().unwrap().keys().map(|e| e.to_owned()).collect::<Vec<String>>()));
+            content.insert("values".to_owned(), changed_data);
             self.inform("dataelements/change", Some(content_node))?;
         }
         if let Some(changed_endpoints) = evaluation_result.changed_endpoints {
@@ -232,7 +233,8 @@ impl ConnectionWrapper {
             let content = content_node
                 .as_object_mut()
                 .expect("Construct basic content has to return json object");
-            content.insert("changed".to_owned(), json!(changed_endpoints));
+            content.insert("changed".to_owned(), json!(changed_endpoints.keys().map(|e| e.to_owned()).collect::<Vec<String>>()));
+            content.insert("values".to_owned(), json!(changed_endpoints));
             self.inform("endpoints/change", Some(content_node))?;
         }
         Ok(())
@@ -1114,7 +1116,7 @@ impl ConnectionWrapper {
         let id = format!("{:?}", id);
         let mut content = json!({
             "instance_uuid": self.weel().uuid(),
-            "ecid": id
+            "ecid": format!("{:?}", id)
         });
 
         if let Some(branches) = branches {
@@ -1130,7 +1132,7 @@ impl ConnectionWrapper {
             "instance_uuid": self.weel().uuid(),
             "code": code,
             "condition": condition, 
-            "ecid": id
+            "ecid": format!("{:?}", id)
         });
 
         self.inform("gateway/decide", Some(content))
@@ -1140,7 +1142,7 @@ impl ConnectionWrapper {
         let id = format!("{:?}", id);
         let mut content = json!({
             "instance_uuid": self.weel().uuid(),
-            "ecid": id
+            "ecid": format!("{:?}", id)
         });
 
         if let Some(branch_traces) = branch_traces {
