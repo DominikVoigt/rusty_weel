@@ -722,9 +722,6 @@ impl Weel {
                     }
                     // TODO: implement the __weel_control_flow error handling logic in the handle_error/handle_join error
                     let result = model();
-                    log::debug!("Model execution done");
-                    // Signal stop thread that execution of model ended:
-
                     log::debug!("Process result");
                     match result {
                         // TODO: Implement __weel_control_flow completely
@@ -773,7 +770,8 @@ impl Weel {
                         }
                         Err(err) => self.handle_error(err),
                     }
-                    
+
+                    // Signal stop thread that execution of model ended:
                     let send_result = stop_signal_sender.send(());
                     if matches!(send_result, Err(_)) {
                         log::error!("Error sending termination signal for model thread. Receiver must have been dropped.")
@@ -789,7 +787,7 @@ impl Weel {
 
     // TODO: look into case where thread is none? What are we doing there?
     fn recursive_join(&self, thread: ThreadId) -> Result<()> {
-        log::debug!("Entering recursive join");
+        log::debug!("Entering recursive join with target thread: {:?}", thread);
         let thread_map = self.thread_information.lock().unwrap();
         let mut thread_info = thread_map
             .get(&thread)
