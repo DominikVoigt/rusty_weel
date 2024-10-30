@@ -724,10 +724,6 @@ impl Weel {
                     let result = model();
                     log::debug!("Model execution done");
                     // Signal stop thread that execution of model ended:
-                    let send_result = stop_signal_sender.send(());
-                    if matches!(send_result, Err(_)) {
-                        log::error!("Error sending termination signal for model thread. Receiver must have been dropped.")
-                    }
 
                     log::debug!("Process result");
                     match result {
@@ -776,6 +772,11 @@ impl Weel {
                             }
                         }
                         Err(err) => self.handle_error(err),
+                    }
+                    
+                    let send_result = stop_signal_sender.send(());
+                    if matches!(send_result, Err(_)) {
+                        log::error!("Error sending termination signal for model thread. Receiver must have been dropped.")
                     }
                 } else {
                     self.abort_start();
