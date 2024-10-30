@@ -812,7 +812,7 @@ impl Weel {
         }
         // join all child threads:
         for child in children {
-            log::debug!("Recursive join on: {:?}", child);
+            log::debug!("Recursive join on child: {:?}", child);
             self.recursive_join(child)?;
         }
         Ok(())
