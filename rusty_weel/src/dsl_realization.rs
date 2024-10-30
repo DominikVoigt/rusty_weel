@@ -2062,8 +2062,9 @@ fn recursive_continue(
     thread_id: &ThreadId,
 ) {
     log::debug!(
-        "Calling recusive continue on thread: {:?}",
-        thread::current().id()
+        "Calling recusive continue on thread: {:?} target thread: {:?}",
+        thread::current().id(),
+        thread_id
     );
     let thread_info = thread_info_map
         .get(thread_id)
