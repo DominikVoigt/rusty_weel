@@ -2359,7 +2359,7 @@ mod test {
             "to": "Prague",
             "persons": 3,
             "costs": 0,
-            "count": 10,
+            "count": 80,
             "flag": true
         });
         let dynamic = DynamicData {
