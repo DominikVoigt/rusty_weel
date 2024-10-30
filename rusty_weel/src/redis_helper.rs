@@ -121,7 +121,6 @@ impl RedisHelper {
             instance_id,
             serde_json::to_string(&payload).expect("Could not deserialize payload")
         );
-        log::info!("Publishing on channel {}", channel);
         let publish_result: RedisResult<()> = self.connection.publish(channel, payload);
         match publish_result {
             Ok(()) => Ok(()),
@@ -219,7 +218,7 @@ impl RedisHelper {
                             .remove(&topic.type_);
                     }
                     x => {
-                        log::info!("Received on channel {} the payload: {}", x, payload);
+                        log::error!("Received on channel {} the payload: {}", x, payload);
                     }
                 };
                 // This should loop indefinitely:

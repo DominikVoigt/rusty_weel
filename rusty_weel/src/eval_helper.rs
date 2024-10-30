@@ -592,7 +592,6 @@ pub fn structurize_result(
                     let mut content = String::new();
                     content_handle.rewind()?;
                     content_handle.read_to_string(&mut content)?;
-                    log::info!("Structurized result is: {content}");
                     content
                 }
             })

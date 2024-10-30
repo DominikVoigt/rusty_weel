@@ -612,10 +612,6 @@ impl ConnectionWrapper {
             let response = client.execute_raw()?;
 
             status = response.status_code;
-            log::info!(
-                "Service call of {activity_label} returned with status code: {}",
-                status
-            );
             response_headers = header_map_to_hash_map(&response.headers)?;
             body = response.body;
 
