@@ -148,7 +148,7 @@ impl DSL for Weel {
         connection_wrapper.split_branches(current_thread_id, Some(&thread_info.branch_traces))?;
 
         // Now start all branches
-        for thread in &thread_info.branches {
+        for thread in &branches {
             if !thread_info.in_search_mode {
                 thread_map.get(thread).unwrap().borrow_mut().in_search_mode = false;
             }
@@ -181,17 +181,16 @@ impl DSL for Weel {
             .borrow();
 
         connection_wrapper.join_branches(current_thread_id, Some(&thread_info.branch_traces))?;
-
+        drop(thread_info);
         // TODO: in original code we did not check on no_longer necessary here, should we or not?
         if !self.terminating() {
-            for child in &thread_info.branches {
+            for child in &branches {
                 let mut child_info: std::cell::RefMut<'_, ThreadInfo> =
                     thread_map.get(child).unwrap().borrow_mut();
                 child_info.no_longer_necessary = true;
                 drop(child_info);
                 recursive_continue(&thread_map, child);
             }
-            drop(thread_info);
             drop(thread_map);
             for child_thread in branches {
                 // need to acquire in loop, as we need to release lock to allow children to finish
@@ -271,9 +270,9 @@ impl DSL for Weel {
                 branch_barrier_start.dequeue();
             }
             log::debug!("Continued on thread {:?} after receiving start signal", thread::current().id());
-            log::debug!("Before execute lambda on thread: {:?}, thread_info_state: {:?}", thread::current().id(), weel.thread_information.try_lock());
-
+            log::debug!("Before skip locking: {:?}, thread_info_state: {:?}", thread::current().id(), weel.thread_information.try_lock());
             if !weel.should_skip_locking() {
+                log::debug!("Before execute lambda on thread: {:?}, thread_info_state: {:?}", thread::current().id(), weel.thread_information.try_lock());
                 weel.execute_lambda(lambda.as_ref())?;
             }
             log::debug!("After execute lambda on thread: {:?}", thread::current().id());
