@@ -173,7 +173,7 @@ impl DSL for Weel {
         log::debug!(
             "Reached to after branch event on thread: {:?}, locking the threadmap result: {:?}",
             thread::current().id(),
-            self.thread_information.try_lock()
+            self.thread_information
         );
         let thread_map = self.thread_information.lock().unwrap();
         let thread_info = thread_map
