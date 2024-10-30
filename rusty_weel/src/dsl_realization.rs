@@ -818,10 +818,11 @@ impl Weel {
                 .expect(PRECON_THREAD_INFO)
                 .borrow_mut();
             children = thread_info.branches.clone();
-            // Release lock on thread info map to allow threads to run to the end (in case they need to acquire the lock)
             log::debug!("Got thread info");
+            // We cannot wait on the main thread
             if thread != thread::current().id() {
                 if let Some(handle) = thread_info.join_handle.take() {
+                    // Release lock on thread info map to allow threads to run to the end (in case they need to acquire the lock)
                     drop(thread_info);
                     drop(thread_map);
                     log::debug!("Joining thread: {:?}", thread);
@@ -835,7 +836,7 @@ impl Weel {
                 }
             }
         }
-        
+
         // join all child threads:
         for child in children {
             log::debug!("Recursive join on child: {:?}", child);
