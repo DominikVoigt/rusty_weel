@@ -1263,6 +1263,7 @@ impl Weel {
 
                         // Will be locked in the activity_handle again
                         drop(connection_wrapper);
+                        log::debug!("Reached before activity handle on thread: {:?}", thread::current().id());
                         // This executes the actual call
                         ConnectionWrapper::activity_handle(
                             &connection_wrapper_mutex,
@@ -1274,8 +1275,8 @@ impl Weel {
                                 .map(|x| x.as_str()),
                             parameters,
                         )?;
+                        log::debug!("Reached after activity handle on thread: {:?}", thread::current().id());
 
-                        log::debug!("Reached to after activity handle");
                         let connection_wrapper = connection_wrapper_mutex.lock().unwrap();
                         *weel_position.as_ref().unwrap().handler_passthrough.lock().unwrap() =
                             connection_wrapper.handler_passthrough.clone();
