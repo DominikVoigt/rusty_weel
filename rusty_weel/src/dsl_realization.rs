@@ -811,6 +811,7 @@ impl Weel {
     fn recursive_join(&self, thread: ThreadId) -> Result<()> {
         log::debug!("Entering recursive join with target thread: {:?}", thread);
         let children: Vec<ThreadId>;
+        let mut joined_thread = false;
         {
             let thread_map = self.thread_information.lock().unwrap();
             let mut thread_info = thread_map
@@ -828,7 +829,10 @@ impl Weel {
                     log::debug!("Joining thread: {:?}", thread);
                     // wait for thread to terminate
                     match handle.join() {
-                        Ok(res) => res?,
+                        Ok(res) => {
+                            res?;
+                            joined_thread = true;
+                        },
                         Err(err) => {
                             log::error!("error when joining thread with id {:?}: {:?}", thread, err)
                         }
@@ -841,6 +845,10 @@ impl Weel {
         for child in children {
             log::debug!("Recursive join on child: {:?}", child);
             self.recursive_join(child)?;
+        }
+        if joined_thread {
+            // cleanup thread info after we joined it and all of its children
+            self.thread_information.lock().unwrap().remove(&thread);
         }
         Ok(())
     }
