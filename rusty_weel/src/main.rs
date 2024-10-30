@@ -125,7 +125,7 @@ fn init_logger() -> () {
                 "{}:{} {} {style}[{}]{style:#} - {}",
                 record.file().unwrap_or("unknown"),
                 record.line().unwrap_or(0),
-                chrono::Local::now().format("%Y-%m-%dT%H:%M:%S:%.5f"),
+                chrono::Local::now().format("%Y-%m-%dT%H:%M:%S:%.3f"),
                 record.level(),
                 record.args()
             )
