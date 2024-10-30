@@ -154,12 +154,11 @@ impl DSL for Weel {
             }
             barrier_start.enqueue(());
         }
-
+        
+        drop(thread_info);
+        drop(thread_map);
         // Wait for the "final" thread to fulfill the wait condition (wait_threshold = wait_count)
         if !(self.terminating() || spawned_branches == 0) {
-            // we now need to let the branches run and let them have access to the thread map -> Cannot go into block with them locked
-            drop(thread_info);
-            drop(thread_map);
             log::debug!(
                 "Waiting on branch event on thread: {:?}",
                 thread::current().id()
