@@ -271,9 +271,9 @@ impl DSL for Weel {
             }
 
             log::debug!("Continued on thread {:?} after receiving start signal", thread::current().id());
-            log::debug!("test");
             log::debug!("Before skip locking: {:?}, thread_info_state: {:?}", thread::current().id(), weel.thread_information.try_lock());
             if !weel.should_skip_locking() {
+                log::debug!("test");
                 log::debug!("Before execute lambda on thread: {:?}, thread_info_state: {:?}", thread::current().id(), weel.thread_information.try_lock());
                 weel.execute_lambda(lambda.as_ref())?;
             }
