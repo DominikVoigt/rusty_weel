@@ -271,11 +271,6 @@ pub fn evaluate_expression(
 
     let mut result = client.execute()?;
     let status = result.status_code;
-    // Error in the provided code
-    log::info!(
-        "Received response headers from eval request: {:?}",
-        result.headers
-    );
     // Get the expressions parameter from the parsed response
     let mut expression_result: Option<Value> = None;
     let mut changed_data: Option<Value> = None;
@@ -322,7 +317,6 @@ pub fn evaluate_expression(
             } => {
                 let mut content = String::new();
                 content_handle.read_to_string(&mut content)?;
-                log::info!("Received complex param: name:{name} content:{content}");
                 match name.as_str() {
                     "result" => {
                         // In case we have a string, strip them
