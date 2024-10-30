@@ -269,6 +269,7 @@ impl DSL for Weel {
                 log::debug!("Waiting on thread {:?} for the start signal", thread::current().id());
                 branch_barrier_start.dequeue();
             }
+
             log::debug!("Continued on thread {:?} after receiving start signal", thread::current().id());
             log::debug!("Before skip locking: {:?}, thread_info_state: {:?}", thread::current().id(), weel.thread_information.try_lock());
             if !weel.should_skip_locking() {
@@ -934,6 +935,9 @@ impl Weel {
      * thread_info anyway
      */
     fn should_skip_locking(&self) -> bool {
+        if self.terminating() {
+            return true;
+        }
         let current_thread_id = thread::current().id();
         let thread_info_map = self.thread_information.lock().unwrap();
         // Unwrap as we have precondition that thread info is available on spawning
@@ -943,7 +947,7 @@ impl Weel {
             .borrow();
 
         let no_longer_necessary = thread_info.no_longer_necessary;
-        self.terminating() || no_longer_necessary
+        no_longer_necessary
     }
 
     fn terminating(&self) -> bool {
