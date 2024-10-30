@@ -755,9 +755,9 @@ impl Weel {
                                     };
                                 }
                                 State::Stopping => {
+                                    drop(state);
                                     log::debug!("Before recursive join");
                                     self.recursive_join(thread::current().id())?;
-                                    drop(state);
                                     log::debug!("After recursive join");
                                     self.set_state(State::Stopped)?;
                                     match ConnectionWrapper::new(self.clone(), None, None)
