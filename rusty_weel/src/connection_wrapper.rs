@@ -650,7 +650,7 @@ impl ConnectionWrapper {
                         "label": this.activity_id,
                         "activity": this.handler_position,
                         "endpoint": this.handler_endpoints,
-                        "ecid": format!("{:?}", thread::current().id())
+                        "ecid": convert_thread_id(thread::current().id())
                     });
                     let content = content_node.as_object_mut().expect("Cannot fail");
 
@@ -967,7 +967,7 @@ impl ConnectionWrapper {
             "label": self.activity_id,
             "activity": position,
             "endpoint": self.handler_endpoints,
-            "ecid": format!("{:?}", thread::current().id())
+            "ecid": convert_thread_id(thread::current().id())
         })
     }
 
@@ -1113,10 +1113,9 @@ impl ConnectionWrapper {
     }
 
     pub fn split_branches(&self, id: ThreadId, branches: Option<&HashMap<ThreadId, Vec<String>>>) -> Result<()> {
-        let id = format!("{:?}", id);
         let mut content = json!({
             "instance_uuid": self.weel().uuid(),
-            "ecid": format!("{:?}", id)
+            "ecid": convert_thread_id(id)
         });
 
         if let Some(branches) = branches {
@@ -1127,22 +1126,20 @@ impl ConnectionWrapper {
     }
 
     pub fn gateway_decide(&self, id: ThreadId, code: &str, condition: bool) -> Result<()> {
-        let id = format!("{:?}", id);
         let content = json!({
             "instance_uuid": self.weel().uuid(),
             "code": code,
             "condition": condition, 
-            "ecid": format!("{:?}", id)
+            "ecid": convert_thread_id(thread::current().id())
         });
 
         self.inform("gateway/decide", Some(content))
     }
 
     pub fn join_branches(&self, id: ThreadId, branch_traces: Option<&HashMap<ThreadId, Vec<String>>>) -> Result<()> {
-        let id = format!("{:?}", id);
         let mut content = json!({
             "instance_uuid": self.weel().uuid(),
-            "ecid": format!("{:?}", id)
+            "ecid": convert_thread_id(thread::current().id())
         });
 
         if let Some(branch_traces) = branch_traces {
@@ -1151,6 +1148,13 @@ impl ConnectionWrapper {
 
         self.inform("gateway/join", Some(content))
     }
+}
+
+pub fn convert_thread_id(thread_id: ThreadId) -> u64 {
+    let string_rep = format!("{:?}", thread_id);
+    let end = string_rep.replace("ThreadId(", "");
+    let end = end.replace(")", "");
+    end.parse().unwrap()
 }
 
 fn contains_non_empty(options: &HashMap<String, String>, key: &str) -> bool {
