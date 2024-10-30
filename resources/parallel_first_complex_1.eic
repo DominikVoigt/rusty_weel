@@ -11,14 +11,14 @@ weel!().parallel_do(
                     method: Method::GET,
                     arguments: Some(vec![new_key_value_pair("timeout", "4", false)]),
                 },
-                Option::None,
-                Option::None,
+                None,
+                None,
                 Some(indoc! {
                     "
                             data.count -= 1  
                         "
                 }),
-                Option::None,
+                None,
             )?;
             weel!().call(
                 "a3",
@@ -28,14 +28,14 @@ weel!().parallel_do(
                     method: Method::GET,
                     arguments: Some(vec![new_key_value_pair("timeout", "2", false)]),
                 },
-                Option::None,
-                Option::None,
+                None,
+                None,
                 Some(indoc! {
                     "
                             data.count -= 1  
                         "
                 }),
-                Option::None,
+                None,
             )?;
         }))?;
         weel!().parallel_branch(pƛ!({
@@ -47,14 +47,14 @@ weel!().parallel_do(
                     method: Method::GET,
                     arguments: Some(vec![new_key_value_pair("timeout", "2", false)]),
                 },
-                Option::None,
-                Option::None,
+                None,
+                None,
                 Some(indoc! {
                     "
                             data.count -= 1  
                         "
                 }),
-                Option::None,
+                None,
             )?;
             weel!().call(
                 "a4",
@@ -64,14 +64,14 @@ weel!().parallel_do(
                     method: Method::GET,
                     arguments: Some(vec![new_key_value_pair("timeout", "7", false)]),
                 },
-                Option::None,
-                Option::None,
+                None,
+                None,
                 Some(indoc! {
                     "
                             data.count -= 1  
                         "
                 }),
-                Option::None,
+                None,
             )?;
         }))?;
         weel!().parallel_branch(pƛ!({
@@ -83,14 +83,14 @@ weel!().parallel_do(
                     method: Method::GET,
                     arguments: Some(vec![new_key_value_pair("timeout", "2", false)]),
                 },
-                Option::None,
-                Option::None,
+                None,
+                None,
                 Some(indoc! {
                     "
                             data.count -= 1  
                         "
                 }),
-                Option::None,
+                None,
             )?;
             weel!().call(
                 "a6",
@@ -100,14 +100,14 @@ weel!().parallel_do(
                     method: Method::GET,
                     arguments: Some(vec![new_key_value_pair("timeout", "7", false)]),
                 },
-                Option::None,
-                Option::None,
+                None,
+                None,
                 Some(indoc! {
                     "
                             data.count -= 1  
                         "
                 }),
-                Option::None,
+                None,
             )?;
         }))?;
     }),
@@ -120,12 +120,12 @@ weel!().call(
         method: Method::GET,
         arguments: Some(vec![new_key_value_pair("timeout", "5", false)]),
     },
-    Option::None,
-    Option::None,
+    None,
+    None,
     Some(indoc! {
         "
                 data.count -= 1  
             "
     }),
-    Option::None,
+    None,
 )?;

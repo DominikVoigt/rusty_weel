@@ -8,10 +8,10 @@ weel!().choose(Exclusive,  ƛ!({
                 method: Method::GET,
                 arguments: Some(vec![new_key_value_pair("timeout", "5", false)]),
             },
-            Option::None,
-            Option::None,
             None,
-            Option::None,
+            None,
+            None,
+            None,
         )?;
     }))?;
     weel!().alternative("data.flag", ƛ!({
@@ -23,10 +23,10 @@ weel!().choose(Exclusive,  ƛ!({
                 method: Method::GET,
                 arguments: Some(vec![new_key_value_pair("timeout", "5", false)]),
             },
-            Option::None,
-            Option::None,
             None,
-            Option::None,
+            None,
+            None,
+            None,
         )?;
     }))?;
     weel!().otherwise(ƛ!({
@@ -38,10 +38,10 @@ weel!().choose(Exclusive,  ƛ!({
                 method: Method::GET,
                 arguments: Some(vec![new_key_value_pair("timeout", "5", false)]),
             },
-            Option::None,
-            Option::None,
             None,
-            Option::None,
+            None,
+            None,
+            None,
         )?;
     }))?;
 }))?;

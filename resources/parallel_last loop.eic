@@ -12,14 +12,14 @@ weel!().parallel_do(
                         method: Method::GET,
                         arguments: Some(vec![new_key_value_pair("timeout", "8", false)]),
                     },
-                    Option::None,
-                    Option::None,
-                    Some(indoc! {
+                    None,
+                    None,
+                    code!{
                         "
                             data.count -= 1  
                         "
-                    }),
-                    Option::None,
+                    },
+                    None,
                 )?;
                 weel!().call(
                     "a2",
@@ -29,10 +29,10 @@ weel!().parallel_do(
                         method: Method::GET,
                         arguments: Some(vec![new_key_value_pair("timeout", "5", false)]),
                     },
-                    Option::None,
-                    Option::None,
                     None,
-                    Option::None,
+                    None,
+                    None,
+                    None,
                 )?;
             }))?;
         }))?;
@@ -46,12 +46,12 @@ weel!().call(
         method: Method::GET,
         arguments: Some(vec![new_key_value_pair("timeout", "5", false)]),
     },
-    Option::None,
-    Option::None,
-    Some(indoc! {
+    None,
+    None,
+    code!{
         "
                 data.count -= 1  
             "
-    }),
-    Option::None,
+    },
+    None,
 )?;

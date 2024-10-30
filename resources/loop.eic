@@ -9,13 +9,13 @@ weel!().loop_exec(Weel::pre_test("data.count > 0"), ƛ!({
                 new_key_value_pair("timeout", "2", false),
             ]),
         },
-        Option::None,
-        Option::None,
+        None,
+        None,
         Some(indoc! {
             "
                 data.count -= 1  
             "
         }),
-        Option::None,
+        None,
     )?;
 }))?;

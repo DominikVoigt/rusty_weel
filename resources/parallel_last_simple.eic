@@ -11,14 +11,14 @@ weel!().parallel_do(
                     method: Method::GET,
                     arguments: Some(vec![new_key_value_pair("timeout", "8", false)]),
                 },
-                Option::None,
-                Option::None,
+                None,
+                None,
                 Some(indoc! {
                     "
                             data.count -= 1  
                         "
                 }),
-                Option::None,
+                None,
             )?;
             weel!().call(
                 "a3",
@@ -28,14 +28,14 @@ weel!().parallel_do(
                     method: Method::GET,
                     arguments: Some(vec![new_key_value_pair("timeout", "5", false)]),
                 },
-                Option::None,
-                Option::None,
+                None,
+                None,
                 Some(indoc! {
                     "
                             data.count -= 1  
                         "
                 }),
-                Option::None,
+                None,
             )?;
         }))?;
         weel!().parallel_branch(pƛ!({
@@ -47,14 +47,14 @@ weel!().parallel_do(
                     method: Method::GET,
                     arguments: Some(vec![new_key_value_pair("timeout", "2", false)]),
                 },
-                Option::None,
-                Option::None,
+                None,
+                None,
                 Some(indoc! {
                     "
                             data.count -= 1  
                         "
                 }),
-                Option::None,
+                None,
             )?;
         }))?;
     }),
@@ -67,12 +67,12 @@ weel!().call(
                     method: Method::GET,
                     arguments: Some(vec![new_key_value_pair("timeout", "3", false)]),
                 },
-                Option::None,
-                Option::None,
+                None,
+                None,
                 Some(indoc! {
                     "
                             data.count -= 1  
                         "
                 }),
-                Option::None,
+                None,
             )?;
