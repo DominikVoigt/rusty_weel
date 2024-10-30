@@ -160,10 +160,16 @@ impl DSL for Weel {
             // we now need to let the branches run and let them have access to the thread map -> Cannot go into block with them locked
             drop(thread_info);
             drop(thread_map);
-            log::debug!("Waiting on branch event on thread: {:?}", thread::current().id());
+            log::debug!(
+                "Waiting on branch event on thread: {:?}",
+                thread::current().id()
+            );
             branch_event_rx.recv().unwrap();
         }
-        log::debug!("Reached to after branch event on thread: {:?}", thread::current().id());
+        log::debug!(
+            "Reached to after branch event on thread: {:?}",
+            thread::current().id()
+        );
 
         let thread_map = self.thread_information.lock().unwrap();
         let thread_info = thread_map
@@ -367,7 +373,10 @@ impl DSL for Weel {
                     .unwrap()
                     .borrow_mut();
                 if let Some(position) = thread_info.branch_position.take() {
-                    weel.positions.lock().unwrap().retain(|e| !Arc::ptr_eq(e, &position));
+                    weel.positions
+                        .lock()
+                        .unwrap()
+                        .retain(|e| !Arc::ptr_eq(e, &position));
                     let ipc = json!({
                         "unmark": [*position]
                     });
@@ -729,9 +738,22 @@ impl Weel {
                             let state = self.state.lock().unwrap();
                             match *state {
                                 State::Running | State::Finishing => {
-                                    let positions: Vec<PositionDTO> = self.positions.lock().unwrap().iter().map(|e| {
-                                        PositionDTO { position: e.position.clone(), uuid: e.uuid.clone(), detail: e.detail.lock().unwrap().clone(), handler_passthrough: e.handler_passthrough.lock().unwrap().clone() }
-                                    }).collect();
+                                    let positions: Vec<PositionDTO> = self
+                                        .positions
+                                        .lock()
+                                        .unwrap()
+                                        .iter()
+                                        .map(|e| PositionDTO {
+                                            position: e.position.clone(),
+                                            uuid: e.uuid.clone(),
+                                            detail: e.detail.lock().unwrap().clone(),
+                                            handler_passthrough: e
+                                                .handler_passthrough
+                                                .lock()
+                                                .unwrap()
+                                                .clone(),
+                                        })
+                                        .collect();
                                     let ipc = json!({
                                         "unmark": positions
                                     });
@@ -788,28 +810,32 @@ impl Weel {
     // TODO: look into case where thread is none? What are we doing there?
     fn recursive_join(&self, thread: ThreadId) -> Result<()> {
         log::debug!("Entering recursive join with target thread: {:?}", thread);
-        let thread_map = self.thread_information.lock().unwrap();
-        let mut thread_info = thread_map
-            .get(&thread)
-            .expect(PRECON_THREAD_INFO)
-            .borrow_mut();
-        let children = thread_info.branches.clone();
-        // Release lock on thread info map to allow threads to run to the end (in case they need to acquire the lock)
-        log::debug!("Got thread info");
-        if thread != thread::current().id() {
-            if let Some(handle) = thread_info.join_handle.take() {
-                drop(thread_info);
-                drop(thread_map);
-                log::debug!("Joining thread: {:?}", thread);
-                // wait for thread to terminate
-                match handle.join() {
-                    Ok(res) => res?,
-                    Err(err) => {
-                        log::error!("error when joining thread with id {:?}: {:?}", thread, err)
-                    }
-                };
+        let children: Vec<ThreadId>;
+        {
+            let thread_map = self.thread_information.lock().unwrap();
+            let mut thread_info = thread_map
+                .get(&thread)
+                .expect(PRECON_THREAD_INFO)
+                .borrow_mut();
+            children = thread_info.branches.clone();
+            // Release lock on thread info map to allow threads to run to the end (in case they need to acquire the lock)
+            log::debug!("Got thread info");
+            if thread != thread::current().id() {
+                if let Some(handle) = thread_info.join_handle.take() {
+                    drop(thread_info);
+                    drop(thread_map);
+                    log::debug!("Joining thread: {:?}", thread);
+                    // wait for thread to terminate
+                    match handle.join() {
+                        Ok(res) => res?,
+                        Err(err) => {
+                            log::error!("error when joining thread with id {:?}: {:?}", thread, err)
+                        }
+                    };
+                }
             }
         }
+        
         // join all child threads:
         for child in children {
             log::debug!("Recursive join on child: {:?}", child);
@@ -1099,7 +1125,10 @@ impl Weel {
         if in_search_mode {
             return Ok(());
         }
-        log::debug!("Executing activity: {activity_id} on thread: {:?}", thread::current().id());
+        log::debug!(
+            "Executing activity: {activity_id} on thread: {:?}",
+            thread::current().id()
+        );
         let connection_wrapper =
             ConnectionWrapper::new(self.clone(), Some(position.to_owned()), None);
         let connection_wrapper_mutex = Arc::new(Mutex::new(connection_wrapper));
@@ -1249,7 +1278,10 @@ impl Weel {
                             *self.state.lock().unwrap(),
                             State::Stopping | State::Finishing
                         );
-                        log::debug!("Reached to vote sync before on thread {:?}", thread::current().id());
+                        log::debug!(
+                            "Reached to vote sync before on thread {:?}",
+                            thread::current().id()
+                        );
 
                         // Drop info before we enter blocking vote_sync_before
                         drop(thread_info);
@@ -1263,7 +1295,10 @@ impl Weel {
 
                         // Will be locked in the activity_handle again
                         drop(connection_wrapper);
-                        log::debug!("Reached before activity handle on thread: {:?}", thread::current().id());
+                        log::debug!(
+                            "Reached before activity handle on thread: {:?}",
+                            thread::current().id()
+                        );
                         // This executes the actual call
                         ConnectionWrapper::activity_handle(
                             &connection_wrapper_mutex,
@@ -1271,16 +1306,29 @@ impl Weel {
                                 .as_mut()
                                 .unwrap()
                                 .handler_passthrough
-                                .lock().unwrap().as_ref()
+                                .lock()
+                                .unwrap()
+                                .as_ref()
                                 .map(|x| x.as_str()),
                             parameters,
                         )?;
-                        log::debug!("Reached after activity handle on thread: {:?}", thread::current().id());
+                        log::debug!(
+                            "Reached after activity handle on thread: {:?}",
+                            thread::current().id()
+                        );
 
                         let connection_wrapper = connection_wrapper_mutex.lock().unwrap();
-                        *weel_position.as_ref().unwrap().handler_passthrough.lock().unwrap() =
-                            connection_wrapper.handler_passthrough.clone();
-                        if let Some(_) = &*(*weel_position.as_ref().unwrap()).handler_passthrough.lock().unwrap() {
+                        *weel_position
+                            .as_ref()
+                            .unwrap()
+                            .handler_passthrough
+                            .lock()
+                            .unwrap() = connection_wrapper.handler_passthrough.clone();
+                        if let Some(_) = &*(*weel_position.as_ref().unwrap())
+                            .handler_passthrough
+                            .lock()
+                            .unwrap()
+                        {
                             let connection_wrapper = ConnectionWrapper::new(
                                 self.clone(),
                                 // Do not need this data for the inform:
@@ -1295,11 +1343,21 @@ impl Weel {
                         drop(connection_wrapper);
 
                         'inner: loop {
-                            log::debug!("Reached to inner loop on thread: {:?}", thread::current().id());
+                            log::debug!(
+                                "Reached to inner loop on thread: {:?}",
+                                thread::current().id()
+                            );
                             let current_thread = thread::current().id();
-                            log::debug!("Trying to lock thread_info_map on thread: {:?} state: {:?}", thread::current().id(), self.thread_information.try_lock());
+                            log::debug!(
+                                "Trying to lock thread_info_map on thread: {:?} state: {:?}",
+                                thread::current().id(),
+                                self.thread_information.try_lock()
+                            );
                             let thread_info_map = self.thread_information.lock().unwrap();
-                            log::debug!("Captured thread info map on thread: {:?}", thread::current().id());
+                            log::debug!(
+                                "Captured thread info map on thread: {:?}",
+                                thread::current().id()
+                            );
                             // Unwrap as we have precondition that thread info is available on spawning
                             let thread_info = thread_info_map
                                 .get(&current_thread)
@@ -1354,9 +1412,20 @@ impl Weel {
                             if state_stopping_or_finishing {
                                 log::debug!("Reached to activity stop");
                                 connection_wrapper.activity_stop()?;
-                                *weel_position.as_mut().unwrap().handler_passthrough.lock().unwrap() =
-                                    connection_wrapper.activity_passthrough_value();
-                                if weel_position.as_ref().unwrap().handler_passthrough.lock().unwrap().is_some() {
+                                *weel_position
+                                    .as_mut()
+                                    .unwrap()
+                                    .handler_passthrough
+                                    .lock()
+                                    .unwrap() = connection_wrapper.activity_passthrough_value();
+                                if weel_position
+                                    .as_ref()
+                                    .unwrap()
+                                    .handler_passthrough
+                                    .lock()
+                                    .unwrap()
+                                    .is_some()
+                                {
                                     break 'raise Err(Signal::Proceed.into());
                                 }
                             };
@@ -1451,8 +1520,14 @@ impl Weel {
                         let connection_wrapper = connection_wrapper_mutex.lock().unwrap();
                         if connection_wrapper.activity_passthrough_value().is_none() {
                             connection_wrapper.inform_activity_done()?;
-                            *weel_position.as_ref().unwrap().handler_passthrough.lock().unwrap() = None;
-                            *weel_position.as_ref().unwrap().detail.lock().unwrap() = "after".to_owned();
+                            *weel_position
+                                .as_ref()
+                                .unwrap()
+                                .handler_passthrough
+                                .lock()
+                                .unwrap() = None;
+                            *weel_position.as_ref().unwrap().detail.lock().unwrap() =
+                                "after".to_owned();
                             let content = json!({
                                 "after": [**weel_position.as_ref().unwrap()]
                             });
@@ -1504,7 +1579,7 @@ impl Weel {
                             self.positions
                                 .lock()
                                 .unwrap()
-                                .retain(|pos| !Arc::ptr_eq(pos,  &weel_position));
+                                .retain(|pos| !Arc::ptr_eq(pos, &weel_position));
                             let current_thread = thread::current().id();
                             let thread_info_map = self.thread_information.lock().unwrap();
                             // Unwrap as we have precondition that thread info is available on spawning
@@ -1513,7 +1588,7 @@ impl Weel {
                                 .expect(PRECON_THREAD_INFO)
                                 .borrow_mut();
                             thread_info.branch_position = None;
-                            
+
                             *weel_position.handler_passthrough.lock().unwrap() = None;
                             *weel_position.detail.lock().unwrap() = "unmark".to_owned();
 
@@ -1830,12 +1905,15 @@ impl Weel {
                     thread_info.switched_to_execution = true;
                 }
                 // checked earlier for membership, thus we can simply unwrap:
-                *self.search_positions
+                *self
+                    .search_positions
                     .lock()
                     .unwrap()
                     .get(activity_id)
                     .unwrap()
-                    .detail.lock().unwrap()
+                    .detail
+                    .lock()
+                    .unwrap()
                     == "after"
             } else {
                 true
@@ -1881,12 +1959,14 @@ impl Weel {
                 self.positions
                     .lock()
                     .unwrap()
-                    .retain(|x| !Arc::ptr_eq(x,  branch_position));
+                    .retain(|x| !Arc::ptr_eq(x, branch_position));
                 ipc.insert("unmark".to_owned(), json!([**branch_position]));
             };
             let mut search_positions = self.search_positions.lock().unwrap();
             let search_position = search_positions.remove(&position);
-            let passthrough = search_position.map(|pos| pos.handler_passthrough.lock().unwrap().clone()).flatten();
+            let passthrough = search_position
+                .map(|pos| pos.handler_passthrough.lock().unwrap().clone())
+                .flatten();
             let weel_position = if current_thread_info.switched_to_execution {
                 current_thread_info.switched_to_execution = false;
                 Position::new(
@@ -2052,7 +2132,6 @@ impl Weel {
             log::debug!("Calling recursive continue in set_state");
             recursive_continue(&self.thread_information.lock().unwrap(), &thread_id);
             log::debug!("After Calling recursive continue in set_state");
-
         }
 
         ConnectionWrapper::new(self.clone(), None, None).inform_state_change(new_state)?;
@@ -2081,8 +2160,11 @@ fn recursive_continue(
         .enqueue(Signal::None);
     if let Some(branch_event) = &thread_info.branch_event_sender {
         match branch_event.send(()) {
-            Ok(()) => {},
-            Err(err) => log::error!("Send failed: {:?}, parallel gateway must have terminated already", err),
+            Ok(()) => {}
+            Err(err) => log::error!(
+                "Send failed: {:?}, parallel gateway must have terminated already",
+                err
+            ),
         };
     }
     for child_id in &thread_info.branches {
@@ -2274,7 +2356,7 @@ mod test {
         let dynamic = DynamicData {
             endpoints: test_endpoints,
             data: test_data,
-            search_positions: HashMap::new()
+            search_positions: HashMap::new(),
         };
         serde_json::to_writer_pretty(file, &dynamic).unwrap();
     }
