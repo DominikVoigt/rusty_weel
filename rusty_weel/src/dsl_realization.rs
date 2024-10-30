@@ -1099,6 +1099,7 @@ impl Weel {
         if in_search_mode {
             return Ok(());
         }
+        log::debug!("Executing activity: {activity_id} on thread: {:?}", thread::current().id());
         let connection_wrapper =
             ConnectionWrapper::new(self.clone(), Some(position.to_owned()), None);
         let connection_wrapper_mutex = Arc::new(Mutex::new(connection_wrapper));
