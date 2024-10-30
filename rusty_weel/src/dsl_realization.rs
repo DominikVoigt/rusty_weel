@@ -787,6 +787,7 @@ impl Weel {
 
     // TODO: look into case where thread is none? What are we doing there?
     fn recursive_join(&self, thread: ThreadId) -> Result<()> {
+        log::debug!("Entering recursive join");
         let thread_map = self.thread_information.lock().unwrap();
         let mut thread_info = thread_map
             .get(&thread)
