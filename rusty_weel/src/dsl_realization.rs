@@ -20,8 +20,8 @@ use rusty_weel_macro::get_str_from_value;
 
 use crate::connection_wrapper::ConnectionWrapper;
 use crate::data_types::{
-    BlockingQueue, CancelCondition, ChooseVariant, Context, HTTPParams, InstanceMetaData,
-    State, Opts, Status, ThreadInfo,
+    BlockingQueue, CancelCondition, ChooseVariant, Context, HTTPParams, InstanceMetaData, Opts,
+    State, Status, ThreadInfo,
 };
 use crate::dsl::DSL;
 use crate::eval_helper::{self, EvalError};
@@ -85,15 +85,24 @@ impl DSL for Weel {
         )
     }
 
-    fn manipulate(self: Arc<Self>, label: &str, code: Option<&str>) -> Result<()> {
+    fn manipulate(
+        self: Arc<Self>,
+        id: &str,
+        label: Option<&'static str>,
+        code: Option<&str>,
+    ) -> Result<()> {
         self.weel_activity(
-            label,
+            id,
             ActivityType::Manipulate,
             None,
             None,
             None,
             code,
-            None,
+            label.map(|e: &'static str| HTTPParams {
+                label: e,
+                method: http_helper::Method::GET,
+                arguments: None,
+            }),
             None,
         )
     }
@@ -152,7 +161,7 @@ impl DSL for Weel {
             }
             barrier_start.enqueue(());
         }
-        
+
         drop(thread_info);
         drop(thread_map);
         // Wait for the "final" thread to fulfill the wait condition (wait_threshold = wait_count)
@@ -789,7 +798,7 @@ impl Weel {
                         Ok(res) => {
                             res?;
                             joined_thread = true;
-                        },
+                        }
                         Err(err) => {
                             log::error!("error when joining thread with id {:?}: {:?}", thread, err)
                         }
@@ -1164,7 +1173,7 @@ impl Weel {
                     }
                     match finalize_code {
                         Some(finalize_code) => {
-                            connection_wrapper.activity_manipulate_handle(activity_id);
+                            connection_wrapper.activity_manipulate_handle(parameters.map(|p| p.label).unwrap_or(""));
                             connection_wrapper.inform_activity_manipulate()?;
                             let result = match self.clone().execute_code(
                                 false,
@@ -1516,9 +1525,7 @@ impl Weel {
                         Signal::Stop | Signal::StopSkipManipulate => {
                             self.set_state(State::Stopping)?;
                         }
-                        Signal::Skip => {
-                            
-                        }
+                        Signal::Skip => {}
                         x => {
                             log::error!("Received unexpected signal: {:?}", x);
                         }
@@ -1997,13 +2004,15 @@ impl Weel {
     }
 
     pub fn uuid(&self) -> &str {
-        self.opts.attributes
+        self.opts
+            .attributes
             .get("uuid")
             .expect("Attributes do not contain uuid")
     }
 
     pub fn info(&self) -> &str {
-        self.opts.attributes
+        self.opts
+            .attributes
             .get("info")
             .expect("Attributes do not contain info")
     }
