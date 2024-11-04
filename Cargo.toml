@@ -10,6 +10,6 @@ package.include = ["/resources"]
 [profile.release]
 strip = true # Strips symbols from the binary
 opt-level = "z" #optimize for size
-lto = true # Link time optimization
+lto = false # Link time optimization
 panic = "abort"
-codegen-units = 1
+codegen-units = 12
