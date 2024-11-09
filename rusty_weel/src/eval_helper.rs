@@ -328,7 +328,7 @@ pub fn evaluate_expression(
                 if name == "result" {
                     // In case we have a string, strip them
                     match serde_json::from_str(&value) {
-                        Ok(res) => res,
+                        Ok(res) => expression_result = Some(res),
                         Err(err) => {
                             log::error!(
                                 "Encountered error deserializing expression: {:?}, received: {}",
@@ -356,8 +356,8 @@ pub fn evaluate_expression(
                 match name.as_str() {
                     "result" => {
                         // In case we have a string, strip them
-                        expression_result = match serde_json::from_str(&content) {
-                            Ok(res) => res,
+                        match serde_json::from_str(&content) {
+                            Ok(res) => expression_result = Some(res),
                             Err(err) => {
                                 log::error!("Encountered error deserializing expression: {:?}, received: {}", err, content);
                                 return Err(Error::JsonError(err));
