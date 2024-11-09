@@ -660,7 +660,7 @@ impl DSL for Weel {
         }
         self.weel_progress(id.to_owned(), "0".to_owned(), true)?;
         self.set_state(State::Stopping)?;
-        log::debug!("State after stop method is: {:?}", *self.state.lock());
+        log::debug!("State after stop method is: {:?}", *self.state.lock().unwrap());
         Ok(())
     }
 
