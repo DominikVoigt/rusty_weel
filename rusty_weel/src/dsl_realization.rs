@@ -2177,8 +2177,8 @@ impl Position {
 pub type Result<T> = std::result::Result<T, Error>;
 
 impl Error {
-    pub fn as_str(&self) -> &str {
-        &format!("{:?}", self)
+    pub fn to_string(&self) -> String {
+        format!("{:?}", self)
     }
 }
 
