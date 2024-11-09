@@ -423,17 +423,12 @@ fn construct_parameters(message: &serde_json::Value) -> Result<Vec<Parameter>> {
 mod test {
     use super::*;
 
-    fn init_logger() {
-        env_logger::Builder::from_default_env().init();
-    }
-
     /**
      * Setup: Expects a redis instance running with a UNIX socket to be located at /run/redis.sock
      * Ensures that the UNIX socket connection works
      */
     #[test]
     fn test_connection_socket() {
-        init_logger();
         let config = get_unix_socket_configuration();
         let mut connection = connect_to_redis(&config, "test_connection_unix").unwrap();
         assert_eq!(
@@ -451,7 +446,6 @@ mod test {
      */
     #[test]
     fn test_connection_tcp() {
-        init_logger();
         let config = get_tcp_configuration();
         let mut connection = connect_to_redis(&config, "test_connection_TCP").unwrap();
         assert_eq!(
@@ -470,7 +464,6 @@ mod test {
      */
     #[test]
     fn test_blocking_pub_sub() {
-        init_logger();
         thread::spawn(|| {
             let mut connection =
                 match connect_to_redis(&get_unix_socket_configuration(), "publisher") {

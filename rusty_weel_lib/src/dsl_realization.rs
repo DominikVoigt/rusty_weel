@@ -1,6 +1,5 @@
 use derive_more::From;
 
-use indoc::indoc;
 use once_map::OnceMap;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -28,11 +27,8 @@ use crate::eval_helper::{self, EvalError};
 use crate::redis_helper::{RedisHelper, Topic};
 
 static EVALUATION_LOCK: Mutex<()> = Mutex::new(());
-static PRECON_THREAD_INFO: &str = indoc! {
-"
-    The thread information was not available even though the thread was already running!
-    The thread information should be created for every thread when it is spawned (either in main or parallel branch)
-    "};
+static PRECON_THREAD_INFO: &str = 
+"The thread information was not available even though the thread was already running!\nThe thread information should be created for every thread when it is spawned (either in main or parallel branch)";
 
 pub struct Weel {
     pub opts: Opts,

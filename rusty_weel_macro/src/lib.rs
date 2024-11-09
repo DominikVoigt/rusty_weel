@@ -8,10 +8,17 @@ use quote::quote;
  */
 #[proc_macro]
 pub fn inject(_input: TokenStream) -> TokenStream {
-    let path = std::env::var("EIC_FILE").unwrap();
+
+    let path = std::env::var("EIC_FILE").unwrap_or("./instance.rs".to_owned());
     // Strip "-symbol from string literal:
     //let path = input.to_string().replace("\"", "");
-    let main_content = open_file(&path);
+    let main_content = match open_file(&path) {
+        Ok(x) => {x},
+        Err(err) => {
+            eprint!("{:?}", err);
+            return "".parse().unwrap();
+        },
+    };
     // Correct indentiation
     // let main_content = format!("\t{}", main_content.replace("\n", "\n\t"));
     main_content.parse().unwrap()
@@ -49,13 +56,7 @@ pub fn get_str_from_value_simple(input: TokenStream) -> TokenStream {
     }.into()
 }
 
-fn open_file(path: &str) -> String {
+fn open_file(path: &str) -> std::io::Result<String> {
     println!("Trying to open path: {:?}", path);
-    match std::fs::read_to_string(path) {
-        Ok(content) => content,
-        Err(err) => {
-            eprintln!("{}", err);
-            panic!("Could not read file");
-        }
-    }
+    std::fs::read_to_string(path)
 }

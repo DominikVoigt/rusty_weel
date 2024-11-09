@@ -1,6 +1,7 @@
 [workspace]
 members = [
-    "rusty_weel",
+    "rusty_weel_bin",
+    "rusty_weel_lib",
     "rusty_weel_macro",
     "http_helper"
 ]
