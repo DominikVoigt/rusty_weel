@@ -624,11 +624,13 @@ impl DSL for Weel {
     }
 
     fn stop(self: Arc<Self>, id: &str) -> Result<()> {
+        log::debug!("Entered stop");
         if self.in_search_mode(None) {
             return Ok(());
         }
 
         let current_thread = thread::current().id();
+        log::debug!("Locking thread info");        
         let thread_info_map = self.thread_information.lock().unwrap();
         let thread_info = thread_info_map
             .get(&current_thread)
@@ -638,6 +640,8 @@ impl DSL for Weel {
         if self.should_skip(&thread_info) {
             return Ok(());
         }
+
+        log::debug!("Before locking parent info");        
 
         if let Some(parent) = &thread_info.parent_thread {
             let mut parent_thread_info = thread_info_map
@@ -658,6 +662,7 @@ impl DSL for Weel {
                 .unwrap()
                 .push(id.to_owned());
         }
+        log::debug!("Before progress");        
         self.weel_progress(id.to_owned(), "0".to_owned(), true)?;
         self.set_state(State::Stopping)?;
         log::debug!("State after stop method is: {:?}", *self.state.lock().unwrap());
