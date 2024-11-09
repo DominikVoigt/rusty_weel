@@ -664,6 +664,7 @@ impl DSL for Weel {
         }
         log::debug!("Before progress");
         drop(thread_info);        
+        drop(thread_info_map);        
         self.weel_progress(id.to_owned(), "0".to_owned(), true)?;
         self.set_state(State::Stopping)?;
         log::debug!("State after stop method is: {:?}", *self.state.lock().unwrap());
