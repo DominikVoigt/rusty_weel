@@ -170,9 +170,29 @@ fn setup_signal_handler(weel: &Arc<Weel>) {
 }
 
 /**
- * Creates a new Key value pair by evaluating the key and value expressions (tries to resolve them in rust if they are simple data accessors)
+ * Creates a new Key value pair by evaluating the key and value expressions
+ */
+pub fn new_key_value_pair_ex(
+    key_expression: &'static str,
+    value: &'static str,
+) -> KeyValuePair {
+    create_kv_pair(key_expression, value, true)
+}
+
+/**
+ * Creates a new Key value pair
  */
 pub fn new_key_value_pair(
+    key_expression: &'static str,
+    value: &'static str,
+) -> KeyValuePair {
+    create_kv_pair(key_expression, value, false)
+}
+
+/**
+ * Creates a new Key value pair
+ */
+pub fn create_kv_pair(
     key_expression: &'static str,
     value: &'static str,
     expression_value: bool,
@@ -216,7 +236,7 @@ macro_rules! pƛ {
 #[macro_export]
 macro_rules! code {
     ($str: tt) => {
-        Some(indoc!{
+        Some(indoc::indoc!{
             $str
         })
     };
@@ -242,5 +262,16 @@ mod test {
             matches!(inner(), Ok(()));
         });
         matches!(plambda(), Ok(()));
+    }
+
+    #[test]
+    fn test_code_expand() {
+        let a = code!(
+            r##"
+                Hello this is a test
+            "##
+        );
+
+        println!("a is {:?}", a);
     }
 }
