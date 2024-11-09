@@ -122,7 +122,7 @@ pub fn test_condition(
         let condition = match eval_res {
             Some(x) => x,
             None => {
-                return Err(EvalError::GeneralEvalError("Response for evaluation request returned without result parameter".to_owned()));
+                return Err(Error::EvalError(EvalError::GeneralEvalError("Response for evaluation request returned without result parameter".to_owned())));
             },
         };
         connection_wrapper.gateway_decide(thread::current().id(), code, condition)?;
