@@ -619,6 +619,7 @@ mod test {
             eval_backend_exec_full: "".to_owned(),
             eval_backend_structurize: "".to_owned(),
             attributes,
+            global_executionhandlers: "".to_owned(),
         }
     }
 
@@ -638,6 +639,7 @@ mod test {
             eval_backend_exec_full: "".to_owned(),
             eval_backend_structurize: "".to_owned(),
             attributes: HashMap::new(),
+            global_executionhandlers: "".to_owned(),
         }
     }
 }

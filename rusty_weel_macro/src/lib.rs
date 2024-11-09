@@ -7,8 +7,8 @@ use quote::quote;
  * Expects TokenStream to contain the path (single "string" expression)
  */
 #[proc_macro]
-pub fn inject(input: TokenStream) -> TokenStream {
-    let path = std::env!("EIC_FILE");
+pub fn inject(_input: TokenStream) -> TokenStream {
+    let path = std::env::var("EIC_FILE").unwrap();
     // Strip "-symbol from string literal:
     //let path = input.to_string().replace("\"", "");
     let main_content = open_file(&path);
