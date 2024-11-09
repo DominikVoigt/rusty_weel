@@ -736,6 +736,7 @@ impl Weel {
                                             self.set_state(State::Finished)?;
                                         }
                                         Err(err) => {
+                                            drop(state);
                                             self.handle_error(err);
                                         }
                                     };
@@ -759,7 +760,9 @@ impl Weel {
                                 }
                             }
                         }
-                        Err(err) => self.handle_error(err),
+                        Err(err) => {
+                            self.handle_error(err)
+                        },
                     }
 
                     // Signal stop thread that execution of model ended:
@@ -1961,6 +1964,9 @@ impl Weel {
         Ok(weel_position)
     }
 
+    /**
+     * Locks: state and potentially positions and status (via set_state)
+     */
     pub fn handle_error(self: &Arc<Self>, err: Error) {
         // TODO implement error handling that adheres to the handling in __weel_control_flow
         match self.set_state(State::Stopping) {
@@ -1990,6 +1996,7 @@ impl Weel {
                 )
             }
         };
+        // TODO: set state to stopped?
     }
 
     pub fn get_instance_meta_data(&self) -> InstanceMetaData {
