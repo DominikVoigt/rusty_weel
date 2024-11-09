@@ -158,7 +158,7 @@ impl Context {
     pub fn load(path: &str) -> Context {
         let context = fs::read_to_string(path).expect("Could not read context file!");
         let context: Context =
-            serde_json::from_str(&context).expect("Could not parse Configuration");
+            serde_json::from_str(&context).expect("Could not parse Context");
         context
     }
 }
