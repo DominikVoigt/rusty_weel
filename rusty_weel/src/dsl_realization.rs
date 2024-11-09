@@ -690,11 +690,13 @@ impl Weel {
         model: impl FnOnce() -> Result<()> + Send + 'static,
         stop_signal_sender: Sender<()>,
     ) -> Result<()> {
+        log::debug!("Entered start");
         let content = json!({
             "state": "running"
         });
         match self.vote("state/change", content) {
             Ok(voted_start) => {
+                log::debug!("Voted start");
                 if voted_start {
                     {
                         // Use custom scope to ensure dropping occurs asap
@@ -702,6 +704,7 @@ impl Weel {
                         self.set_state(State::Running)?;
                     }
                     // TODO: implement the __weel_control_flow error handling logic in the handle_error/handle_join error
+                    log::debug!("Executing model: {:?}", result);
                     let result = model();
                     log::debug!("Reached end of model closure exec, result: {:?}", result);
                     match result {
