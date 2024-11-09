@@ -64,19 +64,66 @@ pub fn test_condition(
     let status = result.status_code;
 
     let status_ok = status >= 200 || status < 300;
-
     if status_ok {
-        let condition = match result.content.pop().expect(
-            "The return code of condition_eval call was 2xx but no parameters where returned",
-        ) {
-            Parameter::SimpleParameter { value, .. } => serde_json::from_str(&value)?,
-            Parameter::ComplexParameter {
-                mut content_handle, ..
-            } => {
-                let mut content = String::new();
-                content_handle.read_to_string(&mut content)?;
-                serde_json::from_str(&content)?
-            }
+        let mut eval_res: Option<bool> = None;
+        while let Some(parameter) = result.content.pop() {
+            match parameter {
+                Parameter::SimpleParameter { name, value, .. } => {
+                    if name == "result" {
+                        let value = value.replace("\"", "");
+                        // In case we have a string, strip them
+                        match serde_json::from_str(&value) {
+                            Ok(res) => eval_res = Some(res),
+                            Err(err) => {
+                                log::error!(
+                                    "Encountered error deserializing expression: {:?}, received: {}",
+                                    err,
+                                    value
+                                );
+                                return Err(Error::JsonError(err));
+                            }
+                        }
+                        break;
+                    } else {
+                        log::error!(
+                            "Received simple parameter with name {}. We ignore these currently",
+                            name
+                        );
+                        continue;
+                    }
+                }
+                Parameter::ComplexParameter {
+                    name,
+                    mut content_handle,
+                    ..
+                } => {
+                    let mut content = String::new();
+                    content_handle.read_to_string(&mut content)?;
+                    let content = content.replace("\"", "");
+                    match name.as_str() {
+                        "result" => {
+                            // In case we have a string, strip them
+                            match serde_json::from_str(&content) {
+                                Ok(res) => eval_res = Some(res),
+                                Err(err) => {
+                                    log::error!("Encountered error deserializing expression: {:?}, received: {}", err, content);
+                                    return Err(Error::JsonError(err));
+                                }
+                            };
+                            break;
+                        }
+                        x => {
+                            continue;
+                        }
+                    };
+                }
+            };
+        }
+        let condition = match eval_res {
+            Some(x) => x,
+            None => {
+                return Err(EvalError::GeneralEvalError("Response for evaluation request returned without result parameter".to_owned()));
+            },
         };
         connection_wrapper.gateway_decide(thread::current().id(), code, condition)?;
         Ok(condition)
@@ -140,9 +187,7 @@ pub fn test_condition(
                         Some(p_content)
                     };
                 }
-                x => {
-                    log::error!("Received parameter: {x}");
-                }
+                x => {}
             }
         }
         let signal_text = match signal_text {
