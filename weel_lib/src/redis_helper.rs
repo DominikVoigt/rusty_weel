@@ -14,7 +14,7 @@ use crate::{
 use http_helper::Parameter;
 use once::assert_has_not_been_called;
 use redis::{Commands, Connection, RedisResult};
-use rusty_weel_macro::get_str_from_value;
+use weel_macro::get_str_from_value;
 use serde_json::{json, Value};
 
 const CALLBACK_RESPONSE_ERROR_MESSAGE: &str =

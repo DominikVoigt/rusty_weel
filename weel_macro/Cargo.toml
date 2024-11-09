@@ -1,5 +1,5 @@
 [package]
-name = "rusty-weel-macro"
+name = "weel-macro"
 version = "0.1.0"
 edition = "2021"
 

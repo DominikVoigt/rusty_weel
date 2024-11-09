@@ -21,7 +21,7 @@ use weel_lib::data_types::{
 use weel_lib::dsl::DSL;
 use weel_lib::dsl_realization::{Position, Result, Weel};
 use weel_lib::redis_helper::RedisHelper;
-use rusty_weel_macro::inject;
+use weel_macro::inject;
 use std::io::Write;
 
 lazy_static! {

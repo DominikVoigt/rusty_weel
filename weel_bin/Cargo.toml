@@ -13,8 +13,8 @@ path = "src/main.rs"
 http_helper ={ path = "../http_helper"}
 indoc = "2"
 lazy_static = "1.5.0"
-rusty-weel-macro ={ path = "../rusty_weel_macro" }
-rusty-weel-lib = { path = "../rusty_weel_lib" }
+weel-macro ={ path = "../weel_macro" }
+weel-lib = { path = "../weel_lib" }
 once_map = "0.4.21"
 
 # Logging

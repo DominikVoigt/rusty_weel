@@ -1637,39 +1637,8 @@ dependencies = [
  "lazy_static",
  "log 0.4.21",
  "once_map",
- "rusty-weel-lib",
- "rusty-weel-macro",
-]
-
-[[package]]
-name = "rusty-weel-lib"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "derive_more",
- "http_helper",
- "log 0.4.21",
- "mime 0.3.17",
- "once",
- "once_map",
- "rand 0.8.5",
- "rayon",
- "redis",
- "regex",
- "reqwest",
- "rusty-weel-macro",
- "serde",
- "serde_json",
- "tempfile",
- "urlencoding",
-]
-
-[[package]]
-name = "rusty-weel-macro"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
+ "weel-lib",
+ "weel-macro",
 ]
 
 [[package]]
@@ -2247,6 +2216,37 @@ checksum = "77afa9a11836342370f4817622a2f0f418b134426d91a82dfb48f532d2ec13ef"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "weel-lib"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "derive_more",
+ "http_helper",
+ "log 0.4.21",
+ "mime 0.3.17",
+ "once",
+ "once_map",
+ "rand 0.8.5",
+ "rayon",
+ "redis",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "urlencoding",
+ "weel-macro",
+]
+
+[[package]]
+name = "weel-macro"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
 ]
 
 [[package]]

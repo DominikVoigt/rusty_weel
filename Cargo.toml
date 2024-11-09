@@ -1,8 +1,8 @@
 [workspace]
 members = [
-    "rusty_weel_bin",
-    "rusty_weel_lib",
-    "rusty_weel_macro",
+    "weel_bin",
+    "weel_lib",
+    "weel_macro",
     "http_helper"
 ]
 resolver = "2"
@@ -12,5 +12,5 @@ package.include = ["/resources"]
 strip = true # Strips symbols from the binary
 opt-level = "z" #optimize for size
 lto = false # Link time optimization
-panic = "abort"
+panic = "unwind"
 codegen-units = 12

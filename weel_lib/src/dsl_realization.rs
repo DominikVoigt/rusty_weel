@@ -15,7 +15,7 @@ use std::time::SystemTime;
 use rand::distributions::Alphanumeric;
 use rand::Rng;
 use reqwest::header::ToStrError;
-use rusty_weel_macro::get_str_from_value;
+use weel_macro::get_str_from_value;
 
 use crate::connection_wrapper::ConnectionWrapper;
 use crate::data_types::{
