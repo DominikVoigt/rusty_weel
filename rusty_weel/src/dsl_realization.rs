@@ -704,7 +704,7 @@ impl Weel {
                         self.set_state(State::Running)?;
                     }
                     // TODO: implement the __weel_control_flow error handling logic in the handle_error/handle_join error
-                    log::debug!("Executing model: {:?}", result);
+                    log::debug!("Executing model");
                     let result = model();
                     log::debug!("Reached end of model closure exec, result: {:?}", result);
                     match result {
