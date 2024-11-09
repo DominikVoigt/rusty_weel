@@ -134,7 +134,7 @@ fn get_search_positions(
         .iter()
         .map(|(identifier, position_dto)| (identifier.clone(), Position::new(
             position_dto.position.clone(),
-            position_dto.uuid,
+            position_dto.uuid.clone(),
             position_dto.detail.clone(),
             position_dto.handler_passthrough.clone()
         )))
