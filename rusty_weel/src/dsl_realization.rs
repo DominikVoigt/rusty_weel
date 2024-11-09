@@ -517,8 +517,8 @@ impl DSL for Weel {
         condition: [&str; 2],
         lambda: &(dyn Fn() -> Result<()> + Sync),
     ) -> Result<()> {
-        let test_type = *condition.get(0).unwrap();
-        let mut condition = *condition.get(1).unwrap();
+        let mut test_type = *condition.get(0).unwrap();
+        let condition = *condition.get(1).unwrap();
 
         if !matches!(test_type, "pre_test" | "post_test") {
             log::error!("Test type is: {:?}", test_type);
@@ -544,7 +544,7 @@ impl DSL for Weel {
             if self.in_search_mode(None) {
                 return Ok(());
             } else {
-                condition = "pre_test";
+                test_type = "pre_test";
             }
         }
 
@@ -624,7 +624,6 @@ impl DSL for Weel {
     }
 
     fn stop(self: Arc<Self>, id: &str) -> Result<()> {
-        log::debug!("Entered stop");
         if self.in_search_mode(None) {
             return Ok(());
         }
@@ -639,9 +638,7 @@ impl DSL for Weel {
 
         if self.should_skip(&thread_info) {
             return Ok(());
-        }
-
-        log::debug!("Before locking parent info");        
+        }  
 
         if let Some(parent) = &thread_info.parent_thread {
             let mut parent_thread_info = thread_info_map
@@ -662,12 +659,11 @@ impl DSL for Weel {
                 .unwrap()
                 .push(id.to_owned());
         }
-        log::debug!("Before progress");
+
         drop(thread_info);        
         drop(thread_info_map);        
         self.weel_progress(id.to_owned(), "0".to_owned(), true)?;
         self.set_state(State::Stopping)?;
-        log::debug!("State after stop method is: {:?}", *self.state.lock().unwrap());
         Ok(())
     }
 
