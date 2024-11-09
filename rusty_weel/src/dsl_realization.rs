@@ -703,6 +703,7 @@ impl Weel {
                     }
                     // TODO: implement the __weel_control_flow error handling logic in the handle_error/handle_join error
                     let result = model();
+                    log::debug!("Reached end of model closure exec, result: {:?}", result);
                     match result {
                         // TODO: Implement __weel_control_flow completely
                         Ok(()) => {
@@ -1555,9 +1556,7 @@ impl Weel {
                 }
             };
         };
-        log::debug!("Reached finalize of activity: {activity_id}");
         self.finalize_call_activity();
-        log::debug!("Reached end of activity: {activity_id}");
         Ok(())
     }
 
