@@ -71,6 +71,9 @@ pub fn test_condition(
                 Parameter::SimpleParameter { name, value, .. } => {
                     if name == "result" {
                         let value = value.replace("\"", "");
+                        if value.len() == 0 {
+                            return Err(Error::EvalError(EvalError::SyntaxError("Provided code is not an expression! Evaluation returned empty".to_owned())));
+                        }
                         // In case we have a string, strip them
                         match serde_json::from_str(&value) {
                             Ok(res) => eval_res = Some(res),
@@ -100,6 +103,9 @@ pub fn test_condition(
                     let mut content = String::new();
                     content_handle.read_to_string(&mut content)?;
                     let content = content.replace("\"", "");
+                    if content.len() == 0 {
+                        return Err(Error::EvalError(EvalError::SyntaxError("Provided code is not an expression! Evaluation returned empty".to_owned())));
+                    }
                     match name.as_str() {
                         "result" => {
                             // In case we have a string, strip them
@@ -326,16 +332,20 @@ pub fn evaluate_expression(
         match parameter {
             Parameter::SimpleParameter { name, value, .. } => {
                 if name == "result" {
-                    // In case we have a string, strip them
-                    match serde_json::from_str(&value) {
-                        Ok(res) => expression_result = Some(res),
-                        Err(err) => {
-                            log::error!(
-                                "Encountered error deserializing expression: {:?}, received: {}",
-                                err,
-                                value
-                            );
-                            return Err(Error::JsonError(err));
+                    if value.len() == 0 {
+                        expression_result = Some(Value::Null);
+                    } else {
+                        // In case we have a string, strip them
+                        match serde_json::from_str(&value) {
+                            Ok(res) => expression_result = Some(res),
+                            Err(err) => {
+                                log::error!(
+                                    "Encountered error deserializing expression: {:?}, received: {}",
+                                    err,
+                                    value
+                                );
+                                return Err(Error::JsonError(err));
+                            }
                         }
                     }
                 } else {
@@ -355,12 +365,16 @@ pub fn evaluate_expression(
                 content_handle.read_to_string(&mut content)?;
                 match name.as_str() {
                     "result" => {
-                        // In case we have a string, strip them
-                        match serde_json::from_str(&content) {
-                            Ok(res) => expression_result = Some(res),
-                            Err(err) => {
-                                log::error!("Encountered error deserializing expression: {:?}, received: {}", err, content);
-                                return Err(Error::JsonError(err));
+                        if content.len() == 0 {
+                            expression_result = Some(Value::Null)
+                        } else {   
+                            // In case we have a string, strip them
+                            match serde_json::from_str(&content) {
+                                Ok(res) => expression_result = Some(res),
+                                Err(err) => {
+                                    log::error!("Encountered error deserializing expression: {:?}, received: {}", err, content);
+                                    return Err(Error::JsonError(err));
+                                }
                             }
                         }
                     }
