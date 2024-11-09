@@ -24,6 +24,7 @@ pub fn test_condition(
     thread_local: &Option<Value>,
     connection_wrapper: &ConnectionWrapper,
 ) -> Result<bool> {
+    log::debug!("Evaluating condition: {code}");
     let mut client = Client::new(
         &static_context.eval_backend_exec_full,
         http_helper::Method::PUT,
