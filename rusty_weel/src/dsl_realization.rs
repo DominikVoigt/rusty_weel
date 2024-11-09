@@ -716,7 +716,7 @@ impl Weel {
                                         .iter()
                                         .map(|e| PositionDTO {
                                             position: e.position.clone(),
-                                            uuid: e.uuid,
+                                            uuid: e.uuid.clone(),
                                             detail: e.detail.lock().unwrap().clone(),
                                             handler_passthrough: e
                                                 .handler_passthrough
@@ -2131,7 +2131,7 @@ pub enum ActivityType {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PositionDTO {
     pub position: String,
-    pub uuid: u32,
+    pub uuid: String,
     pub detail: String,
     pub handler_passthrough: Option<String>,
 }
@@ -2139,7 +2139,7 @@ pub struct PositionDTO {
 #[derive(Debug, Serialize)]
 pub struct Position {
     position: String,
-    uuid: u32,
+    uuid: String,
     pub detail: Mutex<String>,
     pub handler_passthrough: Mutex<Option<String>>,
 }
