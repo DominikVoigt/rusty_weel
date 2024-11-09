@@ -57,6 +57,7 @@ pub struct Opts {
     pub redis_path: Option<String>,
     pub redis_db: i64,
     pub redis_workers: u32,
+    pub global_executionhandlers: String,
     pub executionhandlers: String,
     pub executionhandler: String,
     pub eval_language: String,
