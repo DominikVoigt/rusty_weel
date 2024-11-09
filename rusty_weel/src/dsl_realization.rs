@@ -1925,6 +1925,7 @@ impl Weel {
             } else {
                 ipc.insert("at".to_owned(), json!([weel_position]));
             }
+            log::debug!("IPC in weel progress: {:?}");
 
             if !search_positions.is_empty() {
                 if !ipc.contains_key("unmark") {
