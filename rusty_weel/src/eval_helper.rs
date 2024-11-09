@@ -141,7 +141,7 @@ pub fn test_condition(
                     };
                 }
                 x => {
-                    continue;
+                    log::error!("Received parameter: {x}");
                 }
             }
         }
