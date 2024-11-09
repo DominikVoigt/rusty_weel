@@ -46,3 +46,9 @@ weel_macro ={ path = "../weel_macro" }
 
 [dev-dependencies]
 rand = "0.8.5"
+
+[profile.release]
+strip = true # Strips symbols from the binary
+opt-level = "z" #optimize for size
+lto = false # Link time optimization
+codegen-units = 1
