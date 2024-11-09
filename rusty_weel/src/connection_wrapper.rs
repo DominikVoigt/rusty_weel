@@ -1066,7 +1066,7 @@ impl ConnectionWrapper {
             },
             other => {
                 log::error!("Trying to extract information from error: {:?}", other);
-                Err("".to_owned())
+                Err(other.as_str().to_owned())
             }
         }
     }
