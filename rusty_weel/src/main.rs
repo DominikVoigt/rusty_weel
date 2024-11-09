@@ -38,6 +38,7 @@ fn main() {
 
     // Executes the code and blocks until it is finished
     let res = weel!().start(model, stop_signal_sender);
+    log::info!("Model terminated with result: {:?}", res);
     match res {
         Ok(_) => {}
         Err(err) => weel!().handle_error(err),
