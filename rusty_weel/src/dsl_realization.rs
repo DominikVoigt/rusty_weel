@@ -2178,24 +2178,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 impl Error {
     pub fn as_str(&self) -> &str {
-        match self {
-            Error::GeneralError(message) => message.as_str(),
-            Error::JsonError(_) => todo!(),
-            Error::IOError(_) => todo!(),
-            Error::RedisError(_) => todo!(),
-            Error::EvalError(_) => todo!(),
-            Error::StrUTF8Error(_) => todo!(),
-            Error::StringUTF8Error(_) => todo!(),
-            Error::InvalidHeaderValue(_) => todo!(),
-            Error::InvalidHeaderName(_) => todo!(),
-            Error::ReqwestError(_) => todo!(),
-            Error::ToStrError(_) => todo!(),
-            Error::HttpHelperError(_) => todo!(),
-            Error::PoisonError() => todo!(),
-            Error::FromStrError(_) => todo!(),
-            Error::Signal(_) => todo!(),
-            Error::BreakLoop() => todo!(),
-        }
+        &format!("{:?}", self)
     }
 }
 
