@@ -1637,8 +1637,8 @@ dependencies = [
  "lazy_static",
  "log 0.4.21",
  "once_map",
- "weel-lib",
- "weel-macro",
+ "weel_lib",
+ "weel_macro",
 ]
 
 [[package]]
@@ -2219,7 +2219,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "weel-lib"
+name = "weel_lib"
 version = "0.1.0"
 dependencies = [
  "chrono",
@@ -2238,11 +2238,11 @@ dependencies = [
  "serde_json",
  "tempfile",
  "urlencoding",
- "weel-macro",
+ "weel_macro",
 ]
 
 [[package]]
-name = "weel-macro"
+name = "weel_macro"
 version = "0.1.0"
 dependencies = [
  "proc-macro2",

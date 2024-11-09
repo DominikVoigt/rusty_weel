@@ -3,6 +3,9 @@ name = "http_helper"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+name = "http_helper"
+path = "./src/lib.rs"
 
 [dependencies]
 reqwest = {version="0.12.4", features = ["blocking", "multipart"]}
@@ -17,3 +20,9 @@ bytes = "1.6.0"
 urlencoding = "2.1.3"
 # parsing of urlencoded form
 form_urlencoded = "1.2.1"
+
+[profile.release]
+strip = true # Strips symbols from the binary
+opt-level = "z" #optimize for size
+lto = false # Link time optimization
+codegen-units = 1

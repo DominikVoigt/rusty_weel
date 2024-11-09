@@ -1,5 +1,5 @@
 [package]
-name = "weel-lib"
+name = "weel_lib"
 version = "0.1.0"
 edition = "2021"
 
@@ -41,7 +41,7 @@ log = "0.4.21"
 
 # Macros:
 derive_more = "0.99.18"
-weel-macro ={ path = "../weel_macro" }
+weel_macro ={ path = "../weel_macro" }
 
 
 [dev-dependencies]

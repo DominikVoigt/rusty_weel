@@ -1,5 +1,5 @@
 [package]
-name = "weel-macro"
+name = "weel_macro"
 version = "0.1.0"
 edition = "2021"
 
@@ -9,3 +9,9 @@ proc-macro2 = "1.0.82"
 
 [lib]
 proc-macro = true
+
+[profile.release]
+strip = true # Strips symbols from the binary
+opt-level = "z" #optimize for size
+lto = false # Link time optimization
+codegen-units = 1
