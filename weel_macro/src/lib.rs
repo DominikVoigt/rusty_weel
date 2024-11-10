@@ -8,15 +8,13 @@ use quote::quote;
  */
 #[proc_macro]
 pub fn inject(_input: TokenStream) -> TokenStream {
-
     let path = std::env::var("EIC_FILE").unwrap_or("./instance.rs".to_owned());
     // Strip "-symbol from string literal:
     //let path = input.to_string().replace("\"", "");
     let main_content = match open_file(&path) {
         Ok(x) => {x},
         Err(err) => {
-            eprint!("Failed opening the file located at {:?} Error:{:?}", path, err);
-            return "".parse().unwrap();
+            panic!("Failed opening the file located at {:?} Error:{:?}", path, err);
         },
     };
     // Correct indentiation
