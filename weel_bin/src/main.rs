@@ -13,7 +13,6 @@ use weel_lib::data_types::ChooseVariant::{Exclusive, Inclusive};
 
 use std::{panic, thread};
 
-use http_helper::Method;
 use weel_lib::connection_wrapper::ConnectionWrapper;
 use weel_lib::data_types::{
     CancelCondition, Context, HTTPParams, KeyValuePair, State, Opts, Status, ThreadInfo, ChooseVariant
@@ -21,6 +20,7 @@ use weel_lib::data_types::{
 use weel_lib::dsl::DSL;
 use weel_lib::dsl_realization::{Position, Result, Weel};
 use weel_lib::redis_helper::RedisHelper;
+use weel_lib::Method;
 use weel_macro::inject;
 use std::io::Write;
 
@@ -33,6 +33,7 @@ fn main() {
     *WEEL.stop_signal_receiver.lock().unwrap() = Some(stop_signal_receiver);
     let model = || -> Result<()> {
         inject!();
+        
         Ok(())
     };
 
@@ -80,7 +81,7 @@ fn startup() -> Arc<Weel> {
         positions: Mutex::new(Vec::new()),
         thread_information: Mutex::new(HashMap::new()),
         stop_signal_receiver: Mutex::new(None),
-        critical_section_mutexes: once_map::OnceMap::new(),
+        critical_section_mutexes: weel_lib::OnceMap::new(),
     };
     let current_thread = thread::current();
 
@@ -112,7 +113,7 @@ fn init_logger() -> () {
                 "{}:{} {} {style}[{}]{style:#} - {}",
                 record.file().unwrap_or("unknown"),
                 record.line().unwrap_or(0),
-                chrono::Local::now().format("%Y-%m-%dT%H:%M:%S:%.6f"),
+                weel_lib::Local::now().format("%Y-%m-%dT%H:%M:%S:%.6f"),
                 record.level(),
                 record.args()
             )
