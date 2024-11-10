@@ -1656,6 +1656,7 @@ impl Weel {
         // We clone the dynamic data and status dto here which is expensive but allows us to not block the whole weel until the eval call returns
         let dynamic_data = self.context.lock().unwrap().clone();
         let status = self.status.lock().unwrap().to_dto();
+        log::debug!("Executing code: {code}, readonly: {read_only}, data: {:?}", dynamic_data.data);
         if read_only {
             let result = eval_helper::evaluate_expression(
                 &dynamic_data,
@@ -1707,6 +1708,7 @@ impl Weel {
                 };
             }
             drop(eval_lock);
+            log::debug!("After Executing code: {code}, readonly: {read_only}, data: {:?}", dynamic_data.data);
             Ok(result)
         }
     }
