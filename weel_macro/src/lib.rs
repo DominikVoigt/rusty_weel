@@ -15,7 +15,7 @@ pub fn inject(_input: TokenStream) -> TokenStream {
     let main_content = match open_file(&path) {
         Ok(x) => {x},
         Err(err) => {
-            eprint!("{:?}", err);
+            eprint!("Failed opening the file located at {:?} Error:{:?}", path, err);
             return "".parse().unwrap();
         },
     };
