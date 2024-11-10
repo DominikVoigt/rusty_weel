@@ -9,7 +9,7 @@ path = "./src/lib.rs"
 
 [dependencies]
 reqwest = {version="0.12.4", features = ["blocking", "multipart"]}
-serde ={ version = "*"}
+serde ={ version = "*", features = ["derive"]}
 log = "0.4.21"
 multipart = "0.18.0"
 tempfile = "3.10.1"
