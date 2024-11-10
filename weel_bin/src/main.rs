@@ -16,7 +16,7 @@ use std::{panic, thread};
 use http_helper::Method;
 use weel_lib::connection_wrapper::ConnectionWrapper;
 use weel_lib::data_types::{
-    CancelCondition, Context, HTTPParams, KeyValuePair, State, Opts, Status, ThreadInfo,
+    CancelCondition, Context, HTTPParams, KeyValuePair, State, Opts, Status, ThreadInfo, ChooseVariant
 };
 use weel_lib::dsl::DSL;
 use weel_lib::dsl_realization::{Position, Result, Weel};
