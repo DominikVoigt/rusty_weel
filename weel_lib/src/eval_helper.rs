@@ -475,7 +475,23 @@ pub fn evaluate_expression(
     }
 
     let status_not_ok = status < 200 || status >= 300;
-
+    log::info!(
+        "
+        Received from eval service service:
+        data:{:?}\n
+        endpoints:{:?}\n
+        expression_result:{:?}\n
+        changed_data:{:?}\n 
+        changed_endpoints:{:?}\n
+        changed_status:{:?}
+        ",
+        data,
+        endpoints,
+        expression_result,
+        changed_data,
+        changed_endpoints,
+        changed_status
+    );
     match expression_result {
         Some(expression_result) => {
             let eval_result = EvaluationResult {
