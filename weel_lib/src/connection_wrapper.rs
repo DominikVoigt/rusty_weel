@@ -297,6 +297,7 @@ impl ConnectionWrapper {
             }
         };
 
+        log::debug!("Endpoint names: {:?}", endpoint_names);
         // Resolve the endpoint name to the actual correct endpoint (incl. sim_translate)
         if endpoint_names.len() > 0 {
             log::debug!("Before resolve: {:?}", self.handler_endpoints);
