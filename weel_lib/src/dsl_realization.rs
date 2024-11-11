@@ -1406,7 +1406,7 @@ impl Weel {
                                     rescue_code
                                 } else {
                                     break 'raise Err(Error::GeneralError(format!(
-                                        "Service returned status code {:?}, and no salvage/rescue code was provided",
+                                        "Service call for activity {activity_id} returned status code {:?}, and no salvage/rescue code was provided",
                                         connection_wrapper.handler_return_status
                                     )));
                                 }
