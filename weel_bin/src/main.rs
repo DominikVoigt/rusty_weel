@@ -43,7 +43,7 @@ fn main() {
     match res {
         Ok(_) => {}
         Err(err) => {
-            weel!().handle_error(err);
+            weel!().handle_error(err, true);
             match weel!().set_state(State::Stopped) {
                 Ok(_) => {},
                 Err(err) => {
