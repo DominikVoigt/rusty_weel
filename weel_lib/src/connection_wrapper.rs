@@ -832,6 +832,7 @@ impl ConnectionWrapper {
         let recv =
             eval_helper::structurize_result(&weel.opts.eval_backend_structurize, &options, body)?;
         log::info!("Received from structurize service back: {recv}");
+        log::info!("Received callback with options: {:?}", options);
         let mut redis = weel.redis_notifications_client.lock()?;
         let content = self.construct_basic_content();
         {
