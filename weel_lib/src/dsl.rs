@@ -9,7 +9,7 @@ pub trait DSL {
     fn call(
         self: Arc<Self>,
         id: &str,
-        endpoint_url: &str,
+        endpoint_name: &str,
         parameters: HTTPParams,
         // Even though adding separate functions would be more idomatic for opt. parameters, the number and similar handling of these parameters would make it clunky to handle (2^4 variants)
         prepare_code: Option<&str>,
