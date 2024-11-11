@@ -310,6 +310,7 @@ impl Client {
         request_builder = self.generate_body(request_builder)?;
         request_builder = self.set_headers(request_builder);
         let request = request_builder.build()?;
+        log::debug!("Request url is: {:?}", request.url());
         let response = self.reqwest_client.execute(request)?;
 
         Ok(RawResponse {
