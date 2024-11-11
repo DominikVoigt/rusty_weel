@@ -1247,6 +1247,7 @@ impl Weel {
                                 other_error => break 'raise Err(other_error),
                             },
                         };
+                        log::debug!("Parameters after prepare: {:?}", parameters);
 
                         let state_stopping_or_finishing = matches!(
                             *self.state.lock().unwrap(),
