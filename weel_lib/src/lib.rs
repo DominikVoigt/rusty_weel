@@ -12,3 +12,4 @@ pub mod proc;
 pub use http_helper::Method;
 pub use once_map::OnceMap;
 pub use chrono::Local;
+pub use serde_json::json;
