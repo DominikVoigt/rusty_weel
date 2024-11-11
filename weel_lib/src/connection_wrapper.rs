@@ -616,6 +616,8 @@ impl ConnectionWrapper {
             response_headers = header_map_to_hash_map(&response.headers)?;
             body = response.body;
 
+            log::debug!("Received response headers: {:?}", response_headers);
+
             if status == 561 {
                 match weel.opts.attributes.get("sim_translate") {
                     Some(sim_translate) => {
