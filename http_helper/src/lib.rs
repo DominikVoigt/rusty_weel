@@ -305,6 +305,7 @@ impl Client {
         // For now: Explicitly passing simple parameters of desired type self.mark_query_parameters();
         let url = self.generate_url();
         let method: reqwest::Method = self.method.clone().into();
+        log::debug!("Final url is: {:?}", url);
         let mut request_builder = self.reqwest_client.request(method.clone(), url);
         request_builder = self.generate_body(request_builder)?;
         request_builder = self.set_headers(request_builder);
