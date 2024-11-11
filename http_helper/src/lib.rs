@@ -120,6 +120,7 @@ impl Client {
         let client = reqwest::blocking::Client::new();
 
         let (base_url, parameters) = generate_base_url(url)?;
+        log::debug!("Url after generate base_url: {:?}", base_url);
         let mut client = Client {
             method,
             reqwest_client: client,
