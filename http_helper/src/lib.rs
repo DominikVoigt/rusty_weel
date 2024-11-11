@@ -309,7 +309,6 @@ impl Client {
         request_builder = self.set_headers(request_builder);
         let request = request_builder.build()?;
         let response = self.reqwest_client.execute(request)?;
-        log::debug!("Response in raw: status: {} headers:{:?}", response.status().as_u16(), response.headers());
         Ok(RawResponse {
             headers: response.headers().clone(),
             status_code: response.status().as_u16(),
