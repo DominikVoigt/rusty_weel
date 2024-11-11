@@ -42,9 +42,16 @@ fn main() {
     log::info!("Model terminated with result: {:?}", res);
     match res {
         Ok(_) => {}
-        Err(err) => weel!().handle_error(err),
+        Err(err) => {
+            weel!().handle_error(err);
+            match weel!().set_state(State::Stopped) {
+                Ok(_) => {},
+                Err(err) => {
+                    panic!("Weel start returned with error signal, and failed to set state to stopping: {:?}", err)
+                },
+            };
+        },
     }
-    log::info!("At the end of main");
     log::info!("Data elements are now: {:?}", weel!().context.lock().unwrap());
     log::info!("Thread info at end of main: {:?}", weel!().thread_information.lock().unwrap())
 }
