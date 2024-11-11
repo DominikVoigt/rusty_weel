@@ -120,7 +120,6 @@ impl Client {
         let client = reqwest::blocking::Client::new();
 
         let (base_url, parameters) = generate_base_url(url)?;
-        log::debug!("Url after generate base_url: {:?}", base_url);
         let mut client = Client {
             method,
             reqwest_client: client,
@@ -305,14 +304,12 @@ impl Client {
         // For now: Explicitly passing simple parameters of desired type self.mark_query_parameters();
         let url = self.generate_url();
         let method: reqwest::Method = self.method.clone().into();
-        log::debug!("Final url is: {:?}", url);
         let mut request_builder = self.reqwest_client.request(method.clone(), url);
         request_builder = self.generate_body(request_builder)?;
         request_builder = self.set_headers(request_builder);
         let request = request_builder.build()?;
-        log::debug!("Request url is: {:?}", request.url());
         let response = self.reqwest_client.execute(request)?;
-
+        log::debug!("Response in raw: status: {} headers:{:?}", response.status().as_u16(), response.headers());
         Ok(RawResponse {
             headers: response.headers().clone(),
             status_code: response.status().as_u16(),
