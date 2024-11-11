@@ -299,7 +299,9 @@ impl ConnectionWrapper {
 
         // Resolve the endpoint name to the actual correct endpoint (incl. sim_translate)
         if endpoint_names.len() > 0 {
+            log::debug!("Before resolve: {:?}", self.handler_endpoints);
             self.resolve_endpoints(&contex_snapshot.endpoints, endpoint_names);
+            log::debug!("After resolve: {:?}", self.handler_endpoints);
 
             match weel.opts.attributes.get("sim_engine") {
                 Some(sim_engine_url) => {
