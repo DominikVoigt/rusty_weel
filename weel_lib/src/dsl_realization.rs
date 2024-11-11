@@ -97,7 +97,7 @@ impl DSL for Weel {
             label.map(|e: &'static str| HTTPParams {
                 label: e,
                 method: http_helper::Method::GET,
-                arguments: None,
+                arguments: json!(""),
             }),
             None,
         )
