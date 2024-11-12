@@ -562,6 +562,7 @@ impl ConnectionWrapper {
                             }
                             match capture.get(2) {
                                 Some(captured_method) => {
+                                    log::debug!("Captured method is: {:?}", captured_method);
                                     match captured_method.as_str().to_lowercase().as_str() {
                                         "post" => {
                                             method = Method::POST;
