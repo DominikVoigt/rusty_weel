@@ -266,12 +266,17 @@ pub fn test_condition(
 fn get_client() -> MutexGuard<'static, reqwest::blocking::Client> {
     let mut client = None;
     // try locking a client
-    while let None = client {   
+    while let None = client {  
+        let mut i = 0; 
         for client_mut in pool.iter() {
             match client_mut.try_lock() {
-                Ok(lock) => client = Some(lock),
+                Ok(lock) => {
+                    log::debug!("Using client {i} of pool");
+                    client = Some(lock)
+                },
                 Err(_) => {},
             }  
+            i += 1;
         }
     }
     return client.unwrap();
