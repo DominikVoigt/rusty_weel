@@ -88,6 +88,7 @@ pub struct Client {
     base_url: Url,
     pub headers: HeaderMap,
     parameters: Vec<Parameter>,
+    form_url_encoded: bool,
 }
 
 #[derive(From, Debug)]
@@ -110,10 +111,9 @@ type Result<T> = std::result::Result<T, Error>;
  *
  *  - SimpleParameters for query parameters and application/x-www-form-urlencoded
  *  - ComplexParameters for files (content-type of header/part-header is mime-type)
- *  - If multiple parameters are provided, then a multipart request is send
+ *  - If multiple parameters are provided, then a multipart (including complex params) or form url encoded (only simple params) request is send
  *  - If the query string contains query parameters they are parsed into SimpleParameters (with ParameterType Query)
  *  - SimpleParameter name and value are URL encoded
- *  -   
  */
 impl Client {
     pub fn new(url: &str, method: Method) -> Result<Client> {
@@ -127,6 +127,7 @@ impl Client {
             headers: HeaderMap::new(),
             // All simple parameters are URL encoded -> If added through add_parameters
             parameters: Vec::new(),
+            form_url_encoded: true,
         };
         // Add clients via add to url encode them
         client.add_parameters(parameters);
@@ -159,11 +160,15 @@ impl Client {
                 name,
                 mime_type,
                 content_handle,
-            } => Parameter::ComplexParameter {
-                name,
-                mime_type,
-                content_handle,
-            },
+            } => {
+                // If we add a complex parameter, we no longer can send the request as form url encoded
+                self.form_url_encoded = false;
+                Parameter::ComplexParameter {
+                    name,
+                    mime_type,
+                    content_handle,
+                }
+            }
         };
         self.parameters.push(parameter);
     }
@@ -292,7 +297,14 @@ impl Client {
         } else {
             // For multipart we set a multipart content type => Remove custom content type
             self.headers.remove(CONTENT_TYPE.as_str());
-            Ok(construct_multipart(body_parameters, request_builder)?)
+            if self.form_url_encoded {
+                Ok(construct_form_url_encoded(
+                    body_parameters,
+                    request_builder,
+                )?)
+            } else {
+                Ok(construct_multipart(body_parameters, request_builder)?)
+            }
         }
     }
 
@@ -375,10 +387,7 @@ impl Client {
                     request_builder
                 } else {
                     // Only set default header if no header is provided
-                    request_builder.header(
-                        CONTENT_TYPE,
-                        mime_type.to_string(),
-                    )
+                    request_builder.header(CONTENT_TYPE, mime_type.to_string())
                 }
             }
         }
@@ -453,6 +462,25 @@ fn construct_multipart(
         }
     }
     Ok(request_builder.multipart(form))
+}
+
+fn construct_form_url_encoded(
+    parameters: Vec<Parameter>,
+    request_builder: RequestBuilder,
+) -> Result<RequestBuilder> {
+    let mut pairs = Vec::new();
+    let request_builder = request_builder.header(CONTENT_TYPE, APPLICATION_WWW_FORM_URLENCODED.to_string());
+    for parameter in parameters {
+        match parameter {
+            Parameter::SimpleParameter { name, value, .. } => {
+                pairs.push(format!("{name}={value}"));
+            }
+            Parameter::ComplexParameter { .. } => {
+                panic!("not all parameters are simple! Cannot construct form url encoded body")
+            }
+        }
+    }
+    Ok(request_builder.body(pairs.join("&")))
 }
 
 /**
@@ -586,7 +614,7 @@ pub enum Method {
     POST,
     HEAD,
     DELETE,
-    PATCH
+    PATCH,
 }
 
 impl Into<reqwest::Method> for Method {
@@ -831,6 +859,7 @@ mod testing {
 
     mod test_parsing {
         use mime::TEXT_PLAIN_UTF_8;
+        use reqwest::Method;
 
         use super::*;
 
@@ -983,6 +1012,32 @@ mod testing {
 
             println!("{:?}", result);
             Ok(())
+        }
+
+        #[test]
+        fn test_construct_form_url_encoded_body() {
+            let mut client = Client::new("http://test.org", crate::Method::GET).unwrap();
+            client.add_parameters(vec![
+                Parameter::SimpleParameter { name: "a".to_owned(), value: "b".to_owned(), param_type: ParameterType::Body },
+                Parameter::SimpleParameter { name: "c".to_owned(), value: "d".to_owned(), param_type: ParameterType::Body }
+            ]);
+            let req_builder = client.reqwest_client.request(Method::GET, "http://test.org".parse::<Url>().unwrap());
+            let req = client.generate_body(req_builder).unwrap().build().unwrap();
+            assert_eq!(req.body().unwrap().as_bytes().unwrap(), "a=b&c=d".as_bytes());
+        }
+
+        #[test]
+        fn test_construct_form_url_encoded_body_not_if_complex() {
+            let mut client = Client::new("http://test.org", crate::Method::GET).unwrap();
+            client.add_parameters(vec![
+                Parameter::SimpleParameter { name: "a".to_owned(), value: "b".to_owned(), param_type: ParameterType::Body },
+                Parameter::SimpleParameter { name: "c".to_owned(), value: "d".to_owned(), param_type: ParameterType::Body },
+                Parameter::ComplexParameter { name: "a".to_owned(), mime_type: TEXT_PLAIN, content_handle: tempfile::tempfile().unwrap() }
+            ]);
+            let req_builder = client.reqwest_client.request(Method::GET, "http://test.org".parse::<Url>().unwrap());
+            let req = client.generate_body(req_builder).unwrap().build().unwrap();
+            // Compare without boundary
+            assert_eq!(req.headers().get(CONTENT_TYPE).unwrap().to_str().unwrap().split_once(";").unwrap().0, MULTIPART_FORM_DATA.to_string());
         }
 
         fn parse_headers_from_file(path: &str) -> Result<HeaderMap> {
