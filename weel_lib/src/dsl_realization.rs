@@ -1324,6 +1324,7 @@ impl Weel {
                             // We need to release the connection_wrapper lock here to allow callbacks from redis to lock the wrapper
                             drop(connection_wrapper);
 
+                            log::debug!("Should block: {should_block}");
                             if should_block {
                                 log::debug!("blocking on thread queue in thread {:?}", thread::current().id());
                                 wait_result = Some(thread_queue.lock().unwrap().dequeue());
@@ -2072,7 +2073,6 @@ fn recursive_continue(
         .get(thread_id)
         .expect(PRECON_THREAD_INFO)
         .borrow();
-    log::debug!("Sending event to callback signals for thread: {:?}", thread_id);
     // Make async tasks continue
     thread_info
         .callback_signals
