@@ -50,4 +50,5 @@ rand = "0.8.5"
 strip = true # Strips symbols from the binary
 opt-level = "z" #optimize for size
 lto = false # Link time optimization
-codegen-units = 1
+codegen-units = 16
+incremental = true
