@@ -550,6 +550,7 @@ impl ConnectionWrapper {
             let endpoint = match this.handler_endpoints.get(0) {
                 // TODO: Set method by matched method in url
                 Some(endpoint) => {
+                    log::debug!("Using endpoint: {endpoint}");
                     match protocol_regex.captures(&endpoint) {
                         Some(capture) => {
                             match capture.get(1) {
@@ -565,6 +566,7 @@ impl ConnectionWrapper {
                                     log::debug!("Captured method is: {:?}", captured_method);
                                     match captured_method.as_str().to_lowercase().as_str() {
                                         "post" => {
+                                            log::debug!("Setting method to post");
                                             method = Method::POST;
                                         }
                                         "get" => {
