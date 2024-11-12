@@ -739,6 +739,7 @@ impl Weel {
                                         Err(err) => {
                                             drop(state);
                                             self.handle_error(err, true);
+                                            log::debug!("Setting state stopped");
                                             self.set_state(State::Stopped)?;
                                         }
                                     };
@@ -746,15 +747,8 @@ impl Weel {
                                 State::Stopping => {
                                     drop(state);
                                     self.recursive_join(thread::current().id())?;
+                                            log::debug!("Setting state stopped");
                                     self.set_state(State::Stopped)?;
-                                    match ConnectionWrapper::new(self.clone(), None, None)
-                                        .inform_state_change(State::Stopped)
-                                    {
-                                        Ok(()) => {}
-                                        Err(err) => {
-                                            self.handle_error(err, false);
-                                        }
-                                    };
                                 }
                                 _ => {
                                     log::error!("Recached end of process in state: {:?}", state)
