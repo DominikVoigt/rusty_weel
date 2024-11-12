@@ -300,9 +300,12 @@ pub fn evaluate_expression(
     location: &str,
 ) -> Result<EvaluationResult> {
     // This url has to be the full path to the exec-full endpoint
-    let mut client = Client::new(
+    let ex_client = get_client();
+
+    let mut client = Client::new_with_existing_client(
         &static_context.eval_backend_exec_full,
         http_helper::Method::PUT,
+        ex_client
     )?;
     {
         // Construct multipart request
