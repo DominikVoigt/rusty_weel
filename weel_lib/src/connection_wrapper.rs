@@ -112,9 +112,8 @@ impl ConnectionWrapper {
     }
 
     pub fn inform_state_change(&self, new_state: crate::data_types::State) -> Result<()> {
-        let state = serde_json::to_string(&new_state)?.to_lowercase();
         let content = json!({
-            "state": state
+            "state": new_state
         });
         self.inform("state/change", Some(content))
     }

@@ -27,6 +27,7 @@ pub struct KeyValuePair {
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Copy)]
+#[serde(rename_all = "lowercase")]
 pub enum State {
     Ready,
     Starting,
