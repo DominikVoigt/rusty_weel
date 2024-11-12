@@ -1325,6 +1325,7 @@ impl Weel {
                             drop(connection_wrapper);
 
                             if should_block {
+                                log::debug!("blocking on thread queue in thread {:?}", thread::current().id());
                                 wait_result = Some(thread_queue.lock().unwrap().dequeue());
                             };
 
@@ -2078,6 +2079,7 @@ fn recursive_continue(
         .lock()
         .unwrap()
         .enqueue(Signal::None);
+    log::debug!("Sending event to callback signals for thread: {:?}", thread_id);
     if let Some(branch_event) = &thread_info.branch_event_sender {
         match branch_event.send(()) {
             Ok(()) => {}
