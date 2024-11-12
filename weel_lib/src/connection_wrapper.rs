@@ -600,7 +600,6 @@ impl ConnectionWrapper {
                     ))
                 }
             };
-            log::debug!("Endpoint before client: {:?}", endpoint);
             let mut client = http_helper::Client::new(&endpoint, method)?;
             client.set_request_headers(headers.clone());
             client.add_parameters(params);

@@ -183,7 +183,6 @@ impl<'a> Client<'a> {
                 param_type,
             } => match param_type {
                 ParameterType::Query => {
-                    log::debug!("\nName: {name} Encoded Name: {:?}\nValue:{value} Encoded Value: {:?}", encode(&name).to_string(), encode(&value).to_string());
                     Parameter::SimpleParameter {
                         name: encode(&name).to_string(),
                         value: encode(&value).to_string(),
@@ -191,8 +190,8 @@ impl<'a> Client<'a> {
                     }
                 },
                 ParameterType::Body => Parameter::SimpleParameter {
-                    name,
-                    value,
+                    name: encode(&name).to_string(),
+                    value: encode(&value).to_string(),
                     param_type,
                 },
             },
