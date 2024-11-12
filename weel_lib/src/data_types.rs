@@ -13,7 +13,7 @@ use crate::dsl_realization::{Position, PositionDTO, Result, Signal};
 pub struct HTTPParams {
     pub label: &'static str,
     pub method: http_helper::Method,
-    pub arguments: Option<Vec<KeyValuePair>>,
+    pub arguments: Value,
 }
 
 /*
@@ -82,7 +82,7 @@ pub struct Status {
     pub nudge: BlockingQueue<()>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct StatusDTO {
     pub id: u32,
     pub message: String,

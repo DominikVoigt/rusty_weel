@@ -1,20 +1,14 @@
 use crate::{
-    data_types::{BlockingQueue, Context, HTTPParams, InstanceMetaData, KeyValuePair},
+    data_types::{BlockingQueue, Context, HTTPParams, InstanceMetaData, KeyValuePair, Opts, StatusDTO},
     dsl_realization::{generate_random_key, Error, Result, Signal, Weel},
     eval_helper::{self, evaluate_expression, EvalError},
 };
 use http_helper::{header_map_to_hash_map, Method, Parameter};
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use regex::Regex;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde_json::{json, Value};
 use std::{
-    collections::HashMap,
-    io::{Read, Seek},
-    str::FromStr,
-    sync::{Arc, Mutex, Weak},
-    thread::{self, sleep, ThreadId},
-    time::{Duration, SystemTime},
+    collections::HashMap, io::{Read, Seek}, str::FromStr, sync::{Arc, Mutex, Weak}, thread::{self, sleep, ThreadId}, time::{Duration, SystemTime}
 };
 use urlencoding::encode;
 
@@ -224,7 +218,15 @@ impl ConnectionWrapper {
             let content = content_node
                 .as_object_mut()
                 .expect("Construct basic content has to return json object");
-            content.insert("changed".to_owned(), json!(changed_data.as_object().unwrap().keys().map(|e| e.to_owned()).collect::<Vec<String>>()));
+            content.insert(
+                "changed".to_owned(),
+                json!(changed_data
+                    .as_object()
+                    .unwrap()
+                    .keys()
+                    .map(|e| e.to_owned())
+                    .collect::<Vec<String>>()),
+            );
             content.insert("values".to_owned(), changed_data);
             self.inform("dataelements/change", Some(content_node))?;
         }
@@ -233,7 +235,13 @@ impl ConnectionWrapper {
             let content = content_node
                 .as_object_mut()
                 .expect("Construct basic content has to return json object");
-            content.insert("changed".to_owned(), json!(changed_endpoints.keys().map(|e| e.to_owned()).collect::<Vec<String>>()));
+            content.insert(
+                "changed".to_owned(),
+                json!(changed_endpoints
+                    .keys()
+                    .map(|e| e.to_owned())
+                    .collect::<Vec<String>>()),
+            );
             content.insert("values".to_owned(), json!(changed_endpoints));
             self.inform("endpoints/change", Some(content_node))?;
         }
@@ -268,7 +276,7 @@ impl ConnectionWrapper {
         prepare_code: Option<&str>,
         thread_local: &Option<Value>,
         endpoint_names: &Vec<&str>,
-        parameters: HTTPParams,
+        mut parameters: HTTPParams,
     ) -> Result<HTTPParams> {
         let weel = self.weel();
         // Execute the prepare code and use the modified context for the rest of this metod (prepare_result) (Note: This context can differ as the prepare will not modify the global context)
@@ -284,7 +292,7 @@ impl ConnectionWrapper {
                     endpoints: result
                         .endpoints
                         .unwrap_or(weel.context.lock().unwrap().endpoints.clone()),
-                    search_positions: HashMap::new() // We can ignore them as they are not relevant to the evaluation context
+                    search_positions: HashMap::new(), // We can ignore them as they are not relevant to the evaluation context
                 }
             }
             None => {
@@ -292,7 +300,7 @@ impl ConnectionWrapper {
                 Context {
                     data: dynamic_data.data.clone(),
                     endpoints: dynamic_data.endpoints.clone(),
-                    search_positions: HashMap::new() // We can ignore them as they are not relevant to the evaluation context
+                    search_positions: HashMap::new(), // We can ignore them as they are not relevant to the evaluation context
                 }
             }
         };
@@ -316,70 +324,61 @@ impl ConnectionWrapper {
                 }
             };
         };
-
-        if let Some(arguments) = parameters.arguments {
-            let error: Mutex<Option<Error>> = Mutex::new(None);
-            // Only translate arguments that are expressions and that have actual expressions in them (expression_value should imply value is not empty)
-            let mapped_arguments: Vec<KeyValuePair> = arguments
-                .into_par_iter()
-                .filter_map(|argument| {
-                    if argument.expression_value {
-                        if let Some(value) = argument.value.as_ref() {
-                            let eval_result = match evaluate_expression(
-                                &contex_snapshot,
-                                &weel.opts,
-                                value,
-                                None,
-                                thread_local,
-                                self.additional(),
-                                // In prepare we do not have access to the call result yet
-                                None,
-                                None,
-                                "prepare",
-                            ) {
-                                Ok(result) => Some(result),
-                                Err(err) => {
-                                    log::error!(
-                                        "Failure evaluating argument expressions in prepare due to: {:?}", err                                
-                                    );
-                                    *error.lock().unwrap() = Some(err);
-                                    None
-                                }
-                            };
-                            let evaluated_expression = eval_result.map(|eval_result| {
-                                eval_result.expression_result
-                            });
-                            Some(KeyValuePair {
-                                key: argument.key,
-                                value: Some(serde_json::to_string(&evaluated_expression).expect("We can always serialize a JSON value struct to a valid object")),
-                                expression_value: false,
-                            })
-                        } else { // Expression but empty -> Empty value
-                            Some(KeyValuePair {
-                                key: argument.key,
-                                value: None,
-                                expression_value: false,
-                            })
-                        }
-                    } else {
-                        Some(argument.clone())
-                    }
-                })
-                .collect();
-
-            let error = error.lock().unwrap().take();
-            if let Some(err) = error {
-                return Err(err);
-            }
-
-            Ok(HTTPParams {
-                arguments: Some(mapped_arguments),
-                ..parameters
-            })
-        } else {
-            Ok(parameters.clone())
-        }
+        self.evaluate_arguments(&mut parameters.arguments, &contex_snapshot, &weel.opts, None, thread_local)?;
+        Ok(parameters)
     }
+
+    fn evaluate_arguments(
+        &self,
+        arguments: &mut Value,
+        context: &Context,
+        opts: &Opts,
+        weel_status: Option<StatusDTO>,
+        thread_local: &Option<Value>,
+    ) -> Result<()> {
+        if arguments.is_array() {
+            for node in arguments.as_array_mut().unwrap() {
+                if node.is_array() || node.is_object() {
+                    self.evaluate_arguments(node, context, opts, weel_status.clone(), thread_local)?;
+                } else {
+                    self.eval_node_and_replace(node, context, opts, thread_local)?;
+                }
+            }
+        } else if arguments.is_object() {
+            for (name, node) in arguments.as_object_mut().unwrap() {
+                if node.is_array() || node.is_object() {
+                    self.evaluate_arguments(node, context, opts, weel_status.clone(), thread_local)?;
+                } else {
+                    self.eval_node_and_replace(node, context, opts, thread_local)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn eval_node_and_replace(&self, node: &mut Value, context: &Context, opts: &Opts, thread_local: &Option<Value>) -> Result<()> {
+        if let Some(text) = node.as_str() {
+            if text.starts_with("!") {
+                let eval_result = evaluate_expression(
+                    context,
+                    opts,
+                    &text[1..],
+                    None,
+                    thread_local,
+                    self.additional(),
+                    // In prepare we do not have access to the call result yet
+                    None,
+                    None,
+                    "prepare",
+                )?;
+                let evaluated_expression = eval_result.expression_result;
+                *node = evaluated_expression;
+            }
+        };
+        Ok(())
+    }
+    
+    fn evaluate_arguments_rec(arguments: &mut Value) {}
 
     /**
      * Resolves the endpoint names in endpoints to the actual endpoint URLs
@@ -524,19 +523,16 @@ impl ConnectionWrapper {
             // Compute parameters
             let mut params = Vec::new();
             // Params could contain file handles (complex parameters) and thus cannot be cloned -> We cannot clone so we recompute them here
-            match parameters.arguments.as_ref() {
-                Some(args) => args.iter().for_each(|arg| {
-                    let value = arg.value.clone().unwrap_or("".to_owned());
-                    params.push(http_helper::Parameter::SimpleParameter {
-                        name: arg.key.to_owned(),
-                        value,
-                        param_type: http_helper::ParameterType::Body,
-                    });
-                }),
-                None => {
-                    log::info!("Arguments provided to curl are empty");
+            match parameters.arguments.as_object() {
+                Some(object) => {
+                    for (key, node) in object {
+                        params.push(Parameter::SimpleParameter { name: key.to_owned(), value: serde_json::to_string(node)?, param_type: http_helper::ParameterType::Body });
+                    }
                 }
-            };
+                None => {
+                    log::error!("Parameter arguments should be an json object!")
+                }
+            }
 
             let mut content_node = json!({
                 "activity_uuid": this.handler_activity_uuid,
@@ -606,6 +602,7 @@ impl ConnectionWrapper {
                     ))
                 }
             };
+            log::debug!("Endpoint before client: {:?}", endpoint);
             let mut client = http_helper::Client::new(&endpoint, method)?;
             client.set_request_headers(headers.clone());
             client.add_parameters(params);
@@ -832,6 +829,7 @@ impl ConnectionWrapper {
         let recv =
             eval_helper::structurize_result(&weel.opts.eval_backend_structurize, &options, body)?;
         log::info!("Received from structurize service back: {recv}");
+        log::info!("Received callback with options: {:?}", options);
         let mut redis = weel.redis_notifications_client.lock()?;
         let content = self.construct_basic_content();
         {
@@ -1114,14 +1112,21 @@ impl ConnectionWrapper {
         )
     }
 
-    pub fn split_branches(&self, id: ThreadId, branches: Option<&HashMap<ThreadId, Vec<String>>>) -> Result<()> {
+    pub fn split_branches(
+        &self,
+        id: ThreadId,
+        branches: Option<&HashMap<ThreadId, Vec<String>>>,
+    ) -> Result<()> {
         let mut content = json!({
             "instance_uuid": self.weel().uuid(),
             "ecid": convert_thread_id(id)
         });
 
         if let Some(branches) = branches {
-            content.as_object_mut().unwrap().insert("branches".to_owned(), json!(branches.len()));
+            content
+                .as_object_mut()
+                .unwrap()
+                .insert("branches".to_owned(), json!(branches.len()));
         }
 
         self.inform("gateway/split", Some(content))
@@ -1131,21 +1136,28 @@ impl ConnectionWrapper {
         let content = json!({
             "instance_uuid": self.weel().uuid(),
             "code": code,
-            "condition": condition, 
+            "condition": condition,
             "ecid": convert_thread_id(id)
         });
 
         self.inform("gateway/decide", Some(content))
     }
 
-    pub fn join_branches(&self, id: ThreadId, branch_traces: Option<&HashMap<ThreadId, Vec<String>>>) -> Result<()> {
+    pub fn join_branches(
+        &self,
+        id: ThreadId,
+        branch_traces: Option<&HashMap<ThreadId, Vec<String>>>,
+    ) -> Result<()> {
         let mut content = json!({
             "instance_uuid": self.weel().uuid(),
             "ecid": convert_thread_id(id)
         });
 
         if let Some(branch_traces) = branch_traces {
-            content.as_object_mut().unwrap().insert("branches".to_owned(), json!(branch_traces.len()));
+            content
+                .as_object_mut()
+                .unwrap()
+                .insert("branches".to_owned(), json!(branch_traces.len()));
         }
 
         self.inform("gateway/join", Some(content))

@@ -97,7 +97,7 @@ impl DSL for Weel {
             label.map(|e: &'static str| HTTPParams {
                 label: e,
                 method: http_helper::Method::GET,
-                arguments: None,
+                arguments: json!(""),
             }),
             None,
         )
@@ -703,10 +703,7 @@ impl Weel {
                         self.positions.lock().unwrap().clear();
                         self.set_state(State::Running)?;
                     }
-                    // TODO: implement the __weel_control_flow error handling logic in the handle_error/handle_join error
-                    log::debug!("Executing model");
                     let result = model();
-                    log::debug!("Reached end of model closure exec, result: {:?}", result);
                     match result {
                         // TODO: Implement __weel_control_flow completely
                         Ok(()) => {
@@ -741,7 +738,8 @@ impl Weel {
                                         }
                                         Err(err) => {
                                             drop(state);
-                                            self.handle_error(err);
+                                            self.handle_error(err, true);
+                                            self.set_state(State::Stopped)?;
                                         }
                                     };
                                 }
@@ -754,7 +752,7 @@ impl Weel {
                                     {
                                         Ok(()) => {}
                                         Err(err) => {
-                                            self.handle_error(err);
+                                            self.handle_error(err, false);
                                         }
                                     };
                                 }
@@ -765,7 +763,8 @@ impl Weel {
                             }
                         }
                         Err(err) => {
-                            self.handle_error(err)
+                            self.handle_error(err, true);
+                            self.set_state(State::Stopped)?;
                         },
                     }
 
@@ -778,7 +777,10 @@ impl Weel {
                     self.abort_start();
                 };
             }
-            Err(err) => self.handle_error(err),
+            Err(err) => {
+                self.handle_error(err, true);
+                self.set_state(State::Stopped)?;
+            },
         }
         Ok(())
     }
@@ -1245,6 +1247,7 @@ impl Weel {
                                 other_error => break 'raise Err(other_error),
                             },
                         };
+                        log::debug!("Parameters after prepare: {:?}", parameters);
 
                         let state_stopping_or_finishing = matches!(
                             *self.state.lock().unwrap(),
@@ -1404,7 +1407,7 @@ impl Weel {
                                     rescue_code
                                 } else {
                                     break 'raise Err(Error::GeneralError(format!(
-                                        "Service returned status code {:?}, and no salvage/rescue code was provided",
+                                        "Service call for activity {activity_id} returned status code {:?}, and no salvage/rescue code was provided",
                                         connection_wrapper.handler_return_status
                                     )));
                                 }
@@ -1551,11 +1554,11 @@ impl Weel {
                     }
                     // Runtime and general evaluation errors use the default error handling
                     other => {
-                        self.handle_error(Error::EvalError(other));
+                        self.handle_error(Error::EvalError(other), true);
                     }
                 },
                 err => {
-                    self.handle_error(err);
+                    self.handle_error(err, true);
                 }
             };
         };
@@ -1973,24 +1976,25 @@ impl Weel {
     /**
      * Locks: state and potentially positions and status (via set_state)
      */
-    pub fn handle_error(self: &Arc<Self>, err: Error) {
-        // TODO implement error handling that adheres to the handling in __weel_control_flow
-        match self.set_state(State::Stopping) {
-            Ok(_) => {}
-            Err(err) => {
-                log::error!("Encountered error: {:?}", err);
-                match ConnectionWrapper::new(self.clone(), None, None)
-                    .inform_connectionwrapper_error(err)
-                {
-                    Ok(_) => {}
-                    Err(err) => {
-                        log::error!(
-                            "Encountered error but informing CPEE of error failed: {:?}",
-                            err
-                        )
-                    }
-                };
-            }
+    pub fn handle_error(self: &Arc<Self>, err: Error, should_set_stopping: bool) {
+        if should_set_stopping {
+            match self.set_state(State::Stopping) {
+                Ok(_) => {}
+                Err(err) => {
+                    log::error!("Encountered error: {:?}", err);
+                    match ConnectionWrapper::new(self.clone(), None, None)
+                        .inform_connectionwrapper_error(err)
+                    {
+                        Ok(_) => {}
+                        Err(err) => {
+                            log::error!(
+                                "Encountered error but informing CPEE of error failed: {:?}",
+                                err
+                            )
+                        }
+                    };
+                }
+            };
         };
         log::error!("Encountered error: {:?}", err);
         match ConnectionWrapper::new(self.clone(), None, None).inform_connectionwrapper_error(err) {
@@ -2002,7 +2006,6 @@ impl Weel {
                 )
             }
         };
-        // TODO: set state to stopped?
     }
 
     pub fn get_instance_meta_data(&self) -> InstanceMetaData {
@@ -2035,7 +2038,7 @@ impl Weel {
      *
      * Locks: state and potentially positions and status
      */
-    fn set_state(self: &Arc<Self>, new_state: State) -> Result<()> {
+    pub fn set_state(self: &Arc<Self>, new_state: State) -> Result<()> {
         self.set_state_on_thread(thread::current().id(), new_state)
     }
 

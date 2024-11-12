@@ -21,6 +21,7 @@ use weel_lib::dsl::DSL;
 use weel_lib::dsl_realization::{Position, Result, Weel};
 use weel_lib::redis_helper::RedisHelper;
 use weel_lib::Method;
+use weel_lib::json;
 use weel_macro::inject;
 use std::io::Write;
 
@@ -42,9 +43,16 @@ fn main() {
     log::info!("Model terminated with result: {:?}", res);
     match res {
         Ok(_) => {}
-        Err(err) => weel!().handle_error(err),
+        Err(err) => {
+            weel!().handle_error(err, true);
+            match weel!().set_state(State::Stopped) {
+                Ok(_) => {},
+                Err(err) => {
+                    panic!("Weel start returned with error signal, and failed to set state to stopping: {:?}", err)
+                },
+            };
+        },
     }
-    log::info!("At the end of main");
     log::info!("Data elements are now: {:?}", weel!().context.lock().unwrap());
     log::info!("Thread info at end of main: {:?}", weel!().thread_information.lock().unwrap())
 }
