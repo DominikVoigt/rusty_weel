@@ -2071,6 +2071,7 @@ fn recursive_continue(
         .get(thread_id)
         .expect(PRECON_THREAD_INFO)
         .borrow();
+    log::debug!("Sending event to callback signals for thread: {:?}", thread_id);
     // Make async tasks continue
     thread_info
         .callback_signals
