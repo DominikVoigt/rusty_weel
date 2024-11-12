@@ -29,7 +29,7 @@ fn construct_clients(number_clients: u8) -> Vec<Mutex<reqwest::blocking::Client>
     let mut new_pool = Vec::new();
     for _ in 0..number_clients {
         new_pool.push(Mutex::new(reqwest::blocking::Client::new()));
-    };
+    }
     new_pool
 }
 
@@ -45,7 +45,7 @@ pub fn test_condition(
     let mut client = Client::new_with_existing_client(
         &static_context.eval_backend_exec_full,
         http_helper::Method::PUT,
-        ex_client
+        ex_client,
     )?;
     // Construct multipart request
     client.add_parameter(Parameter::SimpleParameter {
@@ -264,22 +264,23 @@ pub fn test_condition(
 }
 
 fn get_client() -> MutexGuard<'static, reqwest::blocking::Client> {
-    let mut client = None;
+    let client ;
     // try locking a client
-    while let None = client {  
-        let mut i = 0; 
+    let index = 'spin: loop {
+        let mut i = 0;
         for client_mut in pool.iter() {
             match client_mut.try_lock() {
                 Ok(lock) => {
-                    log::debug!("Using client {i} of pool");
-                    client = Some(lock)
+                    client = lock;
+                    break 'spin i;
                 },
-                Err(_) => {},
-            }  
+                Err(_) => {}
+            };
             i += 1;
         }
-    }
-    return client.unwrap();
+    };
+    log::debug!("Using client with index: {index}");
+    return client;
 }
 
 /**
@@ -305,7 +306,7 @@ pub fn evaluate_expression(
     let mut client = Client::new_with_existing_client(
         &static_context.eval_backend_exec_full,
         http_helper::Method::PUT,
-        ex_client
+        ex_client,
     )?;
     {
         // Construct multipart request
@@ -527,23 +528,6 @@ pub fn evaluate_expression(
     }
 
     let status_not_ok = status < 200 || status >= 300;
-    log::info!(
-        "
-        Received from eval service service:
-        data:{:?}\n
-        endpoints:{:?}\n
-        expression_result:{:?}\n
-        changed_data:{:?}\n 
-        changed_endpoints:{:?}\n
-        changed_status:{:?}
-        ",
-        data,
-        endpoints,
-        expression_result,
-        changed_data,
-        changed_endpoints,
-        changed_status
-    );
     match expression_result {
         Some(expression_result) => {
             let eval_result = EvaluationResult {
