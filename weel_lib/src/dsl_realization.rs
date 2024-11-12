@@ -625,7 +625,6 @@ impl DSL for Weel {
         }
 
         let current_thread = thread::current().id();
-        log::debug!("Locking thread info");        
         let thread_info_map = self.thread_information.lock().unwrap();
         let thread_info = thread_info_map
             .get(&current_thread)
@@ -690,13 +689,11 @@ impl Weel {
         model: impl FnOnce() -> Result<()> + Send + 'static,
         stop_signal_sender: Sender<()>,
     ) -> Result<()> {
-        log::debug!("Entered start");
         let content = json!({
             "state": "running"
         });
         match self.vote("state/change", content) {
             Ok(voted_start) => {
-                log::debug!("Voted start");
                 if voted_start {
                     {
                         // Use custom scope to ensure dropping occurs asap
@@ -739,7 +736,6 @@ impl Weel {
                                         Err(err) => {
                                             drop(state);
                                             self.handle_error(err, true);
-                                            log::debug!("Setting state stopped");
                                             self.set_state(State::Stopped)?;
                                         }
                                     };
@@ -747,7 +743,6 @@ impl Weel {
                                 State::Stopping => {
                                     drop(state);
                                     self.recursive_join(thread::current().id())?;
-                                            log::debug!("Setting state stopped");
                                     self.set_state(State::Stopped)?;
                                 }
                                 _ => {
@@ -1241,7 +1236,6 @@ impl Weel {
                                 other_error => break 'raise Err(other_error),
                             },
                         };
-                        log::debug!("Parameters after prepare: {:?}", parameters);
 
                         let state_stopping_or_finishing = matches!(
                             *self.state.lock().unwrap(),
@@ -1324,9 +1318,7 @@ impl Weel {
                             // We need to release the connection_wrapper lock here to allow callbacks from redis to lock the wrapper
                             drop(connection_wrapper);
 
-                            log::debug!("Should block: {should_block}");
                             if should_block {
-                                log::debug!("blocking on thread queue in thread {:?}", thread::current().id());
                                 wait_result = Some(thread_queue.lock().unwrap().dequeue());
                             };
 
@@ -1655,7 +1647,6 @@ impl Weel {
         // We clone the dynamic data and status dto here which is expensive but allows us to not block the whole weel until the eval call returns
         let dynamic_data = self.context.lock().unwrap().clone();
         let status = self.status.lock().unwrap().to_dto();
-        log::debug!("Executing code: {code}, readonly: {read_only}, data: {:?}", dynamic_data.data);
         if read_only {
             let result = eval_helper::evaluate_expression(
                 &dynamic_data,
@@ -1707,7 +1698,6 @@ impl Weel {
                 };
             }
             drop(eval_lock);
-            log::debug!("After Executing code: {code}, readonly: {read_only}, data: {:?}", dynamic_data.data);
             Ok(result)
         }
     }
@@ -1918,7 +1908,6 @@ impl Weel {
             } else {
                 ipc.insert("at".to_owned(), json!([weel_position]));
             }
-            log::debug!("IPC in weel progress: {:?}", ipc);
 
             if !search_positions.is_empty() {
                 if !ipc.contains_key("unmark") {
@@ -2079,7 +2068,6 @@ fn recursive_continue(
         .lock()
         .unwrap()
         .enqueue(Signal::None);
-    log::debug!("Sending event to callback signals for thread: {:?}", thread_id);
     if let Some(branch_event) = &thread_info.branch_event_sender {
         match branch_event.send(()) {
             Ok(()) => {}
