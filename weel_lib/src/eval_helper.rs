@@ -2,10 +2,12 @@ use std::{
     collections::HashMap,
     fmt::Display,
     io::{Read, Seek, Write},
+    sync::{Mutex, MutexGuard},
     thread,
 };
 
 use http_helper::{Client, Parameter};
+use lazy_static::lazy_static;
 use log;
 use mime::{APPLICATION_JSON, TEXT_PLAIN_UTF_8};
 use serde_json::Value;
@@ -17,6 +19,20 @@ use crate::{
     dsl_realization::{Error, Result, Signal},
 };
 
+static NUMBER_CLIENTS: u8 = 6;
+
+lazy_static! {
+    static ref pool: Vec<Mutex<reqwest::blocking::Client>> = construct_clients(NUMBER_CLIENTS);
+}
+
+fn construct_clients(number_clients: u8) -> Vec<Mutex<reqwest::blocking::Client>> {
+    let mut new_pool = Vec::new();
+    for _ in 0..number_clients {
+        new_pool.push(Mutex::new(reqwest::blocking::Client::new()));
+    };
+    new_pool
+}
+
 pub fn test_condition(
     dynamic_context: &Context,
     static_context: &Opts,
@@ -24,10 +40,12 @@ pub fn test_condition(
     thread_local: &Option<Value>,
     connection_wrapper: &ConnectionWrapper,
 ) -> Result<bool> {
-    log::debug!("Evaluating condition: {code} against data: {:?}", dynamic_context.data);
-    let mut client = Client::new(
+    let ex_client = get_client();
+
+    let mut client = Client::new_with_existing_client(
         &static_context.eval_backend_exec_full,
         http_helper::Method::PUT,
+        ex_client
     )?;
     // Construct multipart request
     client.add_parameter(Parameter::SimpleParameter {
@@ -72,7 +90,10 @@ pub fn test_condition(
                     if name == "result" {
                         let value = value.replace("\"", "");
                         if value.len() == 0 {
-                            return Err(Error::EvalError(EvalError::SyntaxError("Provided code is not an expression! Evaluation returned empty".to_owned())));
+                            return Err(Error::EvalError(EvalError::SyntaxError(
+                                "Provided code is not an expression! Evaluation returned empty"
+                                    .to_owned(),
+                            )));
                         }
                         // In case we have a string, strip them
                         match serde_json::from_str(&value) {
@@ -104,7 +125,10 @@ pub fn test_condition(
                     content_handle.read_to_string(&mut content)?;
                     let content = content.replace("\"", "");
                     if content.len() == 0 {
-                        return Err(Error::EvalError(EvalError::SyntaxError("Provided code is not an expression! Evaluation returned empty".to_owned())));
+                        return Err(Error::EvalError(EvalError::SyntaxError(
+                            "Provided code is not an expression! Evaluation returned empty"
+                                .to_owned(),
+                        )));
                     }
                     match name.as_str() {
                         "result" => {
@@ -129,8 +153,10 @@ pub fn test_condition(
         let condition = match eval_res {
             Some(x) => x,
             None => {
-                return Err(Error::EvalError(EvalError::GeneralEvalError("Response for evaluation request returned without result parameter".to_owned())));
-            },
+                return Err(Error::EvalError(EvalError::GeneralEvalError(
+                    "Response for evaluation request returned without result parameter".to_owned(),
+                )));
+            }
         };
         connection_wrapper.gateway_decide(thread::current().id(), code, condition)?;
         Ok(condition)
@@ -235,6 +261,20 @@ pub fn test_condition(
             )))),
         }
     }
+}
+
+fn get_client() -> MutexGuard<'static, reqwest::blocking::Client> {
+    let mut client = None;
+    // try locking a client
+    while let None = client {   
+        for client_mut in pool.iter() {
+            match client_mut.try_lock() {
+                Ok(lock) => client = Some(lock),
+                Err(_) => {},
+            }  
+        }
+    }
+    return client.unwrap();
 }
 
 /**
@@ -370,7 +410,7 @@ pub fn evaluate_expression(
                     "result" => {
                         if content.len() == 0 {
                             expression_result = Some(Value::Null)
-                        } else {   
+                        } else {
                             // In case we have a string, strip them
                             match serde_json::from_str(&content) {
                                 Ok(res) => expression_result = Some(res),

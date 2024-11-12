@@ -1,10 +1,10 @@
 use bytes::{Buf, Bytes};
 use derive_more::From;
-use multipart::server::{FieldHeaders, ReadEntry};
+use multipart::{client, server::{FieldHeaders, ReadEntry}};
 use reqwest::{
     blocking::{
         multipart::{Form, Part},
-        RequestBuilder,
+        RequestBuilder, Response,
     },
     header::{HeaderMap, HeaderName, HeaderValue, ToStrError, CONTENT_TYPE},
     Url,
@@ -16,7 +16,7 @@ use std::{
     collections::HashMap,
     fs,
     io::{Read, Seek, Write},
-    str::FromStr,
+    str::FromStr, sync::MutexGuard,
 };
 
 pub use mime::*;
@@ -79,12 +79,33 @@ pub struct ParsedResponse {
     pub raw: Bytes,
 }
 
+enum ReqClient<'a> {
+    Owned(reqwest::blocking::Client),
+    Borrowed(std::sync::MutexGuard<'a, reqwest::blocking::Client>)
+}
+impl<'a> ReqClient<'a> {
+    fn execute(&'a self, request: reqwest::blocking::Request) -> std::result::Result<Response, reqwest::Error> {
+        let res = match self {
+            ReqClient::Owned(client) => client.execute(request),
+            ReqClient::Borrowed(client) => client.execute(request),
+        };
+        res
+    }
+    
+    fn request(&self, method: reqwest::Method, url: Url) -> RequestBuilder {
+        match self {
+            ReqClient::Owned(client) => client.request(method, url),
+            ReqClient::Borrowed(client) => client.request(method, url),
+        }
+    }
+}
+
 /**
  * Abstraction on top of libcurl
  */
-pub struct Client {
+pub struct Client<'a> {
     method: Method,
-    reqwest_client: reqwest::blocking::Client,
+    reqwest_client: ReqClient<'a>,
     base_url: Url,
     pub headers: HeaderMap,
     parameters: Vec<Parameter>,
@@ -115,14 +136,30 @@ type Result<T> = std::result::Result<T, Error>;
  *  - If the query string contains query parameters they are parsed into SimpleParameters (with ParameterType Query)
  *  - SimpleParameter name and value are URL encoded
  */
-impl Client {
+impl<'a> Client<'a> {
     pub fn new(url: &str, method: Method) -> Result<Client> {
         let client = reqwest::blocking::Client::new();
 
         let (base_url, parameters) = generate_base_url(url)?;
         let mut client = Client {
             method,
-            reqwest_client: client,
+            reqwest_client: ReqClient::Owned(client),
+            base_url,
+            headers: HeaderMap::new(),
+            // All simple parameters are URL encoded -> If added through add_parameters
+            parameters: Vec::new(),
+            form_url_encoded: true,
+        };
+        // Add clients via add to url encode them
+        client.add_parameters(parameters);
+        Ok(client)
+    }
+
+    pub fn new_with_existing_client(url: &str, method: Method, client: MutexGuard<'a, reqwest::blocking::Client>) -> Result<Client<'a>> {
+        let (base_url, parameters) = generate_base_url(url)?;
+        let mut client = Client {
+            method,
+            reqwest_client: ReqClient::Borrowed(client),
             base_url,
             headers: HeaderMap::new(),
             // All simple parameters are URL encoded -> If added through add_parameters
@@ -703,7 +740,7 @@ mod testing {
                 value: "simple_value".to_owned(),
                 param_type: ParameterType::Body,
             });
-            let mut request_builder = client.reqwest_client.request(Method::POST.into(), test_url);
+            let mut request_builder = client.reqwest_client.request(Method::POST.into(), test_url.parse::<Url>().unwrap());
             request_builder = client.generate_body(request_builder)?;
             let request = request_builder.build()?;
             assert_eq!(
@@ -737,7 +774,7 @@ mod testing {
                 mime_type: mime::TEXT_XML,
                 content_handle: file,
             });
-            let mut request_builder = client.reqwest_client.request(Method::POST.into(), test_url);
+            let mut request_builder = client.reqwest_client.request(Method::POST.into(), test_url.parse::<Url>().unwrap());
             request_builder = client.generate_body(request_builder)?;
             let request = request_builder.build()?;
             assert_eq!(
@@ -771,7 +808,7 @@ mod testing {
                 mime_type: mime::IMAGE_JPEG,
                 content_handle: file,
             });
-            let mut request_builder = client.reqwest_client.request(Method::POST.into(), test_url);
+            let mut request_builder = client.reqwest_client.request(Method::POST.into(), test_url.parse::<Url>().unwrap());
             request_builder = client.generate_body(request_builder)?;
             let request = request_builder.build()?;
 
@@ -807,7 +844,7 @@ mod testing {
                 value: "simple_value2".to_owned(),
                 param_type: ParameterType::Body,
             });
-            let mut request_builder = client.reqwest_client.request(Method::POST.into(), test_url);
+            let mut request_builder = client.reqwest_client.request(Method::POST.into(), test_url.parse::<Url>().unwrap());
             request_builder = client.generate_body(request_builder)?;
             let request = request_builder.build()?;
             let response = client.reqwest_client.execute(request)?;
@@ -847,7 +884,7 @@ mod testing {
                 param_type: ParameterType::Body,
             });
 
-            let mut request_builder = client.reqwest_client.request(Method::POST.into(), test_url);
+            let mut request_builder = client.reqwest_client.request(Method::POST.into(), test_url.parse::<Url>().unwrap());
             request_builder = client.generate_body(request_builder)?;
             let request = request_builder.build()?;
             let response = client.reqwest_client.execute(request)?;
