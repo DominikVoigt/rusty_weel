@@ -1977,6 +1977,16 @@ impl Weel {
      * Locks: state and potentially positions and status (via set_state)
      */
     pub fn handle_error(self: &Arc<Self>, err: Error, should_set_stopping: bool) {
+        log::error!("Encountered error: {:?}", err);
+        match ConnectionWrapper::new(self.clone(), None, None).inform_connectionwrapper_error(err) {
+            Ok(_) => {}
+            Err(err) => {
+                log::error!(
+                    "Encountered error but informing CPEE of error failed: {:?}",
+                    err
+                )
+            }
+        };
         if should_set_stopping {
             match self.set_state(State::Stopping) {
                 Ok(_) => {}
@@ -1995,16 +2005,6 @@ impl Weel {
                     };
                 }
             };
-        };
-        log::error!("Encountered error: {:?}", err);
-        match ConnectionWrapper::new(self.clone(), None, None).inform_connectionwrapper_error(err) {
-            Ok(_) => {}
-            Err(err) => {
-                log::error!(
-                    "Encountered error but informing CPEE of error failed: {:?}",
-                    err
-                )
-            }
         };
     }
 
