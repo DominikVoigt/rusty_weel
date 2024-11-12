@@ -1,6 +1,9 @@
 use bytes::{Buf, Bytes};
 use derive_more::From;
-use multipart::{client, server::{FieldHeaders, ReadEntry}};
+use multipart::{
+    client,
+    server::{FieldHeaders, ReadEntry},
+};
 use reqwest::{
     blocking::{
         multipart::{Form, Part},
@@ -16,7 +19,8 @@ use std::{
     collections::HashMap,
     fs,
     io::{Read, Seek, Write},
-    str::FromStr, sync::MutexGuard,
+    str::FromStr,
+    sync::MutexGuard,
 };
 
 pub use mime::*;
@@ -81,17 +85,20 @@ pub struct ParsedResponse {
 
 enum ReqClient<'a> {
     Owned(reqwest::blocking::Client),
-    Borrowed(std::sync::MutexGuard<'a, reqwest::blocking::Client>)
+    Borrowed(std::sync::MutexGuard<'a, reqwest::blocking::Client>),
 }
 impl<'a> ReqClient<'a> {
-    fn execute(&'a self, request: reqwest::blocking::Request) -> std::result::Result<Response, reqwest::Error> {
+    fn execute(
+        &'a self,
+        request: reqwest::blocking::Request,
+    ) -> std::result::Result<Response, reqwest::Error> {
         let res = match self {
             ReqClient::Owned(client) => client.execute(request),
             ReqClient::Borrowed(client) => client.execute(request),
         };
         res
     }
-    
+
     fn request(&self, method: reqwest::Method, url: Url) -> RequestBuilder {
         match self {
             ReqClient::Owned(client) => client.request(method, url),
@@ -134,7 +141,7 @@ type Result<T> = std::result::Result<T, Error>;
  *  - ComplexParameters for files (content-type of header/part-header is mime-type)
  *  - If multiple parameters are provided, then a multipart (including complex params) or form url encoded (only simple params) request is send
  *  - If the query string contains query parameters they are parsed into SimpleParameters (with ParameterType Query)
- *  - SimpleParameter name and value are URL encoded
+ *  - SimpleParameter name and value are URL encoded and Quotation marks are stripped from start and end (not for complex parameters)
  */
 impl<'a> Client<'a> {
     pub fn new(url: &str, method: Method) -> Result<Client> {
@@ -155,7 +162,11 @@ impl<'a> Client<'a> {
         Ok(client)
     }
 
-    pub fn new_with_existing_client(url: &str, method: Method, client: MutexGuard<'a, reqwest::blocking::Client>) -> Result<Client<'a>> {
+    pub fn new_with_existing_client(
+        url: &str,
+        method: Method,
+        client: MutexGuard<'a, reqwest::blocking::Client>,
+    ) -> Result<Client<'a>> {
         let (base_url, parameters) = generate_base_url(url)?;
         let mut client = Client {
             method,
@@ -174,6 +185,7 @@ impl<'a> Client<'a> {
     /**
      * Will add the parameter to the client parameters for the request
      * If the parameter is a simple parameter, it will be URL encoded
+     * Removes Quotation marks
      */
     pub fn add_parameter(&mut self, mut parameter: Parameter) {
         parameter = match parameter {
@@ -183,17 +195,27 @@ impl<'a> Client<'a> {
                 param_type,
             } => match param_type {
                 ParameterType::Query => {
+                    let name = name.strip_prefix("\"").unwrap_or(&name);
+                    let name = name.strip_suffix("\"").unwrap_or(name);
+                    let value = value.strip_prefix("\"").unwrap_or(&value);
+                    let value = value.strip_suffix("\"").unwrap_or(value);
                     Parameter::SimpleParameter {
                         name: encode(&name).to_string(),
                         value: encode(&value).to_string(),
                         param_type,
                     }
-                },
-                ParameterType::Body => Parameter::SimpleParameter {
-                    name: encode(&name).to_string(),
-                    value: encode(&value).to_string(),
-                    param_type,
-                },
+                }
+                ParameterType::Body => {
+                    let name = name.strip_prefix("\"").unwrap_or(&name);
+                    let name = name.strip_suffix("\"").unwrap_or(name);
+                    let value = value.strip_prefix("\"").unwrap_or(&value);
+                    let value = value.strip_suffix("\"").unwrap_or(value);
+                    Parameter::SimpleParameter {
+                        name: encode(&name).to_string(),
+                        value: encode(&value).to_string(),
+                        param_type,
+                    }
+                }
             },
             Parameter::ComplexParameter {
                 name,
@@ -508,7 +530,8 @@ fn construct_form_url_encoded(
     request_builder: RequestBuilder,
 ) -> Result<RequestBuilder> {
     let mut pairs = Vec::new();
-    let request_builder = request_builder.header(CONTENT_TYPE, APPLICATION_WWW_FORM_URLENCODED.to_string());
+    let request_builder =
+        request_builder.header(CONTENT_TYPE, APPLICATION_WWW_FORM_URLENCODED.to_string());
     for parameter in parameters {
         match parameter {
             Parameter::SimpleParameter { name, value, .. } => {
@@ -742,7 +765,9 @@ mod testing {
                 value: "simple_value".to_owned(),
                 param_type: ParameterType::Body,
             });
-            let mut request_builder = client.reqwest_client.request(Method::POST.into(), test_url.parse::<Url>().unwrap());
+            let mut request_builder = client
+                .reqwest_client
+                .request(Method::POST.into(), test_url.parse::<Url>().unwrap());
             request_builder = client.generate_body(request_builder)?;
             let request = request_builder.build()?;
             assert_eq!(
@@ -776,7 +801,9 @@ mod testing {
                 mime_type: mime::TEXT_XML,
                 content_handle: file,
             });
-            let mut request_builder = client.reqwest_client.request(Method::POST.into(), test_url.parse::<Url>().unwrap());
+            let mut request_builder = client
+                .reqwest_client
+                .request(Method::POST.into(), test_url.parse::<Url>().unwrap());
             request_builder = client.generate_body(request_builder)?;
             let request = request_builder.build()?;
             assert_eq!(
@@ -810,7 +837,9 @@ mod testing {
                 mime_type: mime::IMAGE_JPEG,
                 content_handle: file,
             });
-            let mut request_builder = client.reqwest_client.request(Method::POST.into(), test_url.parse::<Url>().unwrap());
+            let mut request_builder = client
+                .reqwest_client
+                .request(Method::POST.into(), test_url.parse::<Url>().unwrap());
             request_builder = client.generate_body(request_builder)?;
             let request = request_builder.build()?;
 
@@ -846,7 +875,9 @@ mod testing {
                 value: "simple_value2".to_owned(),
                 param_type: ParameterType::Body,
             });
-            let mut request_builder = client.reqwest_client.request(Method::POST.into(), test_url.parse::<Url>().unwrap());
+            let mut request_builder = client
+                .reqwest_client
+                .request(Method::POST.into(), test_url.parse::<Url>().unwrap());
             request_builder = client.generate_body(request_builder)?;
             let request = request_builder.build()?;
             let response = client.reqwest_client.execute(request)?;
@@ -886,7 +917,9 @@ mod testing {
                 param_type: ParameterType::Body,
             });
 
-            let mut request_builder = client.reqwest_client.request(Method::POST.into(), test_url.parse::<Url>().unwrap());
+            let mut request_builder = client
+                .reqwest_client
+                .request(Method::POST.into(), test_url.parse::<Url>().unwrap());
             request_builder = client.generate_body(request_builder)?;
             let request = request_builder.build()?;
             let response = client.reqwest_client.execute(request)?;
@@ -1057,26 +1090,63 @@ mod testing {
         fn test_construct_form_url_encoded_body() {
             let mut client = Client::new("http://test.org", crate::Method::GET).unwrap();
             client.add_parameters(vec![
-                Parameter::SimpleParameter { name: "a".to_owned(), value: "b".to_owned(), param_type: ParameterType::Body },
-                Parameter::SimpleParameter { name: "c".to_owned(), value: "d".to_owned(), param_type: ParameterType::Body }
+                Parameter::SimpleParameter {
+                    name: "a".to_owned(),
+                    value: "b".to_owned(),
+                    param_type: ParameterType::Body,
+                },
+                Parameter::SimpleParameter {
+                    name: "c".to_owned(),
+                    value: "d".to_owned(),
+                    param_type: ParameterType::Body,
+                },
             ]);
-            let req_builder = client.reqwest_client.request(Method::GET, "http://test.org".parse::<Url>().unwrap());
+            let req_builder = client
+                .reqwest_client
+                .request(Method::GET, "http://test.org".parse::<Url>().unwrap());
             let req = client.generate_body(req_builder).unwrap().build().unwrap();
-            assert_eq!(req.body().unwrap().as_bytes().unwrap(), "a=b&c=d".as_bytes());
+            assert_eq!(
+                req.body().unwrap().as_bytes().unwrap(),
+                "a=b&c=d".as_bytes()
+            );
         }
 
         #[test]
         fn test_construct_form_url_encoded_body_not_if_complex() {
             let mut client = Client::new("http://test.org", crate::Method::GET).unwrap();
             client.add_parameters(vec![
-                Parameter::SimpleParameter { name: "a".to_owned(), value: "b".to_owned(), param_type: ParameterType::Body },
-                Parameter::SimpleParameter { name: "c".to_owned(), value: "d".to_owned(), param_type: ParameterType::Body },
-                Parameter::ComplexParameter { name: "a".to_owned(), mime_type: TEXT_PLAIN, content_handle: tempfile::tempfile().unwrap() }
+                Parameter::SimpleParameter {
+                    name: "a".to_owned(),
+                    value: "b".to_owned(),
+                    param_type: ParameterType::Body,
+                },
+                Parameter::SimpleParameter {
+                    name: "c".to_owned(),
+                    value: "d".to_owned(),
+                    param_type: ParameterType::Body,
+                },
+                Parameter::ComplexParameter {
+                    name: "a".to_owned(),
+                    mime_type: TEXT_PLAIN,
+                    content_handle: tempfile::tempfile().unwrap(),
+                },
             ]);
-            let req_builder = client.reqwest_client.request(Method::GET, "http://test.org".parse::<Url>().unwrap());
+            let req_builder = client
+                .reqwest_client
+                .request(Method::GET, "http://test.org".parse::<Url>().unwrap());
             let req = client.generate_body(req_builder).unwrap().build().unwrap();
             // Compare without boundary
-            assert_eq!(req.headers().get(CONTENT_TYPE).unwrap().to_str().unwrap().split_once(";").unwrap().0, MULTIPART_FORM_DATA.to_string());
+            assert_eq!(
+                req.headers()
+                    .get(CONTENT_TYPE)
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .split_once(";")
+                    .unwrap()
+                    .0,
+                MULTIPART_FORM_DATA.to_string()
+            );
         }
 
         fn parse_headers_from_file(path: &str) -> Result<HeaderMap> {
