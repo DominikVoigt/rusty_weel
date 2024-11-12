@@ -119,6 +119,7 @@ pub fn test_condition(
                             break;
                         }
                         x => {
+                            log::info!("Skipping entry: {x}");
                             continue;
                         }
                     };
@@ -193,7 +194,9 @@ pub fn test_condition(
                         Some(p_content)
                     };
                 }
-                x => {}
+                x => {
+                    log::info!("Skipping param: {x}");
+                }
             }
         }
         let signal_text = match signal_text {
@@ -467,6 +470,7 @@ pub fn evaluate_expression(
                         };
                     }
                     x => {
+                        log::info!("Skipping param: {x}");
                         continue;
                     }
                 };

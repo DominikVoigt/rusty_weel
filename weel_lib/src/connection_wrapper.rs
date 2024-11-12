@@ -1,5 +1,5 @@
 use crate::{
-    data_types::{BlockingQueue, Context, HTTPParams, InstanceMetaData, KeyValuePair, Opts, StatusDTO},
+    data_types::{BlockingQueue, Context, HTTPParams, InstanceMetaData, Opts, StatusDTO},
     dsl_realization::{generate_random_key, Error, Result, Signal, Weel},
     eval_helper::{self, evaluate_expression, EvalError},
 };
@@ -345,7 +345,7 @@ impl ConnectionWrapper {
                 }
             }
         } else if arguments.is_object() {
-            for (name, node) in arguments.as_object_mut().unwrap() {
+            for (_name, node) in arguments.as_object_mut().unwrap() {
                 if node.is_array() || node.is_object() {
                     self.evaluate_arguments(node, context, opts, weel_status.clone(), thread_local)?;
                 } else {
@@ -377,8 +377,6 @@ impl ConnectionWrapper {
         };
         Ok(())
     }
-    
-    fn evaluate_arguments_rec(arguments: &mut Value) {}
 
     /**
      * Resolves the endpoint names in endpoints to the actual endpoint URLs
