@@ -606,6 +606,7 @@ impl ConnectionWrapper {
             let mut client = http_helper::Client::new(&endpoint, method)?;
             client.set_request_headers(headers.clone());
             client.add_parameters(params);
+            log::debug!("Client before sending: {:?}", client);
 
             let response = client.execute_raw()?;
 

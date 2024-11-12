@@ -16,11 +16,7 @@ use serde::Serialize;
 use tempfile::tempfile;
 
 use std::{
-    collections::HashMap,
-    fs,
-    io::{Read, Seek, Write},
-    str::FromStr,
-    sync::MutexGuard,
+    collections::HashMap, fmt::Debug, fs, io::{Read, Seek, Write}, str::FromStr, sync::MutexGuard
 };
 
 pub use mime::*;
@@ -117,6 +113,12 @@ pub struct Client<'a> {
     pub headers: HeaderMap,
     parameters: Vec<Parameter>,
     form_url_encoded: bool,
+}
+
+impl<'a> Debug for Client<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Client").field("method", &self.method).field("headers", &self.headers).field("parameters", &self.parameters).field("form_url_encoded", &self.form_url_encoded).finish()
+    }
 }
 
 #[derive(From, Debug)]
