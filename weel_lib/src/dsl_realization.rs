@@ -15,7 +15,6 @@ use std::time::SystemTime;
 use rand::distributions::Alphanumeric;
 use rand::Rng;
 use reqwest::header::ToStrError;
-use weel_helper_macros::get_str_from_value;
 
 use crate::connection_wrapper::ConnectionWrapper;
 use crate::data_types::{
@@ -988,7 +987,7 @@ impl Weel {
                     self.open_votes
                         .lock()
                         .expect("Could not lock votes ")
-                        .remove(&get_str_from_value!(message["name"]));
+                        .remove(message["name"].as_str().unwrap());
                     self.cancel_callback(
                         message["name"]
                             .as_str()

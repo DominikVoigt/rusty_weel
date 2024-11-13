@@ -14,7 +14,6 @@ use crate::{
 use http_helper::Parameter;
 use once::assert_has_not_been_called;
 use redis::{Commands, Connection, RedisResult};
-use weel_helper_macros::get_str_from_value;
 use serde_json::{json, Value};
 
 const CALLBACK_RESPONSE_ERROR_MESSAGE: &str =
@@ -386,25 +385,25 @@ fn construct_parameters(message: &serde_json::Value) -> Result<Vec<Parameter>> {
             // TODO: Determine whether we want to return here or skip parameter
             continue;
         }
-        let param_type = get_str_from_value!(parameter[1][0]);
+        let param_type = parameter[1][0].as_str().unwrap();
         if param_type == "simple" {
-            let header_name = get_str_from_value!(parameter[0]);
-            let header_value = get_str_from_value!(parameter[1][1]);
+            let header_name = parameter[0].as_str().unwrap().to_owned();
+            let header_value = parameter[1][1].as_str().unwrap().to_owned();
             parameters.push(Parameter::SimpleParameter {
                 name: header_name,
                 value: header_value,
                 param_type: http_helper::ParameterType::Body,
             });
         } else if param_type == "complex" {
-            let name = get_str_from_value!(parameter[0]);
-            let mime_type = match get_str_from_value!(parameter[1][1]).parse::<mime::Mime>() {
+            let name = parameter[0].as_str().unwrap().to_owned();
+            let mime_type = match parameter[1][1].as_str().unwrap().parse::<mime::Mime>() {
                 Ok(x) => x,
                 Err(err) => {
                     // TODO: Determine whether we want to return here or skip parameter
                     return Err(err.into());
                 }
             };
-            let content_path = get_str_from_value!(parameter[1][2]);
+            let content_path = parameter[1][2].as_str().unwrap();
             parameters.push(Parameter::ComplexParameter {
                 name,
                 mime_type,
