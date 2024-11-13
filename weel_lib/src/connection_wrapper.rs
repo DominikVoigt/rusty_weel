@@ -924,6 +924,8 @@ impl ConnectionWrapper {
                 serde_json::Value::String(options["cpee_status"].clone()),
             );
         }
+
+        log::info!("Before update");
         if contains_non_empty(&options, "cpee_update") {
             match &self.handler_continue {
                 Some(x) => {
