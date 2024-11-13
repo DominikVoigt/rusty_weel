@@ -196,7 +196,6 @@ impl RedisHelper {
                             .expect("Could not lock mutex in callback thread");
                         if callback_keys.contains_key(&topic.event) {
                             let message: Value = serde_json::from_str(payload).unwrap();
-                            log::debug!("Message json: {:?}", message);
                             if message["content"]["headers"].is_null()
                                 || !message["content"]["headers"].is_object()
                             {
@@ -206,6 +205,7 @@ impl RedisHelper {
                             let params = values.as_bytes(); 
                             // TODO: Determine whether we need this still: construct_parameters(&message_json);
                             let headers = convert_headers_to_map(&message["content"]["headers"]);
+                            log::debug!("Handling callback: Body: {:?} options: {:?}", values, headers);
                             callback_keys.get(&topic.event)
                                          .expect("Cannot happen as we check containment previously and hold mutex throughout")
                                          .lock()?
