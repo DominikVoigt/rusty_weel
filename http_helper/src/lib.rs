@@ -1,9 +1,6 @@
 use bytes::{Buf, Bytes};
 use derive_more::From;
-use multipart::{
-    client,
-    server::{FieldHeaders, ReadEntry},
-};
+use multipart::server::{FieldHeaders, ReadEntry};
 use reqwest::{
     blocking::{
         multipart::{Form, Part},
