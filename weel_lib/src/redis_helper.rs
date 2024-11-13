@@ -347,7 +347,6 @@ fn log_error_and_panic(log_msg: &str) -> ! {
  */
 fn convert_headers_to_map(headers_json: &serde_json::Value) -> HashMap<String, String> {
     let mut headers = HashMap::new();
-    log::debug!("Converting headers json: {:?}", headers_json);
     for (key, value) in headers_json
         .as_object()
         .expect("We checked for being object prior, so this should never happen")

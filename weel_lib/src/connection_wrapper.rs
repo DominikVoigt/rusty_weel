@@ -830,6 +830,7 @@ impl ConnectionWrapper {
         body: &[u8],
         options: HashMap<String, String>, // Headers
     ) -> Result<()> {
+        let options = uniformize_headers(options);
         log::debug!("Hanlding callback with options: {:?}", options);
         let weel = self.weel();
         let recv =
@@ -1168,6 +1169,17 @@ impl ConnectionWrapper {
 
         self.inform("gateway/join", Some(content))
     }
+}
+
+/**
+ * Ensures that all headers arriving at the handling code are uniform: are all lower cased and all -'s are subsituted with _'s
+ */
+fn uniformize_headers(options: HashMap<String, String>) -> HashMap<String, String> {
+    options.iter().map(|(k,v)| {
+        let k = k.to_lowercase().replace("-", "_");
+        let v= v.to_lowercase().replace("-", "_");
+        (k,v)
+    }).collect()
 }
 
 pub fn convert_thread_id(thread_id: ThreadId) -> u64 {
