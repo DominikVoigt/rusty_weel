@@ -1271,20 +1271,15 @@ impl Weel {
                         log::debug!("After activity-handle");
 
                         let connection_wrapper = connection_wrapper_mutex.lock().unwrap();
-                        log::debug!("After lock");
                         *weel_position
                             .as_ref()
                             .unwrap()
                             .handler_passthrough
                             .lock()
                             .unwrap() = connection_wrapper.handler_passthrough.clone();
-                        log::debug!("After lock 2");
-                        if let Some(_) = &*(*weel_position.as_ref().unwrap())
-                            .handler_passthrough
-                            .lock()
-                            .unwrap()
+                        let passthrough_set = weel_position.as_ref().unwrap().handler_passthrough.lock().unwrap().is_some();
+                        if passthrough_set
                         {
-                            log::debug!("After lock 2.5");
                             let connection_wrapper = ConnectionWrapper::new(
                                 self.clone(),
                                 // Do not need this data for the inform:
@@ -1292,8 +1287,6 @@ impl Weel {
                                 None,
                             );
                             log::debug!("After lock 2.7");
-                            let pos = weel_position.as_ref();
-                            log::debug!("Position: {:?}", pos);
                             let content = json!({
                                 "wait": **weel_position.as_ref().unwrap()
                             });
@@ -2178,6 +2171,7 @@ impl Position {
         }
     }
 }
+
 
 pub type Result<T> = std::result::Result<T, Error>;
 
