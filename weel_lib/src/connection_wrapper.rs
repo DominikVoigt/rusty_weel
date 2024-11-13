@@ -712,7 +712,7 @@ impl ConnectionWrapper {
         let result_headers = result.headers;
         let mut content = result.content;
         Ok(if status >= 200 && status < 300 {
-            let translation_type = match headers.get("CPEE-SIM-TASKTYPE") {
+            let translation_type = match headers.get("cpee_sim_tasktype") {
                 Some(transl_type) => match transl_type.to_str()? {
                     "i" => "instantiation",
                     "ir" => "ipc-receive",
@@ -832,7 +832,6 @@ impl ConnectionWrapper {
         options: HashMap<String, String>, // Headers
     ) -> Result<()> {
         let options = uniformize_headers(options);
-        log::debug!("Handling callback with options: {:?}, body: {:?}", options, str::from_utf8(body).unwrap());
         let weel = self.weel();
         let recv =
             eval_helper::structurize_result(&weel.opts.eval_backend_structurize, &options, body)?;
