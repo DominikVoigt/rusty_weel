@@ -1284,6 +1284,7 @@ impl Weel {
                             .lock()
                             .unwrap()
                         {
+                            log::debug!("After lock 2.5");
                             let connection_wrapper = ConnectionWrapper::new(
                                 self.clone(),
                                 // Do not need this data for the inform:
