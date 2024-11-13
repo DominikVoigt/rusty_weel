@@ -7,6 +7,7 @@ use http_helper::{header_map_to_hash_map, Method, Parameter};
 use regex::Regex;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde_json::{json, Value};
+use core::str;
 use std::{
     collections::HashMap, io::{Read, Seek}, str::FromStr, sync::{Arc, Mutex, Weak}, thread::{self, sleep, ThreadId}, time::{Duration, SystemTime}
 };
@@ -831,7 +832,7 @@ impl ConnectionWrapper {
         options: HashMap<String, String>, // Headers
     ) -> Result<()> {
         let options = uniformize_headers(options);
-        log::debug!("Hanlding callback with options: {:?}", options);
+        log::debug!("Handling callback with options: {:?}, body: {:?}", options, str::from_utf8(body).unwrap());
         let weel = self.weel();
         let recv =
             eval_helper::structurize_result(&weel.opts.eval_backend_structurize, &options, body)?;
