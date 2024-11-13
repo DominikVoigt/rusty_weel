@@ -621,6 +621,7 @@ impl ConnectionWrapper {
 
             status = response.status_code;
             response_headers = header_map_to_hash_map(&response.headers)?;
+            log::info!("Received headers {:?} from call to {endpoint}", response_headers);
             body = response.body;
 
             if status == 561 {
