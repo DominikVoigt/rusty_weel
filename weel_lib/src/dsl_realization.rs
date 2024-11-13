@@ -1291,6 +1291,7 @@ impl Weel {
                                 None,
                                 None,
                             );
+                            log::debug!("After lock 2.7");
                             let content = json!({
                                 "wait": **weel_position.as_ref().unwrap()
                             });

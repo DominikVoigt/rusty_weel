@@ -48,7 +48,6 @@ impl ConnectionWrapper {
         weel: Arc<Weel>,
         // Corresponds to the label of the activity the handler is initialized for
         handler_position: Option<String>,
-
         handler_continue: Option<Arc<Mutex<BlockingQueue<Signal>>>>,
     ) -> Self {
         let weel = Arc::downgrade(&weel);
