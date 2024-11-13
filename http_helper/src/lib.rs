@@ -502,6 +502,9 @@ fn construct_multipart(
     for parameter in parameters {
         match parameter {
             Parameter::SimpleParameter { name, value, .. } => {
+                // For now, in multipart, we do not url encode the names and values
+                let name = urlencoding::decode(&name).unwrap().into_owned();
+                let value = urlencoding::decode(&value).unwrap().into_owned();
                 // A simple parameter without a value will result in a part without a part body
                 let part = Part::text(value);
                 form = form.part(name, part);
