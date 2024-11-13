@@ -82,16 +82,6 @@ pub fn test_condition(
     let status = result.status_code;
 
     let status_ok = status >= 200 || status < 300;
-    for p in &result.content {
-        match p {
-            Parameter::SimpleParameter { name, value, param_type } => {
-                log::debug!("Received back simple param name: {name} value: {value}")
-            },
-            Parameter::ComplexParameter { name, mime_type, content_handle } => {
-                log::debug!("Received back complex param name: {name}")
-            },
-        }
-    }
     if status_ok {
         let mut eval_res: Option<bool> = None;
         while let Some(parameter) = result.content.pop() {
@@ -382,7 +372,17 @@ pub fn evaluate_expression(
     let mut endpoints: Option<HashMap<String, String>> = None;
     let mut signal: Option<Signal> = None;
     let mut signal_text: Option<String> = None;
-
+    
+    for p in &result.content {
+        match p {
+            Parameter::SimpleParameter { name, value, param_type } => {
+                log::debug!("Received back simple param name: {name} value: {value}")
+            },
+            Parameter::ComplexParameter { name, mime_type, content_handle } => {
+                log::debug!("Received back complex param name: {name}")
+            },
+        }
+    }
     /*
      * Retrieve the result of the expression
      * Also retrieves the data endpoints state and local data if there is some
