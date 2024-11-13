@@ -34,7 +34,6 @@ pub enum ParameterType {
 pub enum Parameter {
     SimpleParameter {
         name: String,
-        // Option to enable query parameters without a value
         value: String,
         param_type: ParameterType,
     },
@@ -528,20 +527,24 @@ fn construct_form_url_encoded(
     parameters: Vec<Parameter>,
     request_builder: RequestBuilder,
 ) -> Result<RequestBuilder> {
-    let mut pairs = Vec::new();
+    let mut params = Vec::new();
     let request_builder =
         request_builder.header(CONTENT_TYPE, APPLICATION_WWW_FORM_URLENCODED.to_string());
     for parameter in parameters {
         match parameter {
             Parameter::SimpleParameter { name, value, .. } => {
-                pairs.push(format!("{name}={value}"));
+                if value.len() == 0 {
+                    params.push(name);
+                } else {
+                    params.push(format!("{name}={value}"));
+                };
             }
             Parameter::ComplexParameter { .. } => {
                 panic!("not all parameters are simple! Cannot construct form url encoded body")
             }
         }
     }
-    Ok(request_builder.body(pairs.join("&")))
+    Ok(request_builder.body(params.join("&")))
 }
 
 /**

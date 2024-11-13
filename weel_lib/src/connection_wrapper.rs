@@ -524,7 +524,12 @@ impl ConnectionWrapper {
             match parameters.arguments.as_object() {
                 Some(object) => {
                     for (key, node) in object {
-                        params.push(Parameter::SimpleParameter { name: key.to_owned(), value: serde_json::to_string(node)?, param_type: http_helper::ParameterType::Body });
+                        let value = if node.is_null() {
+                            "".to_owned()
+                        } else {
+                            serde_json::to_string(node)?
+                        };
+                        params.push(Parameter::SimpleParameter { name: key.to_owned(), value, param_type: http_helper::ParameterType::Body });
                     }
                 }
                 None => {
