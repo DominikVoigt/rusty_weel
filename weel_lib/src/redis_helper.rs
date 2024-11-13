@@ -189,6 +189,7 @@ impl RedisHelper {
             ];
             redis_helper.blocking_pub_sub(topics, move |payload: &str, pattern: &str, topic: Topic| {
                 log::debug!("Received: Topic: {:?}, pattern: {pattern}, payload: {payload}", topic);
+                log::debug!("Callback keys: {:?}", callback_keys);
                 match pattern {
                     "callback-response:*" => {
                         let callback_keys = callback_keys
