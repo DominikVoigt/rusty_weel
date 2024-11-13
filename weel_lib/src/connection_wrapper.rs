@@ -842,7 +842,6 @@ impl ConnectionWrapper {
         log::info!("Locked client");
         let content = self.construct_basic_content();
         {
-            log::debug!("entered block");
             let mut content_node = content.clone();
             let content = content_node
                 .as_object_mut()
@@ -855,7 +854,6 @@ impl ConnectionWrapper {
                 "annotations".to_owned(),
                 serde_json::Value::String(self.annotations.clone().unwrap_or("".to_owned())),
             );
-            log::debug!("notify");
 
             redis.notify(
                 "activity/receiving",
@@ -909,6 +907,7 @@ impl ConnectionWrapper {
                 weel.get_instance_meta_data(),
             )?;
         } else {
+            log::debug!("Setting handler values: status, value, options");
             self.handler_return_status = status;
             self.handler_return_value = Some(recv);
             self.handler_return_options = Some(options.clone());
@@ -926,10 +925,14 @@ impl ConnectionWrapper {
                 serde_json::Value::String(options["cpee_status"].clone()),
             );
         }
-
+        log::debug!("Before update");
         if contains_non_empty(&options, "cpee_update") {
             match &self.handler_continue {
-                Some(x) => x.lock().unwrap().enqueue(Signal::UpdateAgain),
+                Some(x) => {
+                    log::debug!("Before locking queue");
+                    x.lock().unwrap().enqueue(Signal::UpdateAgain);
+                    log::debug!("After locking queue");
+                },
                 None => log::error!("Received CPEE_UPDATE but handler_continue is empty?"),
             }
         } else {
