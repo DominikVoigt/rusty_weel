@@ -195,7 +195,7 @@ impl RedisHelper {
                             .lock()
                             .expect("Could not lock mutex in callback thread");
                         if callback_keys.contains_key(&topic.event) {
-                            let message = json!(payload);
+                            let message: Value = serde_json::from_str(payload).unwrap();
                             log::debug!("Message json: {:?}", message);
                             if message["content"]["headers"].is_null()
                                 || !message["content"]["headers"].is_object()
