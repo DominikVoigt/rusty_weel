@@ -357,7 +357,11 @@ impl ConnectionWrapper {
     }
 
     fn eval_node_and_replace(&self, node: &mut Value, context: &Context, opts: &Opts, thread_local: &Option<Value>) -> Result<()> {
+        if node.is_null() {
+            return Ok(());
+        }
         if let Some(text) = node.as_str() {
+            log::debug!("Evaluating expression: {text}");
             if text.starts_with("!") {
                 let eval_result = evaluate_expression(
                     context,
