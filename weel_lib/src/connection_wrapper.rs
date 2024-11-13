@@ -643,10 +643,8 @@ impl ConnectionWrapper {
             response_headers.insert("CPEE_SALVAGE".to_owned(), "true".to_owned());
             this.handle_callback(Some(status), &body, response_headers)?
         } else {
-            let callback_header_set = match response_headers.get("CPEE_CALLBACK") {
-                Some(header) => header == "true",
-                None => false,
-            };
+            // Accept callback if header is set
+            let callback_header_set = response_headers.contains_key("CPEE_CALLBACK") || response_headers.contains_key("cpee_callback");
 
             if callback_header_set {
                 if !body.len() > 0 {
