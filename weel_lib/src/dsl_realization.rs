@@ -1294,6 +1294,7 @@ impl Weel {
                         drop(connection_wrapper);
 
                         'inner: loop {
+                            log::debug!("Enterted loop");
                             let current_thread = thread::current().id();
                             let thread_info_map = self.thread_information.lock().unwrap();
                             // Unwrap as we have precondition that thread info is available on spawning
@@ -1305,7 +1306,9 @@ impl Weel {
                                 *self.state.lock().unwrap(),
                                 State::Stopping | State::Stopped | State::Finishing
                             );
+                            log::debug!("Before lock cw");
                             let connection_wrapper = connection_wrapper_mutex.lock().unwrap();
+                            log::debug!("After lock cw");
 
                             let should_block =
                                 !state_stopping_or_finishing && !thread_info.no_longer_necessary;

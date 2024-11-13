@@ -925,13 +925,10 @@ impl ConnectionWrapper {
                 serde_json::Value::String(options["cpee_status"].clone()),
             );
         }
-        log::debug!("Before update");
         if contains_non_empty(&options, "cpee_update") {
             match &self.handler_continue {
                 Some(x) => {
-                    log::debug!("Before locking queue");
                     x.lock().unwrap().enqueue(Signal::UpdateAgain);
-                    log::debug!("After locking queue");
                 },
                 None => log::error!("Received CPEE_UPDATE but handler_continue is empty?"),
             }
