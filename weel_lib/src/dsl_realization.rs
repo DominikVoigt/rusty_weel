@@ -1054,6 +1054,7 @@ impl Weel {
             .lock()
             .expect("could not acquire Mutex")
             .insert(key.to_owned(), connection_wrapper);
+        log::debug!("Inserted callback key");
         Ok(())
     }
 
