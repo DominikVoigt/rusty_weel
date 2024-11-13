@@ -842,6 +842,7 @@ impl ConnectionWrapper {
         log::info!("Locked client");
         let content = self.construct_basic_content();
         {
+            log::debug!("entered block");
             let mut content_node = content.clone();
             let content = content_node
                 .as_object_mut()
@@ -854,6 +855,7 @@ impl ConnectionWrapper {
                 "annotations".to_owned(),
                 serde_json::Value::String(self.annotations.clone().unwrap_or("".to_owned())),
             );
+            log::debug!("notify");
 
             redis.notify(
                 "activity/receiving",
