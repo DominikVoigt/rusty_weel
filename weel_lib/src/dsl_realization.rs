@@ -1278,6 +1278,7 @@ impl Weel {
                             .handler_passthrough
                             .lock()
                             .unwrap() = connection_wrapper.handler_passthrough.clone();
+                        log::debug!("After lock 2");
                         if let Some(_) = &*(*weel_position.as_ref().unwrap())
                             .handler_passthrough
                             .lock()
@@ -1294,6 +1295,7 @@ impl Weel {
                             });
                             connection_wrapper.inform_position_change(Some(content))?;
                         };
+                        log::debug!("After lock 3");
                         drop(connection_wrapper);
                         
                         'inner: loop {
