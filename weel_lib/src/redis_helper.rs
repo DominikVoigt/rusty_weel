@@ -206,7 +206,7 @@ impl RedisHelper {
                             let params = values.as_bytes(); 
                             // TODO: Determine whether we need this still: construct_parameters(&message_json);
                             let headers = convert_headers_to_map(&message["content"]["headers"]);
-                            callback_keys.get(&topic.type_)
+                            callback_keys.get(&topic.event)
                                          .expect("Cannot happen as we check containment previously and hold mutex throughout")
                                          .lock()?
                                          // TODO: Maybe add status to message too?
