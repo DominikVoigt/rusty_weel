@@ -1255,6 +1255,7 @@ impl Weel {
                         // Will be locked in the activity_handle again
                         drop(connection_wrapper);
                         // This executes the actual call
+                        log::debug!("Before activity-handle");
                         ConnectionWrapper::activity_handle(
                             &connection_wrapper_mutex,
                             weel_position
@@ -1267,6 +1268,7 @@ impl Weel {
                                 .map(|x| x.as_str()),
                             parameters,
                         )?;
+                        log::debug!("After activity-handle");
 
                         let connection_wrapper = connection_wrapper_mutex.lock().unwrap();
                         *weel_position
