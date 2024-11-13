@@ -1452,6 +1452,7 @@ impl Weel {
                                 // If wait result was not UpdateAgain -> Break out, otherwise continue inner loop
                                 break 'inner;
                             }
+                            log::debug!("Reached end, will loop again, signaled update again: {signaled_update_again}");
                         }
                         let connection_wrapper = connection_wrapper_mutex.lock().unwrap();
                         if connection_wrapper.activity_passthrough_value().is_none() {
