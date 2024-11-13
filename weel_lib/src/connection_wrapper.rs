@@ -648,6 +648,7 @@ impl ConnectionWrapper {
 
             if callback_header_set {
                 if !body.len() > 0 {
+                    log::debug!("CPEE Update");
                     response_headers.insert("CPEE_UPDATE".to_owned(), "true".to_owned());
                     this.handle_callback(Some(status), &body, response_headers)?
                 } else {
@@ -660,12 +661,10 @@ impl ConnectionWrapper {
                         "ecid": convert_thread_id(thread::current().id())
                     });
                     let content = content_node.as_object_mut().expect("Cannot fail");
-
-                    let instantiation_header_set = match response_headers.get("CPEE_INSTANTION") {
-                        Some(instantiation_header) => !instantiation_header.is_empty(),
-                        None => false,
-                    };
-
+                    
+                    let instantiation_header_set = response_headers.contains_key("CPEE_INSTANTION") || response_headers.contains_key("cpee_instantiation");
+                    log::debug!("CPEE Instatiation set: {instantiation_header_set}");
+                    
                     if instantiation_header_set {
                         // TODO What about value_helper
                         content.insert(
@@ -681,13 +680,10 @@ impl ConnectionWrapper {
                         )?;
                     }
 
-                    let event_header_set = match response_headers.get("CPEE_EVENT") {
-                        Some(event_header) => !event_header.is_empty(),
-                        None => false,
-                    };
+                    let event_header_set = response_headers.contains_key("CPEE_EVENT") || response_headers.contains_key("cpee_event");
                     if event_header_set {
                         // TODO What about value_helper
-                        let event = response_headers.get("CPEE_EVENT").unwrap();
+                        let event = response_headers.get("CPEE_EVENT").unwrap_or(response_headers.get("cpee_event").unwrap());
                         let event = event_regex.replace_all(event, "");
                         let what = format!("task/{event}");
                         weel.redis_notifications_client.lock().unwrap().notify(
