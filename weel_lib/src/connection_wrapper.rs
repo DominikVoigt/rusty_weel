@@ -830,12 +830,11 @@ impl ConnectionWrapper {
         body: &[u8],
         options: HashMap<String, String>, // Headers
     ) -> Result<()> {
-        log::info!("Received callback with options: {:?}", options);
         let options = uniformize_headers(options);
+        log::info!("Received callback with options: {:?}", options);
         let weel = self.weel();
         let recv =
             eval_helper::structurize_result(&weel.opts.eval_backend_structurize, &options, body)?;
-        log::info!("Received from structurize service back: {recv}");
         log::info!("Locking client");
         let mut redis = weel.redis_notifications_client.lock()?;
         log::info!("Locked client");
