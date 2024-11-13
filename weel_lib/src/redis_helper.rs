@@ -195,8 +195,8 @@ impl RedisHelper {
                             .lock()
                             .expect("Could not lock mutex in callback thread");
                         log::debug!("Callback keys: {:?}", callback_keys);
-                        log::debug!("Contains key: {:?}", &topic.type_);
-                        if callback_keys.contains_key(&topic.type_) {
+                        log::debug!("Contains key: {:?}", &topic.event);
+                        if callback_keys.contains_key(&topic.event) {
                             let message_json = json!(payload);
                             if message_json["content"]["headers"].is_null()
                                 || !message_json["content"]["headers"].is_object()
