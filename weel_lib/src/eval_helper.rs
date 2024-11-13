@@ -373,16 +373,6 @@ pub fn evaluate_expression(
     let mut signal: Option<Signal> = None;
     let mut signal_text: Option<String> = None;
     
-    for p in &result.content {
-        match p {
-            Parameter::SimpleParameter { name, value, param_type } => {
-                log::debug!("Received back simple param name: {name} value: {value}")
-            },
-            Parameter::ComplexParameter { name, mime_type, content_handle } => {
-                log::debug!("Received back complex param name: {name}")
-            },
-        }
-    }
     /*
      * Retrieve the result of the expression
      * Also retrieves the data endpoints state and local data if there is some
@@ -391,6 +381,7 @@ pub fn evaluate_expression(
     while let Some(parameter) = result.content.pop() {
         match parameter {
             Parameter::SimpleParameter { name, value, .. } => {
+                log::debug!("Received simple param with name: {name}, content: {value}");
                 if name == "result" {
                     if value.len() == 0 {
                         expression_result = Some(Value::Null);
@@ -423,6 +414,7 @@ pub fn evaluate_expression(
             } => {
                 let mut content = String::new();
                 content_handle.read_to_string(&mut content)?;
+                log::debug!("Received complex param with name: {name}, content: {content}");
                 match name.as_str() {
                     "result" => {
                         if content.len() == 0 {
