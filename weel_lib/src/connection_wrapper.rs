@@ -928,6 +928,7 @@ impl ConnectionWrapper {
         if contains_non_empty(&options, "cpee_update") {
             match &self.handler_continue {
                 Some(x) => {
+                    log::debug!("Sending update again on queue: {:?}", x);
                     x.lock().unwrap().enqueue(Signal::UpdateAgain);
                 },
                 None => log::error!("Received CPEE_UPDATE but handler_continue is empty?"),
@@ -956,7 +957,6 @@ impl ConnectionWrapper {
                 }
             }
         }
-
         Ok(())
     }
 
