@@ -361,8 +361,8 @@ impl ConnectionWrapper {
             return Ok(());
         }
         if let Some(text) = node.as_str() {
-            log::debug!("Evaluating expression: {text}");
             if text.starts_with("!") {
+                log::debug!("Evaluating expression: {text}");
                 let eval_result = evaluate_expression(
                     context,
                     opts,
