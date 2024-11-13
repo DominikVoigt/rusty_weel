@@ -1271,6 +1271,7 @@ impl Weel {
                         log::debug!("After activity-handle");
 
                         let connection_wrapper = connection_wrapper_mutex.lock().unwrap();
+                        log::debug!("After lock");
                         *weel_position
                             .as_ref()
                             .unwrap()
@@ -1294,7 +1295,7 @@ impl Weel {
                             connection_wrapper.inform_position_change(Some(content))?;
                         };
                         drop(connection_wrapper);
-
+                        
                         'inner: loop {
                             log::debug!("Enterted loop");
                             let current_thread = thread::current().id();
