@@ -297,6 +297,7 @@ pub fn evaluate_expression(
     call_headers: Option<HashMap<String, String>>,
     location: &str,
 ) -> Result<EvaluationResult> {
+    log::debug!("evaluating expression: {expression}");
     // This url has to be the full path to the exec-full endpoint
     let ex_client = get_client();
 
