@@ -615,7 +615,6 @@ impl ConnectionWrapper {
             let mut client = http_helper::Client::new(&endpoint, method)?;
             client.set_request_headers(headers.clone());
             client.add_parameters(params);
-            log::debug!("Client before sending: {:?}", client);
 
             let response = client.execute_raw()?;
 
@@ -646,6 +645,7 @@ impl ConnectionWrapper {
             // Accept callback if header is set
             let callback_header_set = response_headers.contains_key("cpee_callback");
 
+            // NOTE: For this area, all headers are checked against lowercase and - subsituted with _ due to the reqwest http library!
             if callback_header_set {
                 if !body.len() > 0 {
                     log::debug!("CPEE Update");
@@ -830,6 +830,7 @@ impl ConnectionWrapper {
         body: &[u8],
         options: HashMap<String, String>, // Headers
     ) -> Result<()> {
+        log::debug!("Hanlding callback with options: {:?}", options);
         let weel = self.weel();
         let recv =
             eval_helper::structurize_result(&weel.opts.eval_backend_structurize, &options, body)?;
