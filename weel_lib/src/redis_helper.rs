@@ -202,7 +202,8 @@ impl RedisHelper {
                             {
                                 log_error_and_panic("message[content][headers] is either null, or ..[headers] is not a hash")
                             }
-                            let params = message["content"]["values"].as_str().unwrap().as_bytes(); 
+                            let values = serde_json::to_string(&message["content"]["values"]).unwrap();
+                            let params = values.as_bytes(); 
                             // TODO: Determine whether we need this still: construct_parameters(&message_json);
                             let headers = convert_headers_to_map(&message["content"]["headers"]);
                             callback_keys.get(&topic.type_)
