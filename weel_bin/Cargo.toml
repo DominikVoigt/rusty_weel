@@ -12,7 +12,7 @@ path = "src/main.rs"
 [dependencies]
 indoc = "2"
 lazy_static = "1.5.0"
-weel_macro ={ path = "../weel_macro" }
+weel_inject ={ path = "../weel_inject" }
 weel_lib = { path = "../weel_lib" }
 
 # Logging

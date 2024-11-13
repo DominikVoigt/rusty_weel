@@ -1,0 +1,17 @@
+[package]
+name = "weel_helper_macros"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+quote = "1.0"
+proc-macro2 = "1.0.82"
+
+[lib]
+proc-macro = true
+
+[profile.release]
+strip = true # Strips symbols from the binary
+opt-level = "z" #optimize for size
+lto = false # Link time optimization
+codegen-units = 1

@@ -40,7 +40,7 @@ log = "0.4.21"
 
 # Macros:
 derive_more = "0.99.18"
-weel_macro ={ path = "../weel_macro" }
+weel_helper_macros ={ path = "../weel_helper_macros" }
 lazy_static = "1.5.0"
 
 [dev-dependencies]

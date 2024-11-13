@@ -22,7 +22,7 @@ use weel_lib::dsl_realization::{Position, Result, Weel};
 use weel_lib::redis_helper::RedisHelper;
 use weel_lib::Method;
 use weel_lib::json;
-use weel_macro::inject;
+use weel_inject::inject;
 use std::io::Write;
 
 lazy_static! {
