@@ -640,16 +640,16 @@ impl ConnectionWrapper {
 
         // If status not okay:
         if status < 200 || status >= 300 {
-            response_headers.insert("CPEE_SALVAGE".to_owned(), "true".to_owned());
+            response_headers.insert("cpee_salvage".to_owned(), "true".to_owned());
             this.handle_callback(Some(status), &body, response_headers)?
         } else {
             // Accept callback if header is set
-            let callback_header_set = response_headers.contains_key("CPEE_CALLBACK") || response_headers.contains_key("cpee_callback");
+            let callback_header_set = response_headers.contains_key("cpee_callback");
 
             if callback_header_set {
                 if !body.len() > 0 {
                     log::debug!("CPEE Update");
-                    response_headers.insert("CPEE_UPDATE".to_owned(), "true".to_owned());
+                    response_headers.insert("cpee_update".to_owned(), "true".to_owned());
                     this.handle_callback(Some(status), &body, response_headers)?
                 } else {
                     // In this case we have an asynchroneous task
@@ -662,7 +662,7 @@ impl ConnectionWrapper {
                     });
                     let content = content_node.as_object_mut().expect("Cannot fail");
                     
-                    let instantiation_header_set = response_headers.contains_key("CPEE_INSTANTION") || response_headers.contains_key("cpee_instantiation");
+                    let instantiation_header_set = response_headers.contains_key("cpee_instantiation");
                     log::debug!("CPEE Instatiation set: {instantiation_header_set}");
                     
                     if instantiation_header_set {
@@ -670,7 +670,7 @@ impl ConnectionWrapper {
                         content.insert(
                             "received".to_owned(),
                             serde_json::Value::String(
-                                response_headers.get("CPEE_INSTANTIATION").unwrap().clone(),
+                                response_headers.get("cpee_instantiation").unwrap().clone(),
                             ),
                         );
                         weel.redis_notifications_client.lock().unwrap().notify(
@@ -680,10 +680,10 @@ impl ConnectionWrapper {
                         )?;
                     }
 
-                    let event_header_set = response_headers.contains_key("CPEE_EVENT") || response_headers.contains_key("cpee_event");
+                    let event_header_set = response_headers.contains_key("cpee_event");
                     if event_header_set {
                         // TODO What about value_helper
-                        let event = response_headers.get("CPEE_EVENT").unwrap_or(response_headers.get("cpee_event").unwrap());
+                        let event = response_headers.get("cpee_event").unwrap();
                         let event = event_regex.replace_all(event, "");
                         let what = format!("task/{event}");
                         weel.redis_notifications_client.lock().unwrap().notify(
@@ -858,14 +858,14 @@ impl ConnectionWrapper {
             )?;
         }
 
-        if contains_non_empty(&options, "CPEE_INSTANTIATION") {
+        if contains_non_empty(&options, "cpee_instantiation") {
             let mut content_node = content.clone();
             let content = content_node
                 .as_object_mut()
                 .expect("Construct basic content has to return json object");
             content.insert(
                 "received".to_owned(),
-                serde_json::Value::String(options.get("CPEE_INSTANTIATION").unwrap().clone()),
+                serde_json::Value::String(options.get("cpee_instantiation").unwrap().clone()),
             );
 
             redis.notify(
@@ -875,7 +875,7 @@ impl ConnectionWrapper {
             )?;
         }
 
-        if contains_non_empty(&options, "CPEE_EVENT") {
+        if contains_non_empty(&options, "cpee_event") {
             let event_regex = match regex::Regex::new(r"[^\w_-]") {
                 Ok(regex) => regex,
                 Err(err) => {
@@ -885,7 +885,7 @@ impl ConnectionWrapper {
             };
 
             // contains_non_empty ensures it it contained
-            let event = options["CPEE_EVENT"].clone();
+            let event = options["cpee_event"].clone();
             let event = event_regex.replace_all(&event, "");
 
             let mut content_node = content.clone();
@@ -909,7 +909,7 @@ impl ConnectionWrapper {
         }
         drop(redis);
 
-        if contains_non_empty(&options, "CPEE_STATUS") {
+        if contains_non_empty(&options, "cpee_status") {
             let mut content_node = content.clone();
             let content = content_node
                 .as_object_mut()
@@ -917,11 +917,11 @@ impl ConnectionWrapper {
             // CPEE::ValueHelper.parse(options['CPEE_INSTANTIATION'])
             content.insert(
                 "status".to_owned(),
-                serde_json::Value::String(options["CPEE_STATUS"].clone()),
+                serde_json::Value::String(options["cpee_status"].clone()),
             );
         }
 
-        if contains_non_empty(&options, "CPEE_UPDATE") {
+        if contains_non_empty(&options, "cpee_update") {
             match &self.handler_continue {
                 Some(x) => x.lock().unwrap().enqueue(Signal::UpdateAgain),
                 None => log::error!("Received CPEE_UPDATE but handler_continue is empty?"),
@@ -931,12 +931,12 @@ impl ConnectionWrapper {
                 weel.cancel_callback(passthrough)?;
                 self.handler_passthrough = None;
             }
-            if contains_non_empty(&options, "CPEE_SALVAGE") {
+            if contains_non_empty(&options, "cpee_salvage") {
                 match &self.handler_continue {
                     Some(x) => x.lock().unwrap().enqueue(Signal::Salvage),
                     None => log::error!("Received CPEE_SALVAGE but handler_continue is empty?"),
                 }
-            } else if contains_non_empty(&options, "CPEE_STOP") {
+            } else if contains_non_empty(&options, "cpee_stop") {
                 match &self.handler_continue {
                     Some(x) => x.lock().unwrap().enqueue(Signal::Stop),
                     None => log::error!("Received CPEE_STOP but handler_continue is empty?"),
