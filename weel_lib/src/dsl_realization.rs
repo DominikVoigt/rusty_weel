@@ -1319,9 +1319,11 @@ impl Weel {
                             // We need to release the connection_wrapper lock here to allow callbacks from redis to lock the wrapper
                             drop(connection_wrapper);
 
+                            log::debug!("Should block: {should_block}");
                             if should_block {
                                 wait_result = Some(thread_queue.lock().unwrap().dequeue());
                             };
+                            log::debug!("Wait result: {:?}", wait_result);
 
                             // Reacquire locks after waiting
                             let current_thread = thread::current().id();
