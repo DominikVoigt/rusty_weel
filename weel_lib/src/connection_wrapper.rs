@@ -833,6 +833,7 @@ impl ConnectionWrapper {
         let options = uniformize_headers(options);
         log::info!("Received callback with options: {:?}", options);
         let weel = self.weel();
+        log::debug!("Body is: {:?}", str::from_utf8(body).unwrap());
         let recv =
             eval_helper::structurize_result(&weel.opts.eval_backend_structurize, &options, body)?;
         log::info!("Locking client");
