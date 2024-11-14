@@ -836,7 +836,7 @@ impl ConnectionWrapper {
         log::debug!("Body is: {:?}", str::from_utf8(body).unwrap());
         let recv =
             eval_helper::structurize_result(&weel.opts.eval_backend_structurize, &options, body)?;
-        log::info!("Locking client");
+        log::info!("Received from sturcturize service: {recv}");
         let mut redis = weel.redis_notifications_client.lock()?;
         log::info!("Locked client");
         let content = self.construct_basic_content();
