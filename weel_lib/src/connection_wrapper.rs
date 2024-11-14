@@ -1181,8 +1181,7 @@ fn uniformize_headers(options: &HashMap<String, String>) -> HashMap<String, Stri
     let options = options.clone();
     options.iter().map(|(k,v)| {
         let k = k.to_lowercase().replace("-", "_");
-        let v= v.to_lowercase().replace("-", "_");
-        (k,v)
+        (k,v.clone())
     }).collect()
 }
 
