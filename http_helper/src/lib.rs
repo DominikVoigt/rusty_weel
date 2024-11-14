@@ -378,6 +378,7 @@ impl<'a> Client<'a> {
         request_builder = self.generate_body(request_builder)?;
         request_builder = self.set_headers(request_builder);
         let request = request_builder.build()?;
+        log::debug!("Sending request: {:?}", request);
         let response = self.reqwest_client.execute(request)?;
         Ok(RawResponse {
             headers: response.headers().clone(),
@@ -442,11 +443,9 @@ impl<'a> Client<'a> {
                 let request_builder = request_builder.body(content_handle);
                 // Need to provide content_type but not content-length
                 if self.headers.contains_key(CONTENT_TYPE.as_str()) {
-                    log::debug!("Using content type: {:?}", self.headers.get(CONTENT_TYPE));
                     request_builder
                 } else {
                     // Only set default header if no header is provided
-                    log::debug!("Using content type: {:?}", mime_type.to_string());
                     request_builder.header(CONTENT_TYPE, mime_type.to_string())
                 }
             }
