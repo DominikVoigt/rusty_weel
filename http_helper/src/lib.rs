@@ -182,7 +182,6 @@ impl<'a> Client<'a> {
 
     /**
      * Will add the parameter to the client parameters for the request
-     * If the parameter is a simple parameter, it will be URL encoded
      * Removes Quotation marks
      */
     pub fn add_parameter(&mut self, mut parameter: Parameter) {
@@ -198,8 +197,8 @@ impl<'a> Client<'a> {
                     let value = value.strip_prefix("\"").unwrap_or(&value);
                     let value = value.strip_suffix("\"").unwrap_or(value);
                     Parameter::SimpleParameter {
-                        name: encode(&name).to_string(),
-                        value: encode(&value).to_string(),
+                        name: name.to_owned(),
+                        value: value.to_owned(),
                         param_type,
                     }
                 }
@@ -209,8 +208,8 @@ impl<'a> Client<'a> {
                     let value = value.strip_prefix("\"").unwrap_or(&value);
                     let value = value.strip_suffix("\"").unwrap_or(value);
                     Parameter::SimpleParameter {
-                        name: encode(&name).to_string(),
-                        value: encode(&value).to_string(),
+                        name: name.to_owned(),
+                        value: value.to_owned(),
                         param_type,
                     }
                 }
@@ -300,7 +299,7 @@ impl<'a> Client<'a> {
 
     /**
      * Generates the complete request URL including the query parameters.
-     * Query parameters are constructed from the SimpleParameters with ParameterType Body.
+     * Query parameters are constructed from the SimpleParameters with ParameterType Body
      */
     fn generate_url(&self) -> Url {
         let mut query_params = Vec::new();
@@ -315,9 +314,9 @@ impl<'a> Client<'a> {
                     let is_query_param = matches!(param_type, ParameterType::Query);
                     if is_query_param {
                         if value.len() == 0 {
-                            query_params.push(name.clone());
+                            query_params.push(encode(name).into_owned());
                         } else {
-                            query_params.push(format!("{}={}", name, value));
+                            query_params.push(format!("{}={}", encode(name), encode(value)));
                         };
                     }
                 }
@@ -419,9 +418,9 @@ impl<'a> Client<'a> {
         match parameter {
             Parameter::SimpleParameter { name, value, .. } => {
                 let text = if value.len() == 0 {
-                    name
+                    encode(&name).into_owned()
                 } else {
-                    format!("{}={}", name, value)
+                    format!("{}={}", encode(&name), encode(&value))
                 };
                 let request_builder = request_builder.body(text);
                 // Need to provide content_type but not content-length
@@ -537,9 +536,9 @@ fn construct_form_url_encoded(
         match parameter {
             Parameter::SimpleParameter { name, value, .. } => {
                 if value.len() == 0 {
-                    params.push(name);
+                    params.push(encode(&name).into_owned());
                 } else {
-                    params.push(format!("{name}={value}"));
+                    params.push(format!("{}={}", encode(&name) , encode(&value)));
                 };
             }
             Parameter::ComplexParameter { .. } => {
