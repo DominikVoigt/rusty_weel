@@ -830,10 +830,8 @@ impl ConnectionWrapper {
         body: &[u8],
         options: HashMap<String, String>, // Headers
     ) -> Result<()> {
-        let options = uniformize_headers(options);
-        log::info!("Received callback with options: {:?}", options);
+        let headers = uniformize_headers(&options);
         let weel = self.weel();
-        log::debug!("Body is: {:?}", str::from_utf8(body).unwrap());
         let recv =
             eval_helper::structurize_result(&weel.opts.eval_backend_structurize, &options, body)?;
         log::info!("Received from sturcturize service: {recv}");
@@ -861,14 +859,14 @@ impl ConnectionWrapper {
             )?;
         }
 
-        if contains_non_empty(&options, "cpee_instantiation") {
+        if contains_non_empty(&headers, "cpee_instantiation") {
             let mut content_node = content.clone();
             let content = content_node
                 .as_object_mut()
                 .expect("Construct basic content has to return json object");
             content.insert(
                 "received".to_owned(),
-                serde_json::Value::String(options.get("cpee_instantiation").unwrap().clone()),
+                serde_json::Value::String(headers.get("cpee_instantiation").unwrap().clone()),
             );
 
             redis.notify(
@@ -878,7 +876,7 @@ impl ConnectionWrapper {
             )?;
         }
 
-        if contains_non_empty(&options, "cpee_event") {
+        if contains_non_empty(&headers, "cpee_event") {
             let event_regex = match regex::Regex::new(r"[^\w_-]") {
                 Ok(regex) => regex,
                 Err(err) => {
@@ -888,7 +886,7 @@ impl ConnectionWrapper {
             };
 
             // contains_non_empty ensures it it contained
-            let event = options["cpee_event"].clone();
+            let event = headers["cpee_event"].clone();
             let event = event_regex.replace_all(&event, "");
 
             let mut content_node = content.clone();
@@ -909,11 +907,11 @@ impl ConnectionWrapper {
             log::debug!("Setting handler values: status, value, options");
             self.handler_return_status = status;
             self.handler_return_value = Some(recv);
-            self.handler_return_options = Some(options.clone());
+            self.handler_return_options = Some(options);
         }
         drop(redis);
 
-        if contains_non_empty(&options, "cpee_status") {
+        if contains_non_empty(&headers, "cpee_status") {
             let mut content_node = content.clone();
             let content = content_node
                 .as_object_mut()
@@ -921,12 +919,12 @@ impl ConnectionWrapper {
             // CPEE::ValueHelper.parse(options['CPEE_INSTANTIATION'])
             content.insert(
                 "status".to_owned(),
-                serde_json::Value::String(options["cpee_status"].clone()),
+                serde_json::Value::String(headers["cpee_status"].clone()),
             );
         }
 
         log::info!("Before update");
-        if contains_non_empty(&options, "cpee_update") {
+        if contains_non_empty(&headers, "cpee_update") {
             match &self.handler_continue {
                 Some(x) => {
                     log::debug!("Sending update again on queue: {:?}", x);
@@ -939,12 +937,12 @@ impl ConnectionWrapper {
                 weel.cancel_callback(passthrough)?;
                 self.handler_passthrough = None;
             }
-            if contains_non_empty(&options, "cpee_salvage") {
+            if contains_non_empty(&headers, "cpee_salvage") {
                 match &self.handler_continue {
                     Some(x) => x.lock().unwrap().enqueue(Signal::Salvage),
                     None => log::error!("Received CPEE_SALVAGE but handler_continue is empty?"),
                 }
-            } else if contains_non_empty(&options, "cpee_stop") {
+            } else if contains_non_empty(&headers, "cpee_stop") {
                 match &self.handler_continue {
                     Some(x) => x.lock().unwrap().enqueue(Signal::Stop),
                     None => log::error!("Received CPEE_STOP but handler_continue is empty?"),
@@ -1179,7 +1177,8 @@ impl ConnectionWrapper {
 /**
  * Ensures that all headers arriving at the handling code are uniform: are all lower cased and all -'s are subsituted with _'s
  */
-fn uniformize_headers(options: HashMap<String, String>) -> HashMap<String, String> {
+fn uniformize_headers(options: &HashMap<String, String>) -> HashMap<String, String> {
+    let options = options.clone();
     options.iter().map(|(k,v)| {
         let k = k.to_lowercase().replace("-", "_");
         let v= v.to_lowercase().replace("-", "_");
