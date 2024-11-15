@@ -46,7 +46,7 @@ lazy_static = "1.5.0"
 rand = "0.8.5"
 
 [profile.release]
-strip = true # Strips symbols from the binary
+strip = false # Strips symbols from the binary
 opt-level = "z" #optimize for size
 lto = false # Link time optimization
 codegen-units = 16
