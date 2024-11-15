@@ -13,3 +13,4 @@ opt-level = "z" #optimize for size
 lto = false # Link time optimization
 codegen-units = 16
 incremental = true
+resolver = "2"
