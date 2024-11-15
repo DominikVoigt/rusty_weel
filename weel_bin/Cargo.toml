@@ -13,7 +13,7 @@ path = "src/main.rs"
 indoc = "2"
 lazy_static = "1.5.0"
 weel_inject ={ path = "../weel_inject" }
-weel_lib = { path = "../weel_lib" }
+weel_lib_wrapper = { path = "../weel_lib_wrapper" }
 
 # Logging
 log = "0.4.21"

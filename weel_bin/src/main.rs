@@ -8,20 +8,20 @@ use std::sync::{mpsc, Arc, Mutex};
 
 use indoc::indoc;
 use lazy_static::lazy_static;
-use weel_lib::data_types::CancelCondition::{First, Last};
-use weel_lib::data_types::ChooseVariant::{Exclusive, Inclusive};
+use weel_lib_wrapper::data_types::CancelCondition::{First, Last};
+use weel_lib_wrapper::data_types::ChooseVariant::{Exclusive, Inclusive};
 
 use std::{panic, thread};
 
-use weel_lib::connection_wrapper::ConnectionWrapper;
-use weel_lib::data_types::{
-    CancelCondition, Context, HTTPParams, KeyValuePair, State, Opts, Status, ThreadInfo, ChooseVariant
+use weel_lib_wrapper::ConnectionWrapper;
+use weel_lib_wrapper::data_types::{
+    Context, KeyValuePair, State, Opts, Status, ThreadInfo
 };
-use weel_lib::dsl::DSL;
-use weel_lib::dsl_realization::{Position, Result, Weel};
-use weel_lib::redis_helper::RedisHelper;
-use weel_lib::Method;
-use weel_lib::json;
+use weel_lib_wrapper::dsl::DSL;
+use weel_lib_wrapper::dsl_realization::{Position, Result, Weel};
+use weel_lib_wrapper::redis_helper::RedisHelper;
+use weel_lib_wrapper::Method;
+use weel_lib_wrapper::json;
 use weel_inject::inject;
 use std::io::Write;
 
@@ -89,7 +89,7 @@ fn startup() -> Arc<Weel> {
         positions: Mutex::new(Vec::new()),
         thread_information: Mutex::new(HashMap::new()),
         stop_signal_receiver: Mutex::new(None),
-        critical_section_mutexes: weel_lib::OnceMap::new(),
+        critical_section_mutexes: weel_lib_wrapper::OnceMap::new(),
     };
     let current_thread = thread::current();
 
@@ -121,7 +121,7 @@ fn init_logger() -> () {
                 "{}:{} {} {style}[{}]{style:#} - {}",
                 record.file().unwrap_or("unknown"),
                 record.line().unwrap_or(0),
-                weel_lib::Local::now().format("%Y-%m-%dT%H:%M:%S:%.6f"),
+                weel_lib_wrapper::Local::now().format("%Y-%m-%dT%H:%M:%S:%.6f"),
                 record.level(),
                 record.args()
             )
@@ -136,7 +136,7 @@ fn init_logger() -> () {
  */
 fn get_search_positions(
     context: &Mutex<Context>,
-) -> HashMap<String, weel_lib::dsl_realization::Position> {
+) -> HashMap<String, weel_lib_wrapper::dsl_realization::Position> {
     context
         .lock()
         .unwrap()
@@ -226,7 +226,7 @@ macro_rules! weel {
 #[macro_export]
 macro_rules! ƛ {
     ($block: block) => {
-        &Box::new(|| -> weel_lib::dsl_realization::Result<()> {
+        &Box::new(|| -> weel_lib_wrapper::dsl_realization::Result<()> {
             $block
             Ok(())
     })
@@ -236,7 +236,7 @@ macro_rules! ƛ {
 #[macro_export]
 macro_rules! pƛ {
     ($block: block) => {
-        std::sync::Arc::new(|| -> weel_lib::dsl_realization::Result<()> {
+        std::sync::Arc::new(|| -> weel_lib_wrapper::dsl_realization::Result<()> {
             $block
             Ok(())
     })
