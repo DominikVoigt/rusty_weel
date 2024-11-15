@@ -22,7 +22,7 @@ urlencoding = "2.1.3"
 form_urlencoded = "1.2.1"
 
 [profile.release]
-strip = true # Strips symbols from the binary
+strip = false # Strips symbols from the binary
 opt-level = "z" #optimize for size
 lto = false # Link time optimization
-codegen-units = 1
+codegen-units = 8
