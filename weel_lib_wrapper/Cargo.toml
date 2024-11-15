@@ -12,3 +12,10 @@ crate-type = ["dylib"]
 
 [dependencies]
 weel_lib ={ path = "../weel_lib"}
+
+[profile.release]
+strip = false # Strips symbols from the binary
+opt-level = "z" #optimize for size
+lto = false # Link time optimization
+codegen-units = 16
+incremental = true

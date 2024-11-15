@@ -1,0 +1,8 @@
+[workspace]
+
+members = [
+    "weel_bin",
+    "weel_inject",
+    "weel_lib_wrapper",
+    "weel_lib"
+]
