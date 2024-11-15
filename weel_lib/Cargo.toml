@@ -38,7 +38,7 @@ once = "0.3.4"
 log = "0.4.22"
 
 # Macros:
-derive_more = "1.0.0"
+derive_more = {version = "1.0.0", features = ["from"]}
 lazy_static = "1.5.0"
 
 [dev-dependencies]

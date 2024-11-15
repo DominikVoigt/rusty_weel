@@ -1,5 +1,4 @@
 use bytes::{Buf, Bytes};
-use derive_more::From;
 use multipart::server::{FieldHeaders, ReadEntry};
 use reqwest::{
     blocking::{
