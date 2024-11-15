@@ -16,7 +16,7 @@ weel_inject ={ path = "../weel_inject" }
 weel_lib_wrapper = { path = "../weel_lib_wrapper" }
 
 # Logging
-log = "0.4.21"
+log = "0.4.22"
 env_logger = "0.11.5"
 
 # Signal handling

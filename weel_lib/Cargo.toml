@@ -11,7 +11,7 @@ path = "src/lib.rs"
 
 [dependencies]
 # Serialization
-serde = {version = "1.0.210", features = ["derive"]}
+serde = {version = "1.0.215", features = ["derive"]}
 serde_json = {version = "1.0", features = ["preserve_order"]}
 mime = "0.3.17"
 
@@ -35,18 +35,11 @@ rand = "0.8.5"
 once = "0.3.4"
 
 # Logging
-log = "0.4.21"
+log = "0.4.22"
 
 # Macros:
-derive_more = "0.99.18"
+derive_more = "1.0.0"
 lazy_static = "1.5.0"
 
 [dev-dependencies]
 rand = "0.8.5"
-
-[profile.release]
-strip = false # Strips symbols from the binary
-opt-level = "z" #optimize for size
-lto = false # Link time optimization
-codegen-units = 16
-incremental = true
