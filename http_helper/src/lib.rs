@@ -8,6 +8,7 @@ use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue, ToStrError, CONTENT_TYPE},
     Url,
 };
+use derive_more::From;
 use serde::Serialize;
 use tempfile::tempfile;
 
