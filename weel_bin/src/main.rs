@@ -15,7 +15,7 @@ use std::{panic, thread};
 
 use weel_lib_wrapper::ConnectionWrapper;
 use weel_lib_wrapper::data_types::{
-    Context, KeyValuePair, State, Opts, Status, ThreadInfo
+    Context, HTTPParams, KeyValuePair, State, Opts, Status, ThreadInfo
 };
 use weel_lib_wrapper::dsl::DSL;
 use weel_lib_wrapper::dsl_realization::{Position, Result, Weel};
