@@ -1095,6 +1095,7 @@ impl Weel {
     ) -> Result<()> {
         let position = self.clone().position_test(activity_id)?;
         let in_search_mode = self.in_search_mode(Some(activity_id));
+        log::debug!("At activity: {activity_id}, search mode is: {in_search_mode}");
         if in_search_mode {
             return Ok(());
         }
