@@ -22,7 +22,7 @@ pub struct ConnectionWrapper {
     // The identifier of the callback the connection wrapper is waiting for (if none, it is not waiting for it)
     pub handler_passthrough: Option<String>,
     pub handler_return_status: Option<u16>,
-    pub handler_return_value: Option<Value>,
+    pub handler_return_value: Option<String>,
     pub handler_return_options: Option<HashMap<String, String>>,
     // We keep them as arrays to be flexible but will only contain one element for now
     // Contains the actual endpoint URL
@@ -846,7 +846,7 @@ impl ConnectionWrapper {
                 .expect("Construct basic content has to return json object");
             content.insert(
                 "received".to_owned(),
-                recv.clone(),
+                serde_json::Value::String(recv.clone()),
             );
             content.insert(
                 "annotations".to_owned(),
@@ -896,7 +896,7 @@ impl ConnectionWrapper {
                 .expect("Construct basic content has to return json object");
             content.insert(
                 "received".to_owned(),
-                recv.clone(),
+                serde_json::Value::String(recv.clone()),
             );
 
             redis.notify(

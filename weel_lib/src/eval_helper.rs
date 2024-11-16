@@ -295,7 +295,7 @@ pub fn evaluate_expression(
     weel_status: Option<StatusDTO>,
     thread_local: &Option<Value>,
     additional: Value,
-    call_result: Option<Value>,
+    call_result: Option<String>,
     call_headers: Option<HashMap<String, String>>,
     location: &str,
 ) -> Result<EvaluationResult> {
@@ -350,7 +350,7 @@ pub fn evaluate_expression(
             client.add_complex_parameter(
                 "call_result",
                 APPLICATION_JSON,
-                serde_json::to_string(&call_result).unwrap().as_bytes(),
+                call_result.as_bytes(),
             )?;
         }
 
@@ -654,7 +654,7 @@ pub fn structurize_result(
     eval_backend_structurize_url: &str,
     options: &HashMap<String, String>,
     body: &[u8],
-) -> Result<Value> {
+) -> Result<String> {
     let mut client =
         http_helper::Client::new(eval_backend_structurize_url, http_helper::Method::PUT)?;
     let mut body_file = tempfile()?;
@@ -696,15 +696,14 @@ pub fn structurize_result(
             )))
         } else {
             Ok(match content.pop().unwrap() {
-                Parameter::SimpleParameter { value, .. } => serde_json::to_value(value).unwrap(),
+                Parameter::SimpleParameter { value, .. } => value,
                 Parameter::ComplexParameter {
                     mut content_handle, name, mime_type } => {
                     log::debug!("Struct. service returned complex param: {name}");
                     let mut content = String::new();
                     content_handle.rewind()?;
                     content_handle.read_to_string(&mut content)?;
-                    log::debug!("Received back from structurize: {:?}", content);
-                    serde_json::to_value(content).unwrap()
+                    content
                 }
             })
         }
