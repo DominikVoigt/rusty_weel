@@ -836,6 +836,7 @@ impl ConnectionWrapper {
         let weel = self.weel();
         let recv =
             eval_helper::structurize_result(&weel.opts.eval_backend_structurize, &options, body)?;
+        log::debug!("Received from structurize: {:?}", recv);
         let mut redis = weel.redis_notifications_client.lock()?;
         let content = self.construct_basic_content();
         {
