@@ -832,6 +832,7 @@ impl ConnectionWrapper {
     ) -> Result<()> {
         log::debug!("Handling callback with options: {:?}", options);
         let headers = uniformize_headers(&options);
+        log::debug!("Contains content_type: {:?}", headers.get("content_type"));
         let weel = self.weel();
         let recv =
             eval_helper::structurize_result(&weel.opts.eval_backend_structurize, &options, body)?;
