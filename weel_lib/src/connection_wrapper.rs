@@ -830,6 +830,7 @@ impl ConnectionWrapper {
         body: &[u8],
         options: HashMap<String, String>, // Headers
     ) -> Result<()> {
+        log::debug!("Handling callback with options: {:?}", options);
         let headers = uniformize_headers(&options);
         let weel = self.weel();
         let recv =
