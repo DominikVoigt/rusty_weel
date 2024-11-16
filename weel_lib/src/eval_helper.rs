@@ -655,7 +655,6 @@ pub fn structurize_result(
     options: &HashMap<String, String>,
     body: &[u8],
 ) -> Result<Value> {
-    log::debug!("Body sent to struct.: {:?}", str::from_utf8(body).unwrap());
     let mut client =
         http_helper::Client::new(eval_backend_structurize_url, http_helper::Method::PUT)?;
     let mut body_file = tempfile()?;
@@ -668,12 +667,12 @@ pub fn structurize_result(
             content_type.parse::<Mime>().unwrap_or_else(|err| {
                 log::error!("Provided content type could not be parsed to a mimetype: {:?}", err);
                 log::error!("Defaulting to application/json");
-                APPLICATION_JSON
+                TEXT_PLAIN_UTF_8
             })
         },
         None => {
             log::error!("No content type provided in response, defaulting to application/json");
-            APPLICATION_JSON
+            TEXT_PLAIN_UTF_8
         },
     };
     client.add_parameter(Parameter::ComplexParameter {
