@@ -187,8 +187,6 @@ impl RedisHelper {
                 "callback-end:*".to_owned(),
             ];
             redis_helper.blocking_pub_sub(topics, move |payload: &str, pattern: &str, topic: Topic| {
-                log::debug!("Received: Topic: {:?}, pattern: {pattern}, payload: {payload}", topic);
-                log::debug!("Callback keys: {:?}", callback_keys);
                 match pattern {
                     "callback-response:*" => {
                         let callback_keys = callback_keys
@@ -205,7 +203,6 @@ impl RedisHelper {
                             let params = values.as_bytes(); 
                             // TODO: Determine whether we need this still: construct_parameters(&message_json);
                             let headers = convert_headers_to_map(&message["content"]["headers"]);
-                            log::debug!("handling callback");
                             callback_keys.get(&topic.event)
                                          .expect("Cannot happen as we check containment previously and hold mutex throughout")
                                          .lock()?
