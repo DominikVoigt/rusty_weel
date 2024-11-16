@@ -809,10 +809,13 @@ impl Weel {
         for child in children {
             self.recursive_join(child)?;
         }
+        /*
+        Disabled for now, would also require locking parent and removing the thread from branches. 
         if joined_thread {
             // cleanup thread info after we joined it and all of its children
-            self.thread_information.lock().unwrap().remove(&thread);
+            self.thread_information.lock().unwrap().remove(&thread);  
         }
+        */
         Ok(())
     }
 
