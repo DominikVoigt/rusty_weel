@@ -625,6 +625,7 @@ impl DSL for Weel {
         }
         
         let current_thread = thread::current().id();
+        log::debug!("Stopping on thread: {:?}", current_thread);
         let thread_info_map = self.thread_information.lock().unwrap();
         let thread_info = thread_info_map
             .get(&current_thread)
