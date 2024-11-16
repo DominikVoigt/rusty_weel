@@ -1285,14 +1285,11 @@ impl Weel {
                                 None,
                                 None,
                             );
-                            log::debug!("After lock 2.7");
                             let content = json!({
                                 "wait": **weel_position.as_ref().unwrap()
                             });
-                            log::debug!("After lock 2.8");
                             connection_wrapper.inform_position_change(Some(content))?;
                         };
-                        log::debug!("After lock 3");
                         drop(connection_wrapper);
                         
                         'inner: loop {
@@ -1308,9 +1305,7 @@ impl Weel {
                                 *self.state.lock().unwrap(),
                                 State::Stopping | State::Stopped | State::Finishing
                             );
-                            log::debug!("Before lock cw");
                             let connection_wrapper = connection_wrapper_mutex.lock().unwrap();
-                            log::debug!("After lock cw");
 
                             let should_block =
                                 !state_stopping_or_finishing && !thread_info.no_longer_necessary;
