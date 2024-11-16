@@ -9,7 +9,8 @@ use std::{
 use http_helper::{Client, Parameter};
 use lazy_static::lazy_static;
 use log;
-use mime::{APPLICATION_JSON, TEXT_PLAIN_UTF_8};
+use mime::{Mime, APPLICATION_JSON, TEXT_PLAIN_UTF_8};
+use reqwest::header::CONTENT_TYPE;
 use serde_json::Value;
 use tempfile::tempfile;
 
@@ -658,9 +659,23 @@ pub fn structurize_result(
     let mut body_file = tempfile()?;
     body_file.write_all(body)?;
     body_file.rewind()?;
+    let content_string = options.get(CONTENT_TYPE.as_str());
+    let mime_type = match content_string {
+        Some(content_type) => {
+            content_type.parse::<Mime>().unwrap_or_else(|err| {
+                log::error!("Provided content type could not be parsed to a mimetype: {:?}", err);
+                log::error!("Defaulting to application/json");
+                APPLICATION_JSON
+            })
+        },
+        None => {
+            log::error!("No content type provided in response, defaulting to application/json");
+            APPLICATION_JSON
+        },
+    };
     client.add_parameter(Parameter::ComplexParameter {
         name: "body".to_owned(),
-        mime_type: TEXT_PLAIN_UTF_8,
+        mime_type: mime_type,
         content_handle: body_file,
     });
     client.add_request_headers(options.clone())?;
