@@ -201,7 +201,7 @@ pub struct ThreadInfo {
     pub branch_position: Option<Arc<Position>>,
     pub switched_to_execution: bool,
     // Continue structure in original code
-    pub callback_signals: Arc<Mutex<BlockingQueue<Signal>>>,
+    pub callback_signals: Arc<BlockingQueue<Signal>>,
 
     // Thread IDs of all spawned children threads (are branches)
     // ID of this thread relative to its parent (not globaly unique), used mainly for debugging), this id is used within the branch_traces
@@ -216,7 +216,7 @@ impl Default for ThreadInfo {
             in_search_mode: false,
             switched_to_execution: false,
             no_longer_necessary: false,
-            callback_signals: Arc::new(Mutex::new(BlockingQueue::new())),
+            callback_signals: Arc::new(BlockingQueue::new()),
             branch_traces: HashMap::new(),
             branch_position: None,
             // This should not matter since we are not in a parallel yet

@@ -1123,7 +1123,7 @@ impl Weel {
                 break 'raise Ok(()); // Will execute the finalize (ensure block)
             }
 
-            thread_info.callback_signals = Arc::new(Mutex::new(BlockingQueue::new()));
+            thread_info.callback_signals = Arc::new(BlockingQueue::new());
             let mut connection_wrapper = connection_wrapper_mutex.lock().unwrap();
             connection_wrapper.handler_continue = Some(thread_info.callback_signals.clone());
 
@@ -1326,7 +1326,7 @@ impl Weel {
 
                             log::debug!("Should block: {should_block}");
                             if should_block {
-                                wait_result = Some(thread_queue.lock().unwrap().dequeue());
+                                wait_result = Some(thread_queue.dequeue());
                             };
                             log::debug!("Wait result: {:?}", wait_result);
 
@@ -2078,8 +2078,6 @@ fn recursive_continue(
     // Make async tasks continue
     thread_info
         .callback_signals
-        .lock()
-        .unwrap()
         .enqueue(Signal::None);
     if let Some(branch_event) = &thread_info.branch_event_sender {
         match branch_event.send(()) {

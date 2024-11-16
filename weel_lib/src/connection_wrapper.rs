@@ -18,7 +18,7 @@ pub struct ConnectionWrapper {
     weel: Weak<Weel>,
     handler_position: Option<String>,
     // The queue the calling thread is blocking on. -> Uses handle_callback to signal thread to continue running
-    pub handler_continue: Option<Arc<Mutex<crate::data_types::BlockingQueue<Signal>>>>,
+    pub handler_continue: Option<Arc<crate::data_types::BlockingQueue<Signal>>>,
     // The identifier of the callback the connection wrapper is waiting for (if none, it is not waiting for it)
     pub handler_passthrough: Option<String>,
     pub handler_return_status: Option<u16>,
@@ -48,7 +48,7 @@ impl ConnectionWrapper {
         weel: Arc<Weel>,
         // Corresponds to the label of the activity the handler is initialized for
         handler_position: Option<String>,
-        handler_continue: Option<Arc<Mutex<BlockingQueue<Signal>>>>,
+        handler_continue: Option<Arc<BlockingQueue<Signal>>>,
     ) -> Self {
         let weel = Arc::downgrade(&weel);
         ConnectionWrapper {
@@ -926,7 +926,7 @@ impl ConnectionWrapper {
             match &self.handler_continue {
                 Some(x) => {
                     log::debug!("Sending update again on queue: {:?}", x);
-                    x.lock().unwrap().enqueue(Signal::UpdateAgain);
+                    x.enqueue(Signal::UpdateAgain);
                 },
                 None => log::error!("Received CPEE_UPDATE but handler_continue is empty?"),
             }
@@ -937,17 +937,17 @@ impl ConnectionWrapper {
             }
             if contains_non_empty(&headers, "cpee_salvage") {
                 match &self.handler_continue {
-                    Some(x) => x.lock().unwrap().enqueue(Signal::Salvage),
+                    Some(x) => x.enqueue(Signal::Salvage),
                     None => log::error!("Received CPEE_SALVAGE but handler_continue is empty?"),
                 }
             } else if contains_non_empty(&headers, "cpee_stop") {
                 match &self.handler_continue {
-                    Some(x) => x.lock().unwrap().enqueue(Signal::Stop),
+                    Some(x) => x.enqueue(Signal::Stop),
                     None => log::error!("Received CPEE_STOP but handler_continue is empty?"),
                 }
             } else {
                 match &self.handler_continue {
-                    Some(x) => x.lock().unwrap().enqueue(Signal::None),
+                    Some(x) => x.enqueue(Signal::None),
                     None => log::error!(
                         "Received neither salvage or stop but handler_continue is empty?"
                     ),
