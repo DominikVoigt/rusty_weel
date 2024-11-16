@@ -228,7 +228,7 @@ impl DSL for Weel {
                 .clone();
 
             let mut thread_info = ThreadInfo::default();
-            thread_info.in_search_mode = weel.search_positions.lock().unwrap().is_empty();
+            thread_info.in_search_mode = !weel.search_positions.lock().unwrap().is_empty();
             thread_info.parent_thread = Some(parent_thread);
             thread_info.local = Some(weel.context.lock().unwrap().data.clone());
             let (terminate_tx, terminate_rx) = mpsc::channel();
@@ -773,7 +773,6 @@ impl Weel {
         Ok(())
     }
 
-    // TODO: look into case where thread is none? What are we doing there?
     fn recursive_join(&self, thread: ThreadId) -> Result<()> {
         let children: Vec<ThreadId>;
         let mut joined_thread = false;
