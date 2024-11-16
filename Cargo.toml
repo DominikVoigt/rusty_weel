@@ -6,6 +6,7 @@ members = [
     "weel_lib_wrapper",
     "weel_lib"
 ]
+resolver = "2"
 
 [profile.release]
 strip = false # Strips symbols from the binary
@@ -13,4 +14,3 @@ opt-level = "z" #optimize for size
 lto = false # Link time optimization
 codegen-units = 16
 incremental = true
-resolver = "1"

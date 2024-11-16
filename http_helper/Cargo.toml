@@ -20,9 +20,3 @@ urlencoding = "2.1.3"
 # parsing of urlencoded form
 form_urlencoded = "1.2.1"
 derive_more = {version = "1.0.0", features = ["from"]}
-
-[profile.release]
-strip = false # Strips symbols from the binary
-opt-level = "z" #optimize for size
-lto = false # Link time optimization
-codegen-units = 8
