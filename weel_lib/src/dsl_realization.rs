@@ -1806,6 +1806,7 @@ impl Weel {
                 .unwrap()
                 .contains_key(&activity_id.to_owned());
             if found_position {
+                log::debug!("Found search position: {activity_id}");
                 // We found the first position on this branch -> We do not need to search futher along this branch of execution
                 thread_info.in_search_mode = false;
                 thread_info.switched_to_execution = true;
