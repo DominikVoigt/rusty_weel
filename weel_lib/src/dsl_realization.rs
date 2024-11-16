@@ -625,7 +625,6 @@ impl DSL for Weel {
         }
         
         let current_thread = thread::current().id();
-        log::debug!("Stopping on thread: {:?}", current_thread);
         let thread_info_map = self.thread_information.lock().unwrap();
         let thread_info = thread_info_map
             .get(&current_thread)
@@ -1057,7 +1056,6 @@ impl Weel {
             .lock()
             .expect("could not acquire Mutex")
             .insert(key.to_owned(), connection_wrapper);
-        log::debug!("Inserted callback key");
         Ok(())
     }
 
@@ -1271,7 +1269,6 @@ impl Weel {
                                 .map(|x| x.as_str()),
                             parameters,
                         )?;
-                        log::debug!("After activity-handle");
 
                         let connection_wrapper = connection_wrapper_mutex.lock().unwrap();
                         *weel_position
@@ -1327,7 +1324,6 @@ impl Weel {
                             if should_block {
                                 wait_result = Some(thread_queue.dequeue());
                             };
-                            log::debug!("Wait result: {:?}", wait_result);
 
                             // Reacquire locks after waiting
                             let current_thread = thread::current().id();
@@ -1412,7 +1408,6 @@ impl Weel {
                             };
 
                             connection_wrapper.inform_activity_manipulate()?;
-                            log::debug!("Before execute");
                             if let Some(code) = code {
                                 let mut signaled_again = false;
                                 let result = match self.execute_code(
@@ -1458,7 +1453,6 @@ impl Weel {
                                 // If wait result was not UpdateAgain -> Break out, otherwise continue inner loop
                                 break 'inner;
                             }
-                            log::debug!("Reached end, will loop again, signaled update again: {signaled_update_again}");
                         }
                         let connection_wrapper = connection_wrapper_mutex.lock().unwrap();
                         if connection_wrapper.activity_passthrough_value().is_none() {
@@ -1653,9 +1647,6 @@ impl Weel {
         call_result: Option<String>,
         call_headers: Option<HashMap<String, String>>,
     ) -> Result<eval_helper::EvaluationResult> {
-        log::debug!("Executing code: {code} location: {location}");
-        log::debug!("Call result is: {:?}", call_result);
-        log::debug!("Call headers is: {:?}", call_headers);
         // We clone the dynamic data and status dto here which is expensive but allows us to not block the whole weel until the eval call returns
         let dynamic_data = self.context.lock().unwrap().clone();
         let status = self.status.lock().unwrap().to_dto();
@@ -2070,8 +2061,6 @@ fn recursive_continue(
     thread_info_map: &MutexGuard<HashMap<ThreadId, RefCell<ThreadInfo>>>,
     thread_id: &ThreadId,
 ) {
-    log::debug!("Thead info map is: {:?}", thread_info_map);
-    log::debug!("Access info for thread: {:?}", thread_id);
     let thread_info = thread_info_map
         .get(thread_id)
         .expect(PRECON_THREAD_INFO)

@@ -362,7 +362,6 @@ impl ConnectionWrapper {
         }
         if let Some(text) = node.as_str() {
             if text.starts_with("!") {
-                log::debug!("Evaluating expression: {text}");
                 let eval_result = evaluate_expression(
                     context,
                     opts,
@@ -559,7 +558,6 @@ impl ConnectionWrapper {
             let endpoint = match this.handler_endpoints.get(0) {
                 // TODO: Set method by matched method in url
                 Some(endpoint) => {
-                    log::debug!("Using endpoint: {endpoint}");
                     match protocol_regex.captures(&endpoint) {
                         Some(capture) => {
                             match capture.get(1) {
@@ -572,10 +570,8 @@ impl ConnectionWrapper {
                             }
                             match capture.get(2) {
                                 Some(captured_method) => {
-                                    log::debug!("Captured method is: {:?}", captured_method);
                                     match captured_method.as_str().to_lowercase().as_str() {
                                         "post" => {
-                                            log::debug!("Setting method to post");
                                             method = Method::POST;
                                         }
                                         "get" => {
@@ -648,7 +644,6 @@ impl ConnectionWrapper {
             // NOTE: For this area, all headers are checked against lowercase and - subsituted with _ due to the reqwest http library!
             if callback_header_set {
                 if !body.len() > 0 {
-                    log::debug!("CPEE Update");
                     response_headers.insert("cpee_update".to_owned(), "true".to_owned());
                     this.handle_callback(Some(status), &body, response_headers)?
                 } else {
@@ -663,7 +658,6 @@ impl ConnectionWrapper {
                     let content = content_node.as_object_mut().expect("Cannot fail");
                     
                     let instantiation_header_set = response_headers.contains_key("cpee_instantiation");
-                    log::debug!("CPEE Instatiation set: {instantiation_header_set}");
                     
                     if instantiation_header_set {
                         // TODO What about value_helper
@@ -905,7 +899,6 @@ impl ConnectionWrapper {
                 weel.get_instance_meta_data(),
             )?;
         } else {
-            log::debug!("Setting handler values: status, value, options");
             self.handler_return_status = status;
             self.handler_return_value = Some(recv);
             self.handler_return_options = Some(options);
@@ -928,7 +921,6 @@ impl ConnectionWrapper {
         if contains_non_empty(&headers, "cpee_update") {
             match &self.handler_continue {
                 Some(x) => {
-                    log::debug!("Sending update again on queue: {:?}", x);
                     x.enqueue(Signal::UpdateAgain);
                 },
                 None => log::error!("Received CPEE_UPDATE but handler_continue is empty?"),

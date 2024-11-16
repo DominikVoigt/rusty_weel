@@ -299,7 +299,6 @@ pub fn evaluate_expression(
     call_headers: Option<HashMap<String, String>>,
     location: &str,
 ) -> Result<EvaluationResult> {
-    log::debug!("evaluating expression: {expression}");
     // This url has to be the full path to the exec-full endpoint
     let ex_client = get_client();
 
@@ -383,7 +382,6 @@ pub fn evaluate_expression(
     while let Some(parameter) = result.content.pop() {
         match parameter {
             Parameter::SimpleParameter { name, value, .. } => {
-                log::debug!("Received simple param with name: {name}, content: {value}");
                 if name == "result" {
                     if value.len() == 0 {
                         expression_result = Some(Value::Null);
@@ -416,7 +414,6 @@ pub fn evaluate_expression(
             } => {
                 let mut content = String::new();
                 content_handle.read_to_string(&mut content)?;
-                log::debug!("Received complex param with name: {name}, content: {content}");
                 match name.as_str() {
                     "result" => {
                         if content.len() == 0 {
@@ -698,7 +695,7 @@ pub fn structurize_result(
             Ok(match content.pop().unwrap() {
                 Parameter::SimpleParameter { value, .. } => value,
                 Parameter::ComplexParameter {
-                    mut content_handle, name, mime_type } => {
+                    mut content_handle, name, .. } => {
                     log::debug!("Struct. service returned complex param: {name}");
                     let mut content = String::new();
                     content_handle.rewind()?;

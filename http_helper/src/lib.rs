@@ -378,7 +378,6 @@ impl<'a> Client<'a> {
         request_builder = self.generate_body(request_builder)?;
         request_builder = self.set_headers(request_builder);
         let request = request_builder.build()?;
-        log::debug!("Sending request: {:?}", request);
         let response = self.reqwest_client.execute(request)?;
         Ok(RawResponse {
             headers: response.headers().clone(),
