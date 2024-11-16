@@ -164,10 +164,11 @@ impl DSL for Weel {
             branch_event_rx.recv().unwrap();
         }
         let thread_map = self.thread_information.lock().unwrap();
-        let thread_info = thread_map
+        let mut thread_info = thread_map
             .get(&current_thread_id)
             .expect(PRECON_THREAD_INFO)
-            .borrow();
+            .borrow_mut();
+        thread_info.branch_event_sender = None;
 
         connection_wrapper.join_branches(current_thread_id, Some(&thread_info.branch_traces))?;
         drop(thread_info);
