@@ -1257,7 +1257,7 @@ impl Weel {
                         // Will be locked in the activity_handle again
                         drop(connection_wrapper);
                         // This executes the actual call
-                        log::debug!("Before activity-handle");
+                        log::debug!("Before activity-handle for activity {activity_id}");
                         ConnectionWrapper::activity_handle(
                             &connection_wrapper_mutex,
                             weel_position
