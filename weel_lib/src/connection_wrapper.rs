@@ -832,6 +832,7 @@ impl ConnectionWrapper {
     ) -> Result<()> {
         let headers = uniformize_headers(&options);
         let weel = self.weel();
+        log::debug!("Seding to structurize service: {:?}", str::from_utf8(body).unwrap());
         let recv =
             eval_helper::structurize_result(&weel.opts.eval_backend_structurize, &options, body)?;
         log::info!("Received from structurize service: {recv}");
