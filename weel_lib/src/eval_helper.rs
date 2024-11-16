@@ -702,6 +702,7 @@ pub fn structurize_result(
                     let mut content = String::new();
                     content_handle.rewind()?;
                     content_handle.read_to_string(&mut content)?;
+                    log::debug!("Received back from structurize: {:?}", content);
                     serde_json::to_value(content).unwrap()
                 }
             })
