@@ -623,9 +623,10 @@ impl DSL for Weel {
         if self.in_search_mode(None) {
             return Ok(());
         }
-
+        
         let current_thread = thread::current().id();
         let thread_info_map = self.thread_information.lock().unwrap();
+        log::debug!("Thead info map is: {:?}", thread_info_map);
         let thread_info = thread_info_map
             .get(&current_thread)
             .expect(PRECON_THREAD_INFO)
