@@ -660,6 +660,7 @@ pub fn structurize_result(
     body_file.write_all(body)?;
     body_file.rewind()?;
     let content_string = options.get(CONTENT_TYPE.as_str());
+    // TODO: The default cannot be json! (just for worklist for now) -> Needs to be octet-stream or none and structurize service has to guess! 
     let mime_type = match content_string {
         Some(content_type) => {
             content_type.parse::<Mime>().unwrap_or_else(|err| {
