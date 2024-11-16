@@ -1,3 +1,4 @@
+use core::str;
 use std::{
     collections::HashMap,
     fmt::Display,
@@ -654,6 +655,7 @@ pub fn structurize_result(
     options: &HashMap<String, String>,
     body: &[u8],
 ) -> Result<Value> {
+    log::debug!("Body sent to struct.: {:?}", str::from_utf8(body).unwrap());
     let mut client =
         http_helper::Client::new(eval_backend_structurize_url, http_helper::Method::PUT)?;
     let mut body_file = tempfile()?;
