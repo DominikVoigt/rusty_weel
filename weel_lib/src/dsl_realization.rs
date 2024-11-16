@@ -626,7 +626,6 @@ impl DSL for Weel {
         
         let current_thread = thread::current().id();
         let thread_info_map = self.thread_information.lock().unwrap();
-        log::debug!("Thead info map is: {:?}", thread_info_map);
         let thread_info = thread_info_map
             .get(&current_thread)
             .expect(PRECON_THREAD_INFO)
@@ -2067,6 +2066,7 @@ fn recursive_continue(
     thread_info_map: &MutexGuard<HashMap<ThreadId, RefCell<ThreadInfo>>>,
     thread_id: &ThreadId,
 ) {
+    log::debug!("Thead info map is: {:?}", thread_info_map);
     let thread_info = thread_info_map
         .get(thread_id)
         .expect(PRECON_THREAD_INFO)
