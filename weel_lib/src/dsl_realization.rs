@@ -2067,6 +2067,7 @@ fn recursive_continue(
     thread_id: &ThreadId,
 ) {
     log::debug!("Thead info map is: {:?}", thread_info_map);
+    log::debug!("Access info for thread: {:?}", thread_id);
     let thread_info = thread_info_map
         .get(thread_id)
         .expect(PRECON_THREAD_INFO)
