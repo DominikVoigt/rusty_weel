@@ -697,8 +697,8 @@ pub fn structurize_result(
             Ok(match content.pop().unwrap() {
                 Parameter::SimpleParameter { value, .. } => serde_json::to_value(value).unwrap(),
                 Parameter::ComplexParameter {
-                    mut content_handle, ..
-                } => {
+                    mut content_handle, name, mime_type } => {
+                    log::debug!("Struct. service returned complex param: {name}");
                     let mut content = String::new();
                     content_handle.rewind()?;
                     content_handle.read_to_string(&mut content)?;
