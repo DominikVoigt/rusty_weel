@@ -1374,7 +1374,7 @@ impl Weel {
                             let return_value_empty = connection_wrapper
                                 .handler_return_value
                                 .clone()
-                                .map(|x| x.is_empty())
+                                .map(|x| x.is_null() || x.as_array().map(|arr| arr.is_empty()).unwrap_or(false))
                                 .unwrap_or(true);
                             if signaled_update_again && return_value_empty {
                                 continue;
@@ -1645,7 +1645,7 @@ impl Weel {
         local: &Option<Value>,
         connection_wrapper: &ConnectionWrapper,
         location: &str,
-        call_result: Option<String>,
+        call_result: Option<Value>,
         call_headers: Option<HashMap<String, String>>,
     ) -> Result<eval_helper::EvaluationResult> {
         // We clone the dynamic data and status dto here which is expensive but allows us to not block the whole weel until the eval call returns

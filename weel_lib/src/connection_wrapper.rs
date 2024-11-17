@@ -22,7 +22,7 @@ pub struct ConnectionWrapper {
     // The identifier of the callback the connection wrapper is waiting for (if none, it is not waiting for it)
     pub handler_passthrough: Option<String>,
     pub handler_return_status: Option<u16>,
-    pub handler_return_value: Option<String>,
+    pub handler_return_value: Option<Value>,
     pub handler_return_options: Option<HashMap<String, String>>,
     // We keep them as arrays to be flexible but will only contain one element for now
     // Contains the actual endpoint URL
@@ -831,7 +831,6 @@ impl ConnectionWrapper {
         let recv =
             eval_helper::structurize_result(&weel.opts.eval_backend_structurize, &options, body)?;
         log::debug!("Received from structurize: {}", recv);
-        log::debug!("As json: {:?}", serde_json::from_str::<Value>(&recv));
         let mut redis = weel.redis_notifications_client.lock()?;
         let content = self.construct_basic_content();
         {
@@ -841,7 +840,7 @@ impl ConnectionWrapper {
                 .expect("Construct basic content has to return json object");
             content.insert(
                 "received".to_owned(),
-                serde_json::Value::String(recv.clone()),
+                recv.clone(),
             );
             content.insert(
                 "annotations".to_owned(),
@@ -891,7 +890,7 @@ impl ConnectionWrapper {
                 .expect("Construct basic content has to return json object");
             content.insert(
                 "received".to_owned(),
-                serde_json::Value::String(recv.clone()),
+                recv.clone(),
             );
 
             redis.notify(
