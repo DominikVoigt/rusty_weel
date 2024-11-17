@@ -1122,6 +1122,7 @@ impl Weel {
                 *self.state.lock().unwrap(),
                 State::Stopping | State::Stopped | State::Finishing
             );
+            log::debug!("Activity {activity_id} in state {:?} no longer necessary: {}",*self.state.lock().unwrap(), thread_info.no_longer_necessary);
             if in_invalid_state || thread_info.no_longer_necessary {
                 break 'raise Ok(()); // Will execute the finalize (ensure block)
             }
