@@ -643,7 +643,7 @@ impl ConnectionWrapper {
 
             // NOTE: For this area, all headers are checked against lowercase and - subsituted with _ due to the reqwest http library!
             if callback_header_set {
-                if !body.len() > 0 {
+                if body.len() > 0 {
                     response_headers.insert("cpee_update".to_owned(), "true".to_owned());
                     this.handle_callback(Some(status), &body, response_headers)?
                 } else {
