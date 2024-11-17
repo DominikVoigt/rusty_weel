@@ -1649,9 +1649,9 @@ impl Weel {
         call_headers: Option<HashMap<String, String>>,
     ) -> Result<eval_helper::EvaluationResult> {
         // We clone the dynamic data and status dto here which is expensive but allows us to not block the whole weel until the eval call returns
-        let dynamic_data = self.context.lock().unwrap().clone();
-        let status = self.status.lock().unwrap().to_dto();
         if read_only {
+            let dynamic_data = self.context.lock().unwrap().clone();
+            let status = self.status.lock().unwrap().to_dto();
             let result = eval_helper::evaluate_expression(
                 &dynamic_data,
                 &self.opts,
@@ -1667,6 +1667,8 @@ impl Weel {
         } else {
             // Lock down all evaluation calls to prevent race condition
             let eval_lock = EVALUATION_LOCK.lock().unwrap();
+            let dynamic_data = self.context.lock().unwrap().clone();
+            let status = self.status.lock().unwrap().to_dto();
             let result = eval_helper::evaluate_expression(
                 &dynamic_data,
                 &self.opts,
