@@ -466,10 +466,12 @@ impl DSL for Weel {
         drop(thread_info_map);
         let in_search_mode = self.in_search_mode(None);
 
+        // This is enough for the first found search position but not for subsequent ones -> If we have 2 search positions in 2 alternatives -> Will only execute first
         if condition_res || in_search_mode {
             self.execute_lambda(lambda)?;
         }
 
+        // True if we changed from search mode (true -> false) -> Found search position in lambda
         if in_search_mode != self.in_search_mode(None) {
             let current_thread = thread::current().id();
             let thread_info_map = self.thread_information.lock().unwrap();
@@ -1117,13 +1119,8 @@ impl Weel {
                 .expect(PRECON_THREAD_INFO)
                 .borrow_mut();
 
-            // Check early return
-            let in_invalid_state = matches!(
-                *self.state.lock().unwrap(),
-                State::Stopping | State::Stopped | State::Finishing
-            );
             log::debug!("Activity {activity_id} in state {:?} no longer necessary: {}",*self.state.lock().unwrap(), thread_info.no_longer_necessary);
-            if in_invalid_state || thread_info.no_longer_necessary {
+            if self.should_skip(&thread_info) {
                 break 'raise Ok(()); // Will execute the finalize (ensure block)
             }
 

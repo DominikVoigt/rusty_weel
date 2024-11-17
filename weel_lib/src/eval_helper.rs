@@ -663,12 +663,12 @@ pub fn structurize_result(
         Some(content_type) => {
             content_type.parse::<Mime>().unwrap_or_else(|err| {
                 log::error!("Provided content type could not be parsed to a mimetype: {:?}", err);
-                log::error!("Defaulting to application/json");
+                log::error!("Defaulting to text/plain");
                 TEXT_PLAIN_UTF_8
             })
         },
         None => {
-            log::error!("No content type provided in response, defaulting to application/json");
+            log::error!("No content type provided in response, defaulting to text/plain");
             TEXT_PLAIN_UTF_8
         },
     };
