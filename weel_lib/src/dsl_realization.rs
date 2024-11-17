@@ -1680,8 +1680,6 @@ impl Weel {
                 call_headers,
                 location,
             )?;
-            log::debug!("Context is: {:?}", dynamic_data);
-            log::debug!("Evaluation result is: {:?}", result);
             // Apply changes to instance
             if result.data.is_some() || result.endpoints.is_some() {
                 let mut dynamic_data = self.context.lock().unwrap();
