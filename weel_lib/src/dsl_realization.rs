@@ -1161,6 +1161,7 @@ impl Weel {
                 connection_wrapper.handler_activity_uuid.clone(),
                 false,
             )?);
+            log::debug!("Reached activity type for activity {activity_id}");
             match activity_type {
                 ActivityType::Manipulate => {
                     let state_stopping_or_finishing = matches!(
