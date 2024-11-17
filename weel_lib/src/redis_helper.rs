@@ -12,6 +12,7 @@ use crate::{
     dsl_realization::{Error, Result},
 };
 use http_helper::Parameter;
+use mime::Mime;
 use once::assert_has_not_been_called;
 use redis::{Commands, Connection, RedisResult};
 use serde_json::{json, Value};
@@ -194,20 +195,35 @@ impl RedisHelper {
                             .expect("Could not lock mutex in callback thread");
                         if callback_keys.contains_key(&topic.event) {
                             let message: Value = serde_json::from_str(payload).unwrap();
-                            if message["content"]["headers"].is_null()
-                            || !message["content"]["headers"].is_object()
+                            if message["content"]["headers"].is_null() || !message["content"]["headers"].is_object()
                             {
                                 log_error_and_panic("message[content][headers] is either null, or ..[headers] is not a hash")
                             }
-                            let values = serde_json::to_string(&message["content"]["values"]).unwrap();
-                            let params = values.as_bytes(); 
+                            let values = message["content"]["values"].as_array().expect("Values received is not an array!");
+                            let mut content = Vec::with_capacity(values.len());
+                            for value in values {
+                                if value[1][0] == "simple" {
+                                    content.push(Parameter::SimpleParameter { name: value[0].to_string(), value: value[1][1].to_string(), param_type: http_helper::ParameterType::Body });
+                                } else if value[1][0] == "complex" {
+                                    let mime = match value[1][1].to_string().parse::<Mime>() {
+                                        Ok(mime) => mime,
+                                        Err(err) => {
+                                            log::error!("Failed parsing mimetype: {:?}", err);
+                                            panic!("Failed parsing mimetype")
+                                        },
+                                    };
+                                    // TODO: Handle complex with path or file handle
+                                    content.push(Parameter::ComplexParameter { name: value[0].to_string(), mime_type: mime, content_handle: todo!()});
+                                }
+                            };
+                            let cont = serde_json::to_string(&content).expect("Could not parse into string").as_bytes();
                             // TODO: Determine whether we need this still: construct_parameters(&message_json);
                             let headers = convert_headers_to_map(&message["content"]["headers"]);
                             callback_keys.get(&topic.event)
                                          .expect("Cannot happen as we check containment previously and hold mutex throughout")
                                          .lock()?
                                          // TODO: Maybe add status to message too?
-                                         .handle_callback(None, params, headers)?;
+                                         .handle_callback(None, cont, headers)?;
                         }
                     }
                     "callback-end:*" => {
