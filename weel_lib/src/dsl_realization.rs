@@ -1554,6 +1554,7 @@ impl Weel {
                 }
             };
         };
+        log::debug!("Reached finalize for activity {activity_id}");
         self.finalize_call_activity();
         Ok(())
     }
