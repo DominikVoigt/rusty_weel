@@ -831,7 +831,7 @@ impl ConnectionWrapper {
         let recv =
             eval_helper::structurize_result(&weel.opts.eval_backend_structurize, &options, body)?;
         log::debug!("Received from structurize: {}", recv);
-        log::debug!("As json: {:?}", serde_json::to_value(&recv));
+        log::debug!("As json: {:?}", serde_json::from_str::<Value>(&recv));
         let mut redis = weel.redis_notifications_client.lock()?;
         let content = self.construct_basic_content();
         {
