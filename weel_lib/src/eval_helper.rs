@@ -654,6 +654,7 @@ pub fn structurize_result(
 ) -> Result<Value> {
     let mut client =
         http_helper::Client::new(eval_backend_structurize_url, http_helper::Method::PUT)?;
+    log::debug!("Sending to structurize {:?}", str::from_utf8(body).unwrap());
     let mut body_file = tempfile()?;
     body_file.write_all(body)?;
     body_file.rewind()?;
