@@ -234,7 +234,7 @@ impl RedisHelper {
                                     };
                                     // TODO: Handle complex with path or file handle
                                     let mut file = tempfile::tempfile()?;
-                                    file.write_all(value[1][1].as_str().unwrap().as_bytes())?;
+                                    file.write_all(value[1][2].as_str().unwrap().as_bytes())?;
                                     file.rewind()?;
                                     content.push(Parameter::ComplexParameter { name: value[0].as_str().unwrap().to_owned(), mime_type, content_handle: file });
                                 }
