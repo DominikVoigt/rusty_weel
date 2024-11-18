@@ -219,6 +219,7 @@ impl RedisHelper {
                                 log_error_and_panic("message[content][headers] is either null, or ..[headers] is not a hash")
                             }
                             let values = message["content"]["values"].as_array().expect("Values received is not an array!");
+                            log::debug!("Processing values: {:?}", values);
                             let mut content = Vec::with_capacity(values.len());
                             for value in values {
                                 if value[1][0] == "simple" {
