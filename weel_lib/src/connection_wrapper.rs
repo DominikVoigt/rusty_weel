@@ -111,7 +111,7 @@ impl ConnectionWrapper {
                 }
             }
             Err(err) => {
-                log::error!("Could not acquire lock {err}");
+                eprintln!("Could not acquire lock {err}");
                 panic!("Could not acquire lock in loopguard")
             }
         };
@@ -538,14 +538,14 @@ impl ConnectionWrapper {
         let protocol_regex = match regex::Regex::new(r"^http(s)?-(get|put|post|delete):") {
             Ok(regex) => regex,
             Err(err) => {
-                log::error!("Could not compile static regex: {err} -> SHOULD NOT HAPPEN");
+                eprintln!("Could not compile static regex: {err} -> SHOULD NOT HAPPEN");
                 panic!()
             }
         };
         let event_regex = match regex::Regex::new(r"[^\w_-]") {
             Ok(regex) => regex,
             Err(err) => {
-                log::error!("Could not compile static regex: {err} -> SHOULD NOT HAPPEN");
+                eprintln!("Could not compile static regex: {err} -> SHOULD NOT HAPPEN");
                 panic!()
             }
         };
@@ -570,7 +570,7 @@ impl ConnectionWrapper {
                     }
                 }
                 None => {
-                    log::error!("Parameter arguments should be an json object!")
+                    eprintln!("Parameter arguments should be an json object!")
                 }
             }
 
@@ -624,7 +624,7 @@ impl ConnectionWrapper {
                                             method = Method::HEAD;
                                         }
                                         x => {
-                                            log::error!("Captured unsupported method: {x}")
+                                            eprintln!("Captured unsupported method: {x}")
                                         }
                                     }
                                 }
@@ -821,7 +821,7 @@ impl ConnectionWrapper {
                                                 let iter = a_value.as_object().unwrap().iter().map(
                                                     |(key, value)| {
                                                         (key.clone(), value.as_str().map(|e| e.to_owned()).unwrap_or_else(|| {
-                                                            log::error!("Could not convert value to string");
+                                                            eprintln!("Could not convert value to string");
                                                             "".to_owned()
                                                         }))
                                                     }
@@ -904,7 +904,7 @@ impl ConnectionWrapper {
             let event_regex = match regex::Regex::new(r"[^\w_-]") {
                 Ok(regex) => regex,
                 Err(err) => {
-                    log::error!("Could not compile static regex: {err} -> SHOULD NOT HAPPEN");
+                    eprintln!("Could not compile static regex: {err} -> SHOULD NOT HAPPEN");
                     panic!()
                 }
             };
@@ -948,7 +948,7 @@ impl ConnectionWrapper {
                 Some(x) => {
                     x.enqueue(Signal::UpdateAgain);
                 }
-                None => log::error!("Received CPEE_UPDATE but handler_continue is empty?"),
+                None => eprintln!("Received CPEE_UPDATE but handler_continue is empty?"),
             }
         } else {
             if let Some(passthrough) = &self.handler_passthrough {
@@ -958,17 +958,17 @@ impl ConnectionWrapper {
             if contains_non_empty(&headers, "cpee_salvage") {
                 match &self.handler_continue {
                     Some(x) => x.enqueue(Signal::Salvage),
-                    None => log::error!("Received CPEE_SALVAGE but handler_continue is empty?"),
+                    None => eprintln!("Received CPEE_SALVAGE but handler_continue is empty?"),
                 }
             } else if contains_non_empty(&headers, "cpee_stop") {
                 match &self.handler_continue {
                     Some(x) => x.enqueue(Signal::Stop),
-                    None => log::error!("Received CPEE_STOP but handler_continue is empty?"),
+                    None => eprintln!("Received CPEE_STOP but handler_continue is empty?"),
                 }
             } else {
                 match &self.handler_continue {
                     Some(x) => x.enqueue(Signal::None),
-                    None => log::error!(
+                    None => eprintln!(
                         "Received neither salvage or stop but handler_continue is empty?"
                     ),
                 }
@@ -1052,7 +1052,7 @@ impl ConnectionWrapper {
         match self.weel.upgrade() {
             Some(weel) => weel,
             None => {
-                log::error!("Weel instance no longer exists, this connection wrapper instance should have been dropped...");
+                eprintln!("Weel instance no longer exists, this connection wrapper instance should have been dropped...");
                 panic!()
             }
         }
@@ -1084,7 +1084,7 @@ impl ConnectionWrapper {
                 eval_helper::EvalError::RuntimeError(message) => self.try_extract(&message),
                 eval_helper::EvalError::Signal(signal, evaluation_result) => {
                     let signal_error = EvalError::Signal(signal, evaluation_result);
-                    log::error!(
+                    eprintln!(
                         "Trying to extract information from error: {:?}, this should not happen as Signal Errors should be handled",
                         &signal_error
                     );
@@ -1092,7 +1092,7 @@ impl ConnectionWrapper {
                 }
             },
             other => {
-                log::error!("Trying to extract information from error: {:?}", other);
+                eprintln!("Trying to extract information from error: {:?}", other);
                 Err(other.to_string().to_owned())
             }
         }

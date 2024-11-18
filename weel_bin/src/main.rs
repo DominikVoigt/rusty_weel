@@ -55,8 +55,6 @@ fn main() {
 }
 
 fn startup() -> Arc<Weel> {
-    //simple_logger::init_with_level(log::Level::Info).unwrap();
-    init_logger();
     set_panic_hook();
 
     let opts = Opts::load("opts.json");
@@ -66,7 +64,7 @@ fn startup() -> Arc<Weel> {
     let redis_helper = match RedisHelper::new(&opts, "notifications") {
         Ok(redis) => redis,
         Err(err) => {
-            log::error!("Error during startup when connecting to redis: {:?}", err);
+            eprintln!("Error during startup when connecting to redis: {:?}", err);
             panic!("Error during startup")
         }
     };
@@ -107,27 +105,6 @@ fn startup() -> Arc<Weel> {
     local_weel
 }
 
-fn init_logger() -> () {
-    env_logger::Builder::from_default_env()
-        .filter_level(log::LevelFilter::Debug)
-        .format(|buf, record| {
-            let style = buf.default_level_style(record.level());
-            //buf.default_level_style(record.level());
-            writeln!(
-                buf,
-                "{}:{} {} {style}[{}]{style:#} - {}",
-                record.file().unwrap_or("unknown"),
-                record.line().unwrap_or(0),
-                weel_lib::Local::now().format("%Y-%m-%dT%H:%M:%S:%.6f"),
-                record.level(),
-                record.args()
-            )
-        })
-        .write_style(env_logger::WriteStyle::Auto)
-        .filter_module("multipart", log::LevelFilter::Error)
-        .init();
-}
-
 /**
  * Will get the search positions out of the provided context file
  */
@@ -152,7 +129,7 @@ fn set_panic_hook() -> () {
     let original_hook = panic::take_hook();
     panic::set_hook(Box::new(move |info| {
         // Log panic information in case we ever panic
-        log::error!("Panic occured. Panic information: {info}");
+        eprintln!("Panic occured. Panic information: {info}");
         original_hook(info);
     }));
 }

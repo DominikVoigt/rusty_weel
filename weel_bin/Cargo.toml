@@ -15,9 +15,5 @@ lazy_static = "1.5.0"
 weel_inject ={ path = "../weel_inject" }
 weel_lib = { path = "../weel_lib" }
 
-# Logging
-log = "0.4.22"
-env_logger = "0.11.5"
-
 # Signal handling
 ctrlc = {version = "3.4.4", features = ["termination"]}

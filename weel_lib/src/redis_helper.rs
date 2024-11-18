@@ -182,7 +182,7 @@ impl RedisHelper {
                     break;
                 }
                 Err(_) => {
-                    log::error!("Could not establish redis connection for subscription, will retry in 10 milliseconds");
+                    eprintln!("Could not establish redis connection for subscription, will retry in 10 milliseconds");
                     sleep(Duration::from_millis(100));
                 }
             }
@@ -192,7 +192,7 @@ impl RedisHelper {
             // We will terminate the process if callback thread panics
             let original_hook = take_hook();
             set_hook(Box::new(move |panic_info| {
-                log::error!("{}", panic_info);
+                eprintln!("{}", panic_info);
                 original_hook(panic_info);
                 std::process::exit(1)
             }));
@@ -227,7 +227,7 @@ impl RedisHelper {
                                     let mime_type = match value[1][1].as_str().unwrap().parse::<Mime>() {
                                         Ok(mime) => mime,
                                         Err(err) => {
-                                            log::error!("Failed parsing mimetype: {:?} from string: {}", err, value[1][1].as_str().unwrap().to_owned());
+                                            eprintln!("Failed parsing mimetype: {:?} from string: {}", err, value[1][1].as_str().unwrap().to_owned());
                                             panic!("Failed parsing mimetype")
                                         },
                                     };
@@ -254,7 +254,7 @@ impl RedisHelper {
                             .remove(&topic.type_);
                     }
                     x => {
-                        log::error!("Received on channel {} the payload: {}", x, payload);
+                        eprintln!("Received on channel {} the payload: {}", x, payload);
                     }
                 };
                 // This should loop indefinitely:
@@ -305,7 +305,7 @@ impl RedisHelper {
         }
 
         if let Err(err) = subscription.unsubscribe(topic_patterns) {
-            log::error!("Could not unsubscribe from topics at the end: {}", err);
+            eprintln!("Could not unsubscribe from topics at the end: {}", err);
             return Err(Error::from(err));
         }
         Ok(())
@@ -335,7 +335,7 @@ fn connect_to_redis(configuration: &Opts, connection_name: &str) -> Result<redis
         .query::<String>(&mut connection)
     {
         Ok(_resp) => {}
-        Err(err) => log::error!("Error occured when setting client name: {}", err),
+        Err(err) => eprintln!("Error occured when setting client name: {}", err),
     };
     Ok(connection)
 }
@@ -371,7 +371,7 @@ fn split_topic(topic: &str) -> Result<Topic> {
  * This function will end in the program panicing but also includes some prior logging
  */
 fn log_error_and_panic(log_msg: &str) -> ! {
-    log::error!("{}", log_msg);
+    eprintln!("{}", log_msg);
     panic!("{}", log_msg);
 }
 
@@ -412,7 +412,7 @@ fn construct_parameters(message: &serde_json::Value) -> Result<Vec<Parameter>> {
 
     for parameter in values {
         if parameter[0].is_null() || parameter[1][0].is_null() || parameter[1][1].is_null() {
-            log::error!("one of the values within the callback response content.values is null",);
+            eprintln!("one of the values within the callback response content.values is null",);
             // TODO: Determine whether we want to return here or skip parameter
             continue;
         }
@@ -442,7 +442,7 @@ fn construct_parameters(message: &serde_json::Value) -> Result<Vec<Parameter>> {
                     .expect("Could not open file for complex param in callback thread"),
             });
         } else {
-            log::error!(
+            eprintln!(
                 "Could not construct parameter out of callback response as the type was: {:?}",
                 parameter[1][0]
             );
@@ -503,7 +503,7 @@ mod test {
                 match connect_to_redis(&get_unix_socket_configuration(), "publisher") {
                     Ok(connection) => connection,
                     Err(err) => {
-                        log::error!("Error creating publisher thread: {:?}", err);
+                        eprintln!("Error creating publisher thread: {:?}", err);
                         panic!("error");
                     }
                 };
@@ -516,7 +516,7 @@ mod test {
                     format!("{} {}", instance_id, "test_payload"),
                 ) {
                     Ok(_) => {}
-                    Err(err) => log::error!("Error publishing: {err}"),
+                    Err(err) => eprintln!("Error publishing: {err}"),
                 }
                 sleep(Duration::from_secs(1));
                 iter = iter + 1;

@@ -36,9 +36,6 @@ chrono = {version = "0.4.38", features = ["serde"]}
 rand = "0.8.5"
 once = "0.3.4"
 
-# Logging
-log = "0.4.22"
-
 # Macros:
 derive_more = {version = "1.0.0", features = ["from"]}
 lazy_static = "1.5.0"
