@@ -145,7 +145,7 @@ pub fn test_condition(
                             break;
                         }
                         x => {
-                            log::info!("Skipping entry: {x}");
+                            eprintln!("Skipping entry: {x}");
                             continue;
                         }
                     };
@@ -223,7 +223,7 @@ pub fn test_condition(
                     };
                 }
                 x => {
-                    log::info!("Skipping param: {x}");
+                    eprintln!("Skipping param: {x}");
                 }
             }
         }
@@ -299,7 +299,6 @@ pub fn evaluate_expression(
     call_headers: Option<HashMap<String, String>>,
     location: &str,
 ) -> Result<EvaluationResult> {
-    log::debug!("Executing code: {}", location);
     // This url has to be the full path to the exec-full endpoint
     let ex_client = get_client();
 
@@ -519,7 +518,7 @@ pub fn evaluate_expression(
                         };
                     }
                     x => {
-                        log::info!("Skipping param: {x}");
+                        eprintln!("Skipping param: {x}");
                         continue;
                     }
                 };
@@ -704,7 +703,6 @@ pub fn structurize_result(
                 Parameter::SimpleParameter { value, .. } => serde_json::from_str::<Value>(&value)?,
                 Parameter::ComplexParameter {
                     mut content_handle, name, .. } => {
-                    log::debug!("Struct. service returned complex param: {name}");
                     let mut content = String::new();
                     content_handle.rewind()?;
                     content_handle.read_to_string(&mut content)?;

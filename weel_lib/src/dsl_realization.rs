@@ -850,7 +850,7 @@ impl Weel {
                         log::error!("Error receiving termination signal for model thread. Sender must have been dropped.")
                     }
                 }
-                _ => log::info!(
+                _ => eprintln!(
                     "Instance stop was called but instance is in state: {:?}",
                     *state
                 ),
@@ -1097,7 +1097,6 @@ impl Weel {
     ) -> Result<()> {
         let position = self.clone().position_test(activity_id)?;
         let in_search_mode = self.in_search_mode(Some(activity_id));
-        log::debug!("At activity: {activity_id}, search mode is: {in_search_mode}");
         if in_search_mode {
             return Ok(());
         }
@@ -1119,7 +1118,6 @@ impl Weel {
                 .expect(PRECON_THREAD_INFO)
                 .borrow_mut();
 
-            log::debug!("Activity {activity_id} in state {:?} no longer necessary: {}",*self.state.lock().unwrap(), thread_info.no_longer_necessary);
             if self.should_skip(&thread_info) {
                 break 'raise Ok(()); // Will execute the finalize (ensure block)
             }
@@ -1159,7 +1157,6 @@ impl Weel {
                 connection_wrapper.handler_activity_uuid.clone(),
                 false,
             )?);
-            log::debug!("Reached activity type for activity {activity_id}");
             match activity_type {
                 ActivityType::Manipulate => {
                     let state_stopping_or_finishing = matches!(
@@ -1256,7 +1253,6 @@ impl Weel {
                         // Will be locked in the activity_handle again
                         drop(connection_wrapper);
                         // This executes the actual call
-                        log::debug!("Before activity-handle for activity {activity_id}");
                         ConnectionWrapper::activity_handle(
                             &connection_wrapper_mutex,
                             weel_position
@@ -1294,7 +1290,6 @@ impl Weel {
                         drop(connection_wrapper);
                         
                         'inner: loop {
-                            log::debug!("Enterted loop");
                             let current_thread = thread::current().id();
                             let thread_info_map = self.thread_information.lock().unwrap();
                             // Unwrap as we have precondition that thread info is available on spawning
@@ -1320,7 +1315,6 @@ impl Weel {
                             // We need to release the connection_wrapper lock here to allow callbacks from redis to lock the wrapper
                             drop(connection_wrapper);
 
-                            log::debug!("Should block: {should_block}");
                             if should_block {
                                 wait_result = Some(thread_queue.dequeue());
                             };
@@ -1391,7 +1385,6 @@ impl Weel {
                                 .unwrap_or(false);
                             let code = if signaled_update_again {
                                 code_type = "update";
-                                log::debug!("update code for instance is: {:?}", update_code);
                                 update_code
                             } else if signaled_salvage {
                                 if rescue_code.is_some() {
@@ -1407,9 +1400,6 @@ impl Weel {
                                 code_type = "finalize";
                                 finalize_code
                             };
-                            log::debug!("Code: {:?}", code);
-                            log::debug!("Code type: {}", code_type);
-                            log::debug!("Return value: {:?}", connection_wrapper.handler_return_value);
 
                             connection_wrapper.inform_activity_manipulate()?;
                             if let Some(code) = code {
@@ -1557,7 +1547,6 @@ impl Weel {
                 }
             };
         };
-        log::debug!("Reached finalize for activity {activity_id}");
         self.finalize_call_activity();
         Ok(())
     }
@@ -1652,8 +1641,6 @@ impl Weel {
         call_result: Option<Value>,
         call_headers: Option<HashMap<String, String>>,
     ) -> Result<eval_helper::EvaluationResult> {
-        log::debug!("Executing code at: {}", location);
-        log::debug!("Using call result: {:?}", call_result);
         // We clone the dynamic data and status dto here which is expensive but allows us to not block the whole weel until the eval call returns
         if read_only {
             let dynamic_data = self.context.lock().unwrap().clone();
@@ -1815,7 +1802,6 @@ impl Weel {
                 .unwrap()
                 .contains_key(&activity_id.to_owned());
             if found_position {
-                log::debug!("Found search position: {activity_id}");
                 // We found the first position on this branch -> We do not need to search futher along this branch of execution
                 thread_info.in_search_mode = false;
                 thread_info.switched_to_execution = true;

@@ -650,10 +650,6 @@ impl ConnectionWrapper {
 
             status = response.status_code;
             response_headers = header_map_to_hash_map(&response.headers)?;
-            log::info!(
-                "Received headers {:?} from call to {endpoint}",
-                response_headers
-            );
             body = response.body;
 
             if status == 561 {
@@ -669,7 +665,6 @@ impl ConnectionWrapper {
                 break;
             }
         }
-        log::debug!("status for call {:?}: {}", parameters, status);
         // If status not okay:
         if status < 200 || status >= 300 {
             response_headers.insert("cpee_salvage".to_owned(), "true".to_owned());
@@ -679,7 +674,6 @@ impl ConnectionWrapper {
             let callback_header_set = response_headers.contains_key("cpee_callback");
 
             // NOTE: For this area, all headers are checked against lowercase and - subsituted with _ due to the reqwest http library!
-            log::debug!("Callback header set: {callback_header_set}, body: {}", str::from_utf8(&body).unwrap());
             if callback_header_set {
                 if body.len() > 0 {
                     response_headers.insert("cpee_update".to_owned(), "true".to_owned());
@@ -866,15 +860,9 @@ impl ConnectionWrapper {
         options: HashMap<String, String>, // Headers
     ) -> Result<()> {
         let headers = uniformize_headers(&options);
-        log::debug!("Contains content_type: {:?}", headers.get("content_type"));
-        log::debug!("Headers: {:?}", headers);
-        if let CallbackType::Raw(body) = body {
-            log::debug!("Contains content: {:?}", str::from_utf8(body).unwrap());
-        }
         let weel = self.weel();
         let recv =
             eval_helper::structurize_result(&weel.opts.eval_backend_structurize, &options, body)?;
-        log::debug!("Received from structurize: {}", recv);
         let mut redis = weel.redis_notifications_client.lock()?;
         let content = self.construct_basic_content();
         {
@@ -937,7 +925,6 @@ impl ConnectionWrapper {
                 weel.get_instance_meta_data(),
             )?;
         } else {
-            log::debug!("Setting return value to: {}", recv);
             self.handler_return_status = status;
             self.handler_return_value = Some(recv);
             self.handler_return_options = Some(options);
@@ -956,7 +943,6 @@ impl ConnectionWrapper {
             );
         }
 
-        log::info!("Before update");
         if contains_non_empty(&headers, "cpee_update") {
             match &self.handler_continue {
                 Some(x) => {
@@ -1128,7 +1114,6 @@ impl ConnectionWrapper {
                 ))
             }
             None => {
-                log::info!("Capture of regex did not work for message: {message}");
                 Err(message.to_owned())
             }
         }

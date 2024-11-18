@@ -40,7 +40,6 @@ fn main() {
 
     // Executes the code and blocks until it is finished
     let res = weel!().start(model, stop_signal_sender);
-    log::info!("Model terminated with result: {:?}", res);
     match res {
         Ok(_) => {}
         Err(err) => {
@@ -53,8 +52,6 @@ fn main() {
             };
         },
     }
-    log::info!("Data elements are now: {:?}", weel!().context.lock().unwrap());
-    log::info!("Thread info at end of main: {:?}", weel!().thread_information.lock().unwrap())
 }
 
 fn startup() -> Arc<Weel> {
@@ -165,7 +162,7 @@ fn setup_signal_handler(weel: &Arc<Weel>) {
     let main_thread_id = thread::current().id();
 
     if let Err(err) = ctrlc::set_handler(move || {
-        log::info!("Received SIGINT/SIGTERM/SIGHUP. Set state to stopping...");
+        println!("Received SIGINT/SIGTERM/SIGHUP. Set state to stopping...");
         let res = weel.stop_weel(main_thread_id);
         match res {
             Ok(_) => {
