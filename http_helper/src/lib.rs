@@ -1,4 +1,5 @@
 use bytes::{Buf, Bytes};
+use derive_more::From;
 use multipart::server::{FieldHeaders, ReadEntry};
 use reqwest::{
     blocking::{
@@ -8,19 +9,18 @@ use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue, ToStrError, CONTENT_TYPE},
     Url,
 };
-use derive_more::From;
 use serde::Serialize;
 use tempfile::tempfile;
 
 use std::{
-    collections::HashMap, fmt::Debug, fs, io::{Read, Seek, Write}, str::FromStr, sync::MutexGuard
+    collections::HashMap, fmt::Debug, fs, io::{Read, Seek, Write}, os::unix::fs::MetadataExt, str::FromStr, sync::MutexGuard
 };
 
 pub use mime::*;
 
 use urlencoding::encode;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub enum ParameterType {
     Query,
     Body,
@@ -46,6 +46,44 @@ pub enum Parameter {
         mime_type: Mime,
         content_handle: fs::File,
     },
+}
+
+#[derive(Serialize)]
+pub enum ParameterDTO {
+    SimpleParameterDTO {
+        name: String,
+        value: String,
+        param_type: ParameterType,
+    },
+
+    // Since File is not cloneable, we do not merge simple and complex parameters into an enum
+    // For sending/receiving files
+    ComplexParameterDTO {
+        name: String,
+        //  If no charset is specified, the default is ASCII (US-ASCII) unless overridden by the user agent's settings (https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/MIME_types)
+        mime_type: String,
+        value: Vec<u8>,
+    },
+}
+
+impl Into<ParameterDTO> for Parameter {
+    fn into(self) -> ParameterDTO {
+        match self {
+            Parameter::SimpleParameter {
+                name,
+                value,
+                param_type,
+            } => ParameterDTO::SimpleParameterDTO { name, value, param_type },
+            Parameter::ComplexParameter {
+                name,
+                mime_type,
+                mut content_handle,
+            } => {
+                let mut content = Vec::with_capacity(content_handle.metadata().map(|data| data.size()).unwrap_or(0).try_into().unwrap());
+                content_handle.read_to_end(&mut content).expect("This should not fail");
+                ParameterDTO::ComplexParameterDTO { name, mime_type: mime_type.essence_str().to_owned(), value: content }},
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -113,7 +151,12 @@ pub struct Client<'a> {
 
 impl<'a> Debug for Client<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Client").field("method", &self.method).field("headers", &self.headers).field("parameters", &self.parameters).field("form_url_encoded", &self.form_url_encoded).finish()
+        f.debug_struct("Client")
+            .field("method", &self.method)
+            .field("headers", &self.headers)
+            .field("parameters", &self.parameters)
+            .field("form_url_encoded", &self.form_url_encoded)
+            .finish()
     }
 }
 
@@ -538,7 +581,7 @@ fn construct_form_url_encoded(
                 if value.len() == 0 {
                     params.push(encode(&name).into_owned());
                 } else {
-                    params.push(format!("{}={}", encode(&name) , encode(&value)));
+                    params.push(format!("{}={}", encode(&name), encode(&value)));
                 };
             }
             Parameter::ComplexParameter { .. } => {

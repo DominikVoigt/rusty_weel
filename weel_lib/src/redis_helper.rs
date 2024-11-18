@@ -1,9 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
-    panic::{set_hook, take_hook},
-    sync::{Arc, Mutex},
-    thread::{self, sleep, JoinHandle},
-    time::Duration,
+    collections::{HashMap, HashSet}, panic::{set_hook, take_hook}, sync::{Arc, Mutex}, thread::{self, sleep, JoinHandle}, time::Duration
 };
 
 use crate::{
@@ -11,7 +7,7 @@ use crate::{
     data_types::{InstanceMetaData, Opts},
     dsl_realization::{Error, Result},
 };
-use http_helper::Parameter;
+use http_helper::{Parameter, ParameterDTO};
 use mime::Mime;
 use once::assert_has_not_been_called;
 use redis::{Commands, Connection, RedisResult};
@@ -203,7 +199,7 @@ impl RedisHelper {
                             let mut content = Vec::with_capacity(values.len());
                             for value in values {
                                 if value[1][0] == "simple" {
-                                    content.push(Parameter::SimpleParameter { name: value[0].to_string(), value: value[1][1].to_string(), param_type: http_helper::ParameterType::Body });
+                                    content.push(Parameter::SimpleParameter { name: value[0].to_string(), value: value[1][1].to_string(), param_type: http_helper::ParameterType::Body }.into());
                                 } else if value[1][0] == "complex" {
                                     let mime = match value[1][1].to_string().parse::<Mime>() {
                                         Ok(mime) => mime,
@@ -213,10 +209,14 @@ impl RedisHelper {
                                         },
                                     };
                                     // TODO: Handle complex with path or file handle
-                                    content.push(Parameter::ComplexParameter { name: value[0].to_string(), mime_type: mime, content_handle: todo!()});
+                                    let mut f_content = Vec::new();
+                                    f_content.copy_from_slice(value[1][1].to_string().as_bytes());
+                                    content.push(ParameterDTO::ComplexParameterDTO { name: value[0].to_string(), mime_type: mime.essence_str().to_owned(), value: f_content });
                                 }
                             };
-                            let cont = serde_json::to_string(&content).expect("Could not parse into string").as_bytes();
+                            let cont_str = serde_json::to_string(&content).expect("Could not parse into string");
+                            log::debug!("Content string is: {}", cont_str);
+                            let cont = cont_str.as_bytes();
                             // TODO: Determine whether we need this still: construct_parameters(&message_json);
                             let headers = convert_headers_to_map(&message["content"]["headers"]);
                             callback_keys.get(&topic.event)
