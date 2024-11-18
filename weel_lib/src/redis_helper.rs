@@ -228,7 +228,7 @@ impl RedisHelper {
                                     let mime_type = match value[1][1].to_string().parse::<Mime>() {
                                         Ok(mime) => mime,
                                         Err(err) => {
-                                            log::error!("Failed parsing mimetype: {:?}", err);
+                                            log::error!("Failed parsing mimetype: {:?} from string: {}", err, value[1][1].to_string());
                                             panic!("Failed parsing mimetype")
                                         },
                                     };

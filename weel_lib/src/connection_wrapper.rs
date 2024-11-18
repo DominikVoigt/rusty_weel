@@ -810,8 +810,10 @@ impl ConnectionWrapper {
     /**
      * Handles a returning callback
      * This is called for any response comming back from the service.
-     * In case of a synchroneous call, it is called directly (within the curl method)
+     * In case of a synchroneous call, it is called directly (within the curl method) on the raw data
      * In case of an asynchroneous call, it is called from the callback thread (started when the instance is spun up via the `establish_callback_subscriptions` in the redis_helper)
+     * In the asynchroneous case, we cannot handle any binary data ATM: 18.11.2024
+     * 
      * Redis callbacks have no response code -> Optional
      *
      * Locks:
