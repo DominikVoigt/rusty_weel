@@ -223,12 +223,12 @@ impl RedisHelper {
                             let mut content = Vec::with_capacity(values.len());
                             for value in values {
                                 if value[1][0] == "simple" {
-                                    content.push(Parameter::SimpleParameter { name: value[0].to_string(), value: value[1][1].to_string(), param_type: http_helper::ParameterType::Body });
+                                    content.push(Parameter::SimpleParameter { name: value[0].as_str().unwrap().to_owned(), value: value[1][1].as_str().unwrap().to_owned(), param_type: http_helper::ParameterType::Body });
                                 } else if value[1][0] == "complex" {
                                     let mime_type = match value[1][1].to_string().parse::<Mime>() {
                                         Ok(mime) => mime,
                                         Err(err) => {
-                                            log::error!("Failed parsing mimetype: {:?} from string: {}", err, value[1][1].to_string());
+                                            log::error!("Failed parsing mimetype: {:?} from string: {}", err, value[1][1].as_str().unwrap().to_owned());
                                             panic!("Failed parsing mimetype")
                                         },
                                     };
