@@ -9,7 +9,6 @@ use std::{
 
 use http_helper::{Client, Parameter};
 use lazy_static::lazy_static;
-use log;
 use mime::{Mime, APPLICATION_JSON, TEXT_PLAIN_UTF_8};
 use reqwest::header::CONTENT_TYPE;
 use serde_json::Value;
@@ -101,7 +100,7 @@ pub fn test_condition(
                         match serde_json::from_str(&value) {
                             Ok(res) => eval_res = Some(res),
                             Err(err) => {
-                                log::error!(
+                                eprintln!(
                                     "Encountered error deserializing expression: {:?}, received: {}",
                                     err,
                                     value
@@ -111,7 +110,7 @@ pub fn test_condition(
                         }
                         break;
                     } else {
-                        log::error!(
+                        eprintln!(
                             "Received simple parameter with name {}. We ignore these currently",
                             name
                         );
@@ -138,7 +137,7 @@ pub fn test_condition(
                             match serde_json::from_str(&content) {
                                 Ok(res) => eval_res = Some(res),
                                 Err(err) => {
-                                    log::error!("Encountered error deserializing expression: {:?}, received: {}", err, content);
+                                    eprintln!("Encountered error deserializing expression: {:?}, received: {}", err, content);
                                     return Err(Error::JsonError(err));
                                 }
                             };
@@ -197,7 +196,7 @@ pub fn test_condition(
                         match serde_json::from_str(&signal_enum) {
                             Ok(res) => res,
                             Err(err) => {
-                                log::error!(
+                                eprintln!(
                                     "Encountered error deserializing signal: {:?}, received: {}",
                                     err,
                                     p_content
@@ -213,7 +212,7 @@ pub fn test_condition(
                         match serde_json::from_str(&p_content) {
                             Ok(res) => res,
                             Err(err) => {
-                                log::error!("Encountered error deserializing signal_text: {:?}, received: {}", err, p_content);
+                                eprintln!("Encountered error deserializing signal_text: {:?}, received: {}", err, p_content);
                                 return Err(Error::JsonError(err));
                             }
                         }
@@ -244,7 +243,7 @@ pub fn test_condition(
                         Err(Error::EvalError(EvalError::SyntaxError(signal_text)))
                     }
                     x => {
-                        log::error!(
+                        eprintln!(
                             "Got signaled: {:?} with text: {} when evaluating {}",
                             x,
                             signal_text,
@@ -390,7 +389,7 @@ pub fn evaluate_expression(
                         match serde_json::from_str(&value) {
                             Ok(res) => expression_result = Some(res),
                             Err(err) => {
-                                log::error!(
+                                eprintln!(
                                     "Encountered error deserializing expression: {:?}, received: {}",
                                     err,
                                     value
@@ -400,7 +399,7 @@ pub fn evaluate_expression(
                         }
                     }
                 } else {
-                    log::error!(
+                    eprintln!(
                         "Received simple parameter with name {}. We ignore these currently",
                         name
                     );
@@ -423,7 +422,7 @@ pub fn evaluate_expression(
                             match serde_json::from_str(&content) {
                                 Ok(res) => expression_result = Some(res),
                                 Err(err) => {
-                                    log::error!("Encountered error deserializing expression: {:?}, received: {}", err, content);
+                                    eprintln!("Encountered error deserializing expression: {:?}, received: {}", err, content);
                                     return Err(Error::JsonError(err));
                                 }
                             }
@@ -434,7 +433,7 @@ pub fn evaluate_expression(
                             match serde_json::from_str(&content) {
                                 Ok(res) => res,
                                 Err(err) => {
-                                    log::error!("Encountered error deserializing changed data elements: {:?}, received: {}", err, content);
+                                    eprintln!("Encountered error deserializing changed data elements: {:?}, received: {}", err, content);
                                     return Err(Error::JsonError(err));
                                 }
                             }
@@ -445,7 +444,7 @@ pub fn evaluate_expression(
                             match serde_json::from_str(&content) {
                                 Ok(res) => res,
                                 Err(err) => {
-                                    log::error!("Encountered error deserializing changed data elements: {:?}, received: {}", err, content);
+                                    eprintln!("Encountered error deserializing changed data elements: {:?}, received: {}", err, content);
                                     return Err(Error::JsonError(err));
                                 }
                             }
@@ -456,7 +455,7 @@ pub fn evaluate_expression(
                             match serde_json::from_str(&content) {
                                 Ok(res) => res,
                                 Err(err) => {
-                                    log::error!("Encountered error deserializing changed data elements: {:?}, received: {}", err, content);
+                                    eprintln!("Encountered error deserializing changed data elements: {:?}, received: {}", err, content);
                                     return Err(Error::JsonError(err));
                                 }
                             }
@@ -466,7 +465,7 @@ pub fn evaluate_expression(
                         data = match serde_json::from_str(&content) {
                             Ok(res) => res,
                             Err(err) => {
-                                log::error!("Encountered error deserializing data elements: {:?}, received: {}", err, content);
+                                eprintln!("Encountered error deserializing data elements: {:?}, received: {}", err, content);
                                 return Err(Error::JsonError(err));
                             }
                         }
@@ -476,7 +475,7 @@ pub fn evaluate_expression(
                             match serde_json::from_str(&content) {
                                 Ok(res) => res,
                                 Err(err) => {
-                                    log::error!("Encountered error deserializing endpoints: {:?}, received: {}", err, content);
+                                    eprintln!("Encountered error deserializing endpoints: {:?}, received: {}", err, content);
                                     return Err(Error::JsonError(err));
                                 }
                             }
@@ -496,7 +495,7 @@ pub fn evaluate_expression(
                             match serde_json::from_str(&signal_enum) {
                                 Ok(res) => res,
                                 Err(err) => {
-                                    log::error!("Encountered error deserializing signal: {:?}, received: {}", err, content);
+                                    eprintln!("Encountered error deserializing signal: {:?}, received: {}", err, content);
                                     return Err(Error::JsonError(err));
                                 }
                             }
@@ -508,7 +507,7 @@ pub fn evaluate_expression(
                             match serde_json::from_str(&content) {
                                 Ok(res) => res,
                                 Err(err) => {
-                                    log::error!("Encountered error deserializing signal_text: {:?}, received: {}", err, content);
+                                    eprintln!("Encountered error deserializing signal_text: {:?}, received: {}", err, content);
                                     return Err(Error::JsonError(err));
                                 }
                             }
@@ -557,7 +556,7 @@ pub fn evaluate_expression(
                                 Err(Error::EvalError(EvalError::SyntaxError(signal_text)))
                             }
                             x => {
-                                log::error!(
+                                eprintln!(
                                     "Got signaled: {:?} with text: {} when evaluating {}",
                                     x,
                                     signal_text,
@@ -582,7 +581,7 @@ pub fn evaluate_expression(
             }
         }
         None => {
-            log::error!(
+            eprintln!(
                 "
                 Received from evaluation service:
                 data:{:?}\n
@@ -664,13 +663,13 @@ pub fn structurize_result(
             let mime_type = match content_string {
                 Some(content_type) => {
                     content_type.parse::<Mime>().unwrap_or_else(|err| {
-                        log::error!("Provided content type could not be parsed to a mimetype: {:?}", err);
-                        log::error!("Defaulting to text/plain");
+                        eprintln!("Provided content type could not be parsed to a mimetype: {:?}", err);
+                        eprintln!("Defaulting to text/plain");
                         TEXT_PLAIN_UTF_8
                     })
                 },
                 None => {
-                    log::error!("No content type provided in response, defaulting to text/plain");
+                    eprintln!("No content type provided in response, defaulting to text/plain");
                     TEXT_PLAIN_UTF_8
                 },
             };
@@ -690,7 +689,7 @@ pub fn structurize_result(
     let mut content = response.content;
     if status == 200 {
         if content.len() != 1 {
-            log::error!(
+            eprintln!(
                 "Structurization call returned not one but {} parameters",
                 content.len()
             );
@@ -711,7 +710,7 @@ pub fn structurize_result(
             })
         }
     } else {
-        log::error!(
+        eprintln!(
             "Structurization call returned with status code {status}. Body: {:?}",
             content
         );

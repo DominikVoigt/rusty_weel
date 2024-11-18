@@ -310,7 +310,7 @@ impl DSL for Weel {
                                         recursive_continue(&thread_info_map, child);
                                     }
                                     mpsc::TryRecvError::Disconnected => {
-                                        log::error!("Tried to check whether the branch was terminated, but the sender became disconnected")
+                                        eprintln!("Tried to check whether the branch was terminated, but the sender became disconnected")
                                     }
                                 }
                             }
@@ -328,7 +328,7 @@ impl DSL for Weel {
                 match branch_event_sender.send(()) {
                     Ok(()) => {}
                     Err(err) => {
-                        log::error!("Encountered error when sending branch_event: {:?}", err)
+                        eprintln!("Encountered error when sending branch_event: {:?}", err)
                     }
                 }
             }
@@ -519,7 +519,7 @@ impl DSL for Weel {
         let condition = *condition.get(1).unwrap();
 
         if !matches!(test_type, "pre_test" | "post_test") {
-            log::error!("Test type is: {:?}", test_type);
+            eprintln!("Test type is: {:?}", test_type);
             return Err(Error::GeneralError(
                 "Condition must be called pre_test or post_test".to_owned(),
             ));
@@ -588,7 +588,7 @@ impl DSL for Weel {
                     }
                 }
             }
-            x => log::error!("This condition type is not allowed: {}", x),
+            x => eprintln!("This condition type is not allowed: {}", x),
         }
         // after loop is done, remove the loop guard entry
         self.loop_guard.lock().unwrap().remove(&loop_id);
@@ -748,7 +748,7 @@ impl Weel {
                                     self.set_state(State::Stopped)?;
                                 }
                                 _ => {
-                                    log::error!("Recached end of process in state: {:?}", state)
+                                    eprintln!("Recached end of process in state: {:?}", state)
                                     //Do nothing
                                 }
                             }
@@ -762,7 +762,7 @@ impl Weel {
                     // Signal stop thread that execution of model ended:
                     let send_result = stop_signal_sender.send(());
                     if matches!(send_result, Err(_)) {
-                        log::error!("Error sending termination signal for model thread. Receiver must have been dropped.")
+                        eprintln!("Error sending termination signal for model thread. Receiver must have been dropped.")
                     }
                 } else {
                     self.abort_start();
@@ -799,7 +799,7 @@ impl Weel {
                             joined_thread = true;
                         }
                         Err(err) => {
-                            log::error!("error when joining thread with id {:?}: {:?}", thread, err)
+                            eprintln!("error when joining thread with id {:?}: {:?}", thread, err)
                         }
                     };
                 }
@@ -847,7 +847,7 @@ impl Weel {
                         .expect("Has been set after init")
                         .recv();
                     if matches!(rec_result, Err(_)) {
-                        log::error!("Error receiving termination signal for model thread. Sender must have been dropped.")
+                        eprintln!("Error receiving termination signal for model thread. Sender must have been dropped.")
                     }
                 }
                 _ => eprintln!(
@@ -979,7 +979,7 @@ impl Weel {
                 |payload: &str, _pattern: &str, _topic: Topic| {
                     let message = serde_json::json!(payload);
                     if message["content"].is_null() || message["name"].is_null() {
-                        log::error!("Message content or name is null");
+                        eprintln!("Message content or name is null");
                         panic!("Message content or name is null")
                     }
                     // Check whether content directly contains boolean, otherwise look whether it is the text true, otherwise false
@@ -1522,7 +1522,7 @@ impl Weel {
                         }
                         Signal::Skip => {}
                         x => {
-                            log::error!("Received unexpected signal: {:?}", x);
+                            eprintln!("Received unexpected signal: {:?}", x);
                         }
                     }
                 }
@@ -1534,7 +1534,7 @@ impl Weel {
                         self.set_state(State::Stopping)?;
                     }
                     EvalError::Signal(_signal, _evaluation_result) => {
-                        log::error!("Handling EvalError::Signal in weel_activity, this should never happen! Should be \"raised\" as Error::Signal");
+                        eprintln!("Handling EvalError::Signal in weel_activity, this should never happen! Should be \"raised\" as Error::Signal");
                         panic!("Handling EvalError::Signal in weel_activity, this should never happen! Should be \"raised\" as Error::Signal");
                     }
                     // Runtime and general evaluation errors use the default error handling
@@ -1610,8 +1610,8 @@ impl Weel {
                         }
                     }
                     None => {
-                        log::error!("Child Thread of Thread {:?} with id: {:?} does not have any thread info", parent_id, child_id);
-                        log::error!("{}", PRECON_THREAD_INFO)
+                        eprintln!("Child Thread of Thread {:?} with id: {:?} does not have any thread info", parent_id, child_id);
+                        eprintln!("{}", PRECON_THREAD_INFO)
                     }
                 }
             }
@@ -1723,7 +1723,7 @@ impl Weel {
             Ok(cond) => Ok(cond),
             Err(err) => {
                 self.set_state(State::Stopping)?;
-                log::error!(
+                eprintln!(
                     "Encountered error when evaluating condition {condition}: {:?}",
                     err
                 );
@@ -1731,7 +1731,7 @@ impl Weel {
                     .inform_syntax_error(err, Some(condition))
                 {
                     Ok(_) => {}
-                    Err(c_err) => log::error!(
+                    Err(c_err) => eprintln!(
                         "Error occured when evaluating condition, but informing CPEE failed: {:?}",
                         c_err
                     ),
@@ -1752,7 +1752,7 @@ impl Weel {
                 {
                     Ok(_) => Ok(()),
                     Err(c_err) => {
-                        log::error!(
+                        eprintln!(
                             "Error occured when executing lambda, but informing CPEE failed: {:?}",
                             c_err
                         );
@@ -1858,11 +1858,11 @@ impl Weel {
             let mut current_thread_info = match thread_info_map.get(&current_thread.id()) {
                 Some(x) => x.borrow_mut(),
                 None => {
-                    log::error!(
+                    eprintln!(
                         "Thread information for branch {:?} is empty",
                         current_thread.id()
                     );
-                    log::error!("{}", PRECON_THREAD_INFO);
+                    eprintln!("{}", PRECON_THREAD_INFO);
                     panic!("Thread information not present!")
                 }
             };
@@ -1930,11 +1930,11 @@ impl Weel {
             let mut parent_thread_info = match thread_info_map.get(&parent_thread_id) {
                 Some(x) => x.borrow_mut(),
                 None => {
-                    log::error!(
+                    eprintln!(
                         "Thread information for branch {:?} is empty",
                         current_thread.id()
                     );
-                    log::error!("{}", PRECON_THREAD_INFO);
+                    eprintln!("{}", PRECON_THREAD_INFO);
                     panic!("Thread information not present!")
                 }
             };
@@ -1961,11 +1961,11 @@ impl Weel {
      * Locks: state and potentially positions and status (via set_state)
      */
     pub fn handle_error(self: &Arc<Self>, err: Error, should_set_stopping: bool) {
-        log::error!("Encountered error: {:?}", err);
+        eprintln!("Encountered error: {:?}", err);
         match ConnectionWrapper::new(self.clone(), None, None).inform_connectionwrapper_error(err) {
             Ok(_) => {}
             Err(err) => {
-                log::error!(
+                eprintln!(
                     "Encountered error but informing CPEE of error failed: {:?}",
                     err
                 )
@@ -1975,13 +1975,13 @@ impl Weel {
             match self.set_state(State::Stopping) {
                 Ok(_) => {}
                 Err(err) => {
-                    log::error!("Encountered error: {:?}", err);
+                    eprintln!("Encountered error: {:?}", err);
                     match ConnectionWrapper::new(self.clone(), None, None)
                         .inform_connectionwrapper_error(err)
                     {
                         Ok(_) => {}
                         Err(err) => {
-                            log::error!(
+                            eprintln!(
                                 "Encountered error but informing CPEE of error failed: {:?}",
                                 err
                             )
@@ -2068,7 +2068,7 @@ fn recursive_continue(
     if let Some(branch_event) = &thread_info.branch_event_sender {
         match branch_event.send(()) {
             Ok(()) => {}
-            Err(err) => log::error!(
+            Err(err) => eprintln!(
                 "Send failed: {:?}, parallel gateway must have terminated already",
                 err
             ),
