@@ -1381,6 +1381,7 @@ impl Weel {
                             }
 
                             let code_type;
+                            log::debug!("Wait result: {:?}", wait_result);
                             let signaled_update_again = wait_result
                                 .as_ref()
                                 .map(|res| matches!(res, Signal::UpdateAgain))
