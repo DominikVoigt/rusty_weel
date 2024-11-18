@@ -218,10 +218,10 @@ impl RedisHelper {
                             {
                                 log_error_and_panic("message[content][headers] is either null, or ..[headers] is not a hash")
                             }
-                            log::debug!("Processing values: {:?}", message["content"]["values"]);
                             let values = message["content"]["values"].as_array().expect("Values received is not an array!");
                             let mut content = Vec::with_capacity(values.len());
                             for value in values {
+                                log::debug!("Processing value: {:?}", value);
                                 if value[1][0] == "simple" {
                                     content.push(Parameter::SimpleParameter { name: value[0].as_str().unwrap().to_owned(), value: value[1][1].as_str().unwrap().to_owned(), param_type: http_helper::ParameterType::Body });
                                 } else if value[1][0] == "complex" {
