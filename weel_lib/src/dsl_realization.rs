@@ -1381,7 +1381,6 @@ impl Weel {
                             }
 
                             let code_type;
-                            log::debug!("Wait result: {:?}", wait_result);
                             let signaled_update_again = wait_result
                                 .as_ref()
                                 .map(|res| matches!(res, Signal::UpdateAgain))
@@ -1392,6 +1391,7 @@ impl Weel {
                                 .unwrap_or(false);
                             let code = if signaled_update_again {
                                 code_type = "update";
+                                log::debug!("update code for instance is: {:?}", update_code);
                                 update_code
                             } else if signaled_salvage {
                                 if rescue_code.is_some() {
