@@ -899,6 +899,7 @@ impl ConnectionWrapper {
                 weel.get_instance_meta_data(),
             )?;
         } else {
+            log::debug!("Setting return value to: {}", recv);
             self.handler_return_status = status;
             self.handler_return_value = Some(recv);
             self.handler_return_options = Some(options);
