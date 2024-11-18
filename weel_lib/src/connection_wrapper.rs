@@ -679,6 +679,7 @@ impl ConnectionWrapper {
             let callback_header_set = response_headers.contains_key("cpee_callback");
 
             // NOTE: For this area, all headers are checked against lowercase and - subsituted with _ due to the reqwest http library!
+            log::debug!("Callback header set: {callback_header_set}, body: {}", str::from_utf8(&body).unwrap());
             if callback_header_set {
                 if body.len() > 0 {
                     response_headers.insert("cpee_update".to_owned(), "true".to_owned());
@@ -867,7 +868,7 @@ impl ConnectionWrapper {
         let headers = uniformize_headers(&options);
         log::debug!("Contains content_type: {:?}", headers.get("content_type"));
         if let CallbackType::Raw(body) = body {
-            log::debug!("Contains content: {:?}", str::from_utf8(body));
+            log::debug!("Contains content: {:?}", str::from_utf8(body).unwrap());
         }
         let weel = self.weel();
         let recv =
