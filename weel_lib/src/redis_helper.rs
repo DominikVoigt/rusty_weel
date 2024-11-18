@@ -225,7 +225,7 @@ impl RedisHelper {
                                 if value[1][0] == "simple" {
                                     content.push(Parameter::SimpleParameter { name: value[0].as_str().unwrap().to_owned(), value: value[1][1].as_str().unwrap().to_owned(), param_type: http_helper::ParameterType::Body });
                                 } else if value[1][0] == "complex" {
-                                    let mime_type = match value[1][1].to_string().parse::<Mime>() {
+                                    let mime_type = match value[1][1].as_str().unwrap().parse::<Mime>() {
                                         Ok(mime) => mime,
                                         Err(err) => {
                                             log::error!("Failed parsing mimetype: {:?} from string: {}", err, value[1][1].as_str().unwrap().to_owned());
@@ -234,9 +234,9 @@ impl RedisHelper {
                                     };
                                     // TODO: Handle complex with path or file handle
                                     let mut file = tempfile::tempfile()?;
-                                    file.write_all(value[1][1].to_string().as_bytes())?;
+                                    file.write_all(value[1][1].as_str().unwrap().as_bytes())?;
                                     file.rewind()?;
-                                    content.push(Parameter::ComplexParameter { name: value[0].to_string(), mime_type, content_handle: file });
+                                    content.push(Parameter::ComplexParameter { name: value[0].as_str().unwrap().to_owned(), mime_type, content_handle: file });
                                 }
                             };
                             // TODO: Determine whether we need this still: construct_parameters(&message_json);
@@ -669,5 +669,11 @@ mod test {
             attributes: HashMap::new(),
             global_executionhandlers: "".to_owned(),
         }
+    }
+    
+    #[test]
+    fn parsing() {
+        let mime = "application/json".parse::<Mime>().unwrap();
+        println!("{}", mime)
     }
 }
