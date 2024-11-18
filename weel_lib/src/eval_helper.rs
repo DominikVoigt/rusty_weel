@@ -349,7 +349,7 @@ pub fn evaluate_expression(
             client.add_complex_parameter(
                 "call_result",
                 APPLICATION_JSON,
-                call_result.to_string().as_bytes(),
+                call_result.as_str().unwrap().as_bytes(),
             )?;
         }
 
