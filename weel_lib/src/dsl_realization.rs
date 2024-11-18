@@ -1406,6 +1406,7 @@ impl Weel {
                                 code_type = "finalize";
                                 finalize_code
                             };
+                            log::debug!("Code: {:?}", code);
                             log::debug!("Code type: {}", code_type);
                             log::debug!("Return value: {:?}", connection_wrapper.handler_return_value);
 

@@ -867,6 +867,7 @@ impl ConnectionWrapper {
     ) -> Result<()> {
         let headers = uniformize_headers(&options);
         log::debug!("Contains content_type: {:?}", headers.get("content_type"));
+        log::debug!("Headers: {:?}", headers);
         if let CallbackType::Raw(body) = body {
             log::debug!("Contains content: {:?}", str::from_utf8(body).unwrap());
         }
