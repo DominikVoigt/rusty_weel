@@ -669,7 +669,7 @@ impl ConnectionWrapper {
                 break;
             }
         }
-
+        log::debug!("status for call {:?}: {}", parameters, status);
         // If status not okay:
         if status < 200 || status >= 300 {
             response_headers.insert("cpee_salvage".to_owned(), "true".to_owned());
