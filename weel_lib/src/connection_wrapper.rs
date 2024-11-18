@@ -825,6 +825,7 @@ impl ConnectionWrapper {
         options: HashMap<String, String>, // Headers
     ) -> Result<()> {
         log::debug!("Handling callback with options: {:?}", options);
+        log::debug!("Handling callback with content: {:?}", str::from_utf8(body).unwrap());
         let headers = uniformize_headers(&options);
         log::debug!("Contains content_type: {:?}", headers.get("content_type"));
         let weel = self.weel();
