@@ -1407,6 +1407,7 @@ impl Weel {
                                 finalize_code
                             };
                             log::debug!("Code type: {}", code_type);
+                            log::debug!("Return value: {:?}", connection_wrapper.handler_return_value);
 
                             connection_wrapper.inform_activity_manipulate()?;
                             if let Some(code) = code {
@@ -1649,6 +1650,7 @@ impl Weel {
         call_result: Option<Value>,
         call_headers: Option<HashMap<String, String>>,
     ) -> Result<eval_helper::EvaluationResult> {
+        log::debug!("Executing code at: {}", location);
         log::debug!("Using call result: {:?}", call_result);
         // We clone the dynamic data and status dto here which is expensive but allows us to not block the whole weel until the eval call returns
         if read_only {
