@@ -349,10 +349,7 @@ pub fn evaluate_expression(
             client.add_complex_parameter(
                 "call_result",
                 APPLICATION_JSON,
-                match call_result.as_str() {
-                    Some(str) => {str},
-                    None => {"{}"},
-                }.as_bytes(),
+                serde_json::to_string(&call_result)?.as_bytes(),
             )?;
         }
 
