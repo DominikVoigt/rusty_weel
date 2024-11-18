@@ -1,5 +1,5 @@
 use crate::{
-    data_types::{BlockingQueue, Context, HTTPParams, InstanceMetaData, Opts, StatusDTO},
+    data_types::{BlockingQueue, CallbackType, Context, HTTPParams, InstanceMetaData, Opts, StatusDTO},
     dsl_realization::{generate_random_key, Error, Result, Signal, Weel},
     eval_helper::{self, evaluate_expression, EvalError},
 };
@@ -35,7 +35,6 @@ pub struct ConnectionWrapper {
     annotations: Option<String>,
     error_regex: Regex,
 }
-
 // Determines whether recurring calls are too close together (in seconds)
 const LOOP_GUARD_DELTA: f32 = 2.0;
 // Determines how many calls can be made in total before an activity might be throttled
@@ -636,7 +635,7 @@ impl ConnectionWrapper {
         // If status not okay:
         if status < 200 || status >= 300 {
             response_headers.insert("cpee_salvage".to_owned(), "true".to_owned());
-            this.handle_callback(Some(status), &body, response_headers)?
+            this.handle_callback(Some(status), CallbackType::Raw(&body), response_headers)?
         } else {
             // Accept callback if header is set
             let callback_header_set = response_headers.contains_key("cpee_callback");
@@ -645,7 +644,7 @@ impl ConnectionWrapper {
             if callback_header_set {
                 if body.len() > 0 {
                     response_headers.insert("cpee_update".to_owned(), "true".to_owned());
-                    this.handle_callback(Some(status), &body, response_headers)?
+                    this.handle_callback(Some(status), CallbackType::Raw(&body), response_headers)?
                 } else {
                     // In this case we have an asynchroneous task
                     let mut content_node = json!({
@@ -688,7 +687,7 @@ impl ConnectionWrapper {
                     }
                 }
             } else {
-                this.handle_callback(Some(status), &body, response_headers)?
+                this.handle_callback(Some(status), CallbackType::Raw(&body), response_headers)?
             }
         }
         Ok(())
@@ -821,11 +820,9 @@ impl ConnectionWrapper {
     pub fn handle_callback(
         &mut self,
         status: Option<u16>,
-        body: &[u8],
+        body: CallbackType,
         options: HashMap<String, String>, // Headers
     ) -> Result<()> {
-        log::debug!("Handling callback with options: {:?}", options);
-        log::debug!("Handling callback with content: {:?}", str::from_utf8(body).unwrap());
         let headers = uniformize_headers(&options);
         log::debug!("Contains content_type: {:?}", headers.get("content_type"));
         let weel = self.weel();

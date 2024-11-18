@@ -17,7 +17,7 @@ use tempfile::tempfile;
 
 use crate::{
     connection_wrapper::ConnectionWrapper,
-    data_types::{Context, Opts, StatusDTO},
+    data_types::{CallbackType, Context, Opts, StatusDTO},
     dsl_realization::{Error, Result, Signal},
 };
 
@@ -650,34 +650,40 @@ impl Display for EvalError {
 pub fn structurize_result(
     eval_backend_structurize_url: &str,
     options: &HashMap<String, String>,
-    body: &[u8],
+    body: CallbackType,
 ) -> Result<Value> {
     let mut client =
         http_helper::Client::new(eval_backend_structurize_url, http_helper::Method::PUT)?;
-    log::debug!("Sending to structurize {:?}", str::from_utf8(body).unwrap());
-    let mut body_file = tempfile()?;
-    body_file.write_all(body)?;
-    body_file.rewind()?;
-    let content_string = options.get(CONTENT_TYPE.as_str());
-    // TODO: The default cannot be json! (just for worklist for now) -> Needs to be octet-stream or none and structurize service has to guess! 
-    let mime_type = match content_string {
-        Some(content_type) => {
-            content_type.parse::<Mime>().unwrap_or_else(|err| {
-                log::error!("Provided content type could not be parsed to a mimetype: {:?}", err);
-                log::error!("Defaulting to text/plain");
-                TEXT_PLAIN_UTF_8
-            })
+    match body {
+        CallbackType::Raw(body) => {
+            let mut body_file = tempfile()?;
+            body_file.write_all(body)?;
+            body_file.rewind()?;
+            let content_string = options.get(CONTENT_TYPE.as_str());
+            // TODO: The default cannot be json! (just for worklist for now) -> Needs to be octet-stream or none and structurize service has to guess! 
+            let mime_type = match content_string {
+                Some(content_type) => {
+                    content_type.parse::<Mime>().unwrap_or_else(|err| {
+                        log::error!("Provided content type could not be parsed to a mimetype: {:?}", err);
+                        log::error!("Defaulting to text/plain");
+                        TEXT_PLAIN_UTF_8
+                    })
+                },
+                None => {
+                    log::error!("No content type provided in response, defaulting to text/plain");
+                    TEXT_PLAIN_UTF_8
+                },
+            };
+            client.add_parameter(Parameter::ComplexParameter {
+                name: "body".to_owned(),
+                mime_type: mime_type,
+                content_handle: body_file,
+            });
         },
-        None => {
-            log::error!("No content type provided in response, defaulting to text/plain");
-            TEXT_PLAIN_UTF_8
+        CallbackType::Structured(vec) => {
+            client.add_parameters(vec);
         },
-    };
-    client.add_parameter(Parameter::ComplexParameter {
-        name: "body".to_owned(),
-        mime_type: mime_type,
-        content_handle: body_file,
-    });
+    }
     client.add_request_headers(options.clone())?;
     let response = client.execute()?;
     let status = response.status_code;

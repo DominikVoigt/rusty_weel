@@ -5,6 +5,7 @@ use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::thread::{JoinHandle, ThreadId};
 use std::{collections::HashMap, path::PathBuf};
 
+use http_helper::Parameter;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use crate::dsl_realization::{Position, PositionDTO, Result, Signal};
@@ -314,6 +315,12 @@ impl<T: Default> BlockingQueue<T> {
 // Define a float type to easily apply changes here if needed
 #[allow(non_camel_case_types)]
 type float = f32;
+
+pub enum CallbackType<'a> {
+    Raw(&'a [u8]),
+    Structured(Vec<Parameter>)
+}
+
 
 #[cfg(test)]
 mod test_queue {

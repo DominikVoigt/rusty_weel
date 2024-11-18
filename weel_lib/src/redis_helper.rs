@@ -1,5 +1,10 @@
 use std::{
-    collections::{HashMap, HashSet}, panic::{set_hook, take_hook}, sync::{Arc, Mutex}, thread::{self, sleep, JoinHandle}, time::Duration
+    collections::{HashMap, HashSet},
+    io::{Seek, Write},
+    panic::{set_hook, take_hook},
+    sync::{Arc, Mutex},
+    thread::{self, sleep, JoinHandle},
+    time::Duration,
 };
 
 use crate::{
@@ -31,7 +36,11 @@ impl RedisHelper {
      * connection_name: Name of the connection displayed within the redis instance
      */
     pub fn new(static_data: &Opts, connection_name: &str) -> Result<Self> {
-        let number_workers = if static_data.redis_workers > 99 { 99 } else { static_data.redis_workers };
+        let number_workers = if static_data.redis_workers > 99 {
+            99
+        } else {
+            static_data.redis_workers
+        };
         let connection = connect_to_redis(static_data, connection_name)?;
 
         Ok(Self {
@@ -43,7 +52,7 @@ impl RedisHelper {
 
     fn target_worker(&mut self) -> u32 {
         let mut next = self.last + 1;
-        // If we have 2 workers, our worker ids should be (0)0 and (0)1 
+        // If we have 2 workers, our worker ids should be (0)0 and (0)1
         if next > (self.number_workers - 1) {
             next = 0;
         }
@@ -58,11 +67,14 @@ impl RedisHelper {
         &mut self,
         what: &str,
         content: Option<Value>,
-        instace_meta_data: InstanceMetaData
+        instace_meta_data: InstanceMetaData,
     ) -> Result<()> {
         let mut content = content.unwrap_or(json!({}));
         // TODO: Original code adds attributes_translated here, do we need to do this?
-        content.as_object_mut().unwrap().insert("attributes".to_owned(), json!(&instace_meta_data.attributes));
+        content.as_object_mut().unwrap().insert(
+            "attributes".to_owned(),
+            json!(&instace_meta_data.attributes),
+        );
         self.send("event", what, instace_meta_data, Some(content))?;
         Ok(())
     }
@@ -96,19 +108,30 @@ impl RedisHelper {
         };
         let (topic, name) = event
             // If no separator is contained e.g. in case for callback-end, no topic is provided
-            .split_once("/").unwrap_or(("", event));
+            .split_once("/")
+            .unwrap_or(("", event));
 
         let mut payload = HashMap::new();
-        payload.insert("cpee",                Value::String(cpee_url.clone()));      
-        payload.insert("instance-url",        Value::String(format!("{}/{}", cpee_url, instance_id.clone())));          
-        payload.insert("instance",            Value::Number(instance_id.into())) ;      
-        payload.insert("topic",               Value::String(topic.to_owned()));  
-        payload.insert("type",                Value::String(message_type.to_owned()));  
-        payload.insert("name",                Value::String(name.to_owned()));  
-        payload.insert("timestamp",           Value::String(chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, false).to_string()));      
-        payload.insert("content",             content);      
-        payload.insert("instance-uuid",       Value::String(instance_uuid));          
-        payload.insert("instance-name",       Value::String(info));      
+        payload.insert("cpee", Value::String(cpee_url.clone()));
+        payload.insert(
+            "instance-url",
+            Value::String(format!("{}/{}", cpee_url, instance_id.clone())),
+        );
+        payload.insert("instance", Value::Number(instance_id.into()));
+        payload.insert("topic", Value::String(topic.to_owned()));
+        payload.insert("type", Value::String(message_type.to_owned()));
+        payload.insert("name", Value::String(name.to_owned()));
+        payload.insert(
+            "timestamp",
+            Value::String(
+                chrono::Utc::now()
+                    .to_rfc3339_opts(chrono::SecondsFormat::Millis, false)
+                    .to_string(),
+            ),
+        );
+        payload.insert("content", content);
+        payload.insert("instance-uuid", Value::String(instance_uuid));
+        payload.insert("instance-name", Value::String(info));
 
         let channel: String = format!("{}:{}:{}", message_type, target_worker, event);
         // Construct complete payload out of: <instance-id> <actual-payload>
@@ -199,9 +222,9 @@ impl RedisHelper {
                             let mut content = Vec::with_capacity(values.len());
                             for value in values {
                                 if value[1][0] == "simple" {
-                                    content.push(Parameter::SimpleParameter { name: value[0].to_string(), value: value[1][1].to_string(), param_type: http_helper::ParameterType::Body }.into());
+                                    content.push(Parameter::SimpleParameter { name: value[0].to_string(), value: value[1][1].to_string(), param_type: http_helper::ParameterType::Body });
                                 } else if value[1][0] == "complex" {
-                                    let mime = match value[1][1].to_string().parse::<Mime>() {
+                                    let mime_type = match value[1][1].to_string().parse::<Mime>() {
                                         Ok(mime) => mime,
                                         Err(err) => {
                                             log::error!("Failed parsing mimetype: {:?}", err);
@@ -209,21 +232,19 @@ impl RedisHelper {
                                         },
                                     };
                                     // TODO: Handle complex with path or file handle
-                                    let mut f_content = Vec::new();
-                                    f_content.copy_from_slice(value[1][1].to_string().as_bytes());
-                                    content.push(ParameterDTO::ComplexParameterDTO { name: value[0].to_string(), mime_type: mime.essence_str().to_owned(), value: f_content });
+                                    let mut file = tempfile::tempfile()?;
+                                    file.write_all(value[1][1].to_string().as_bytes())?;
+                                    file.rewind()?;
+                                    content.push(Parameter::ComplexParameter { name: value[0].to_string(), mime_type, content_handle: file });
                                 }
                             };
-                            let cont_str = serde_json::to_string(&content).expect("Could not parse into string");
-                            log::debug!("Content string is: {}", cont_str);
-                            let cont = cont_str.as_bytes();
                             // TODO: Determine whether we need this still: construct_parameters(&message_json);
                             let headers = convert_headers_to_map(&message["content"]["headers"]);
                             callback_keys.get(&topic.event)
                                          .expect("Cannot happen as we check containment previously and hold mutex throughout")
                                          .lock()?
                                          // TODO: Maybe add status to message too?
-                                         .handle_callback(None, cont, headers)?;
+                                         .handle_callback(None, crate::data_types::CallbackType::Structured(content), headers)?;
                         }
                     }
                     "callback-end:*" => {
@@ -298,10 +319,7 @@ impl RedisHelper {
  * redis+unix:///<path>[?db=<db>[&pass=<password>][&user=<username>]]
  * unix:///<path>[?db=<db>][&pass=<password>][&user=<username>]]
  */
-fn connect_to_redis(
-    configuration: &Opts,
-    connection_name: &str,
-) -> Result<redis::Connection> {
+fn connect_to_redis(configuration: &Opts, connection_name: &str) -> Result<redis::Connection> {
     // Note: Socket takes precedence as it is way faster
     let url = configuration
         .redis_path
@@ -316,7 +334,7 @@ fn connect_to_redis(
         .arg(&connection_name)
         .query::<String>(&mut connection)
     {
-        Ok(_resp) => {},
+        Ok(_resp) => {}
         Err(err) => log::error!("Error occured when setting client name: {}", err),
     };
     Ok(connection)
