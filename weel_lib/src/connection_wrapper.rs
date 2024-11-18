@@ -1,15 +1,22 @@
 use crate::{
-    data_types::{BlockingQueue, CallbackType, Context, HTTPParams, InstanceMetaData, Opts, StatusDTO},
+    data_types::{
+        BlockingQueue, CallbackType, Context, HTTPParams, InstanceMetaData, Opts, StatusDTO,
+    },
     dsl_realization::{generate_random_key, Error, Result, Signal, Weel},
     eval_helper::{self, evaluate_expression, EvalError},
 };
+use core::str;
 use http_helper::{header_map_to_hash_map, Method, Parameter};
 use regex::Regex;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde_json::{json, Value};
-use core::str;
 use std::{
-    collections::HashMap, io::{Read, Seek}, str::FromStr, sync::{Arc, Mutex, Weak}, thread::{self, sleep, ThreadId}, time::{Duration, SystemTime}
+    collections::HashMap,
+    io::{Read, Seek},
+    str::FromStr,
+    sync::{Arc, Mutex, Weak},
+    thread::{self, sleep, ThreadId},
+    time::{Duration, SystemTime},
 };
 use urlencoding::encode;
 
@@ -323,7 +330,13 @@ impl ConnectionWrapper {
                 }
             };
         };
-        self.evaluate_arguments(&mut parameters.arguments, &contex_snapshot, &weel.opts, None, thread_local)?;
+        self.evaluate_arguments(
+            &mut parameters.arguments,
+            &contex_snapshot,
+            &weel.opts,
+            None,
+            thread_local,
+        )?;
         Ok(parameters)
     }
 
@@ -338,7 +351,13 @@ impl ConnectionWrapper {
         if arguments.is_array() {
             for node in arguments.as_array_mut().unwrap() {
                 if node.is_array() || node.is_object() {
-                    self.evaluate_arguments(node, context, opts, weel_status.clone(), thread_local)?;
+                    self.evaluate_arguments(
+                        node,
+                        context,
+                        opts,
+                        weel_status.clone(),
+                        thread_local,
+                    )?;
                 } else {
                     self.eval_node_and_replace(node, context, opts, thread_local)?;
                 }
@@ -346,7 +365,13 @@ impl ConnectionWrapper {
         } else if arguments.is_object() {
             for (_name, node) in arguments.as_object_mut().unwrap() {
                 if node.is_array() || node.is_object() {
-                    self.evaluate_arguments(node, context, opts, weel_status.clone(), thread_local)?;
+                    self.evaluate_arguments(
+                        node,
+                        context,
+                        opts,
+                        weel_status.clone(),
+                        thread_local,
+                    )?;
                 } else {
                     self.eval_node_and_replace(node, context, opts, thread_local)?;
                 }
@@ -355,7 +380,13 @@ impl ConnectionWrapper {
         Ok(())
     }
 
-    fn eval_node_and_replace(&self, node: &mut Value, context: &Context, opts: &Opts, thread_local: &Option<Value>) -> Result<()> {
+    fn eval_node_and_replace(
+        &self,
+        node: &mut Value,
+        context: &Context,
+        opts: &Opts,
+        thread_local: &Option<Value>,
+    ) -> Result<()> {
         if node.is_null() {
             return Ok(());
         }
@@ -531,7 +562,11 @@ impl ConnectionWrapper {
                         } else {
                             serde_json::to_string(node)?
                         };
-                        params.push(Parameter::SimpleParameter { name: key.to_owned(), value, param_type: http_helper::ParameterType::Body });
+                        params.push(Parameter::SimpleParameter {
+                            name: key.to_owned(),
+                            value,
+                            param_type: http_helper::ParameterType::Body,
+                        });
                     }
                 }
                 None => {
@@ -615,7 +650,10 @@ impl ConnectionWrapper {
 
             status = response.status_code;
             response_headers = header_map_to_hash_map(&response.headers)?;
-            log::info!("Received headers {:?} from call to {endpoint}", response_headers);
+            log::info!(
+                "Received headers {:?} from call to {endpoint}",
+                response_headers
+            );
             body = response.body;
 
             if status == 561 {
@@ -655,9 +693,10 @@ impl ConnectionWrapper {
                         "ecid": convert_thread_id(thread::current().id())
                     });
                     let content = content_node.as_object_mut().expect("Cannot fail");
-                    
-                    let instantiation_header_set = response_headers.contains_key("cpee_instantiation");
-                    
+
+                    let instantiation_header_set =
+                        response_headers.contains_key("cpee_instantiation");
+
                     if instantiation_header_set {
                         // TODO What about value_helper
                         content.insert(
@@ -813,7 +852,7 @@ impl ConnectionWrapper {
      * In case of a synchroneous call, it is called directly (within the curl method) on the raw data
      * In case of an asynchroneous call, it is called from the callback thread (started when the instance is spun up via the `establish_callback_subscriptions` in the redis_helper)
      * In the asynchroneous case, we cannot handle any binary data ATM: 18.11.2024
-     * 
+     *
      * Redis callbacks have no response code -> Optional
      *
      * Locks:
@@ -827,6 +866,9 @@ impl ConnectionWrapper {
     ) -> Result<()> {
         let headers = uniformize_headers(&options);
         log::debug!("Contains content_type: {:?}", headers.get("content_type"));
+        if let CallbackType::Raw(body) = body {
+            log::debug!("Contains content: {:?}", str::from_utf8(body));
+        }
         let weel = self.weel();
         let recv =
             eval_helper::structurize_result(&weel.opts.eval_backend_structurize, &options, body)?;
@@ -838,10 +880,7 @@ impl ConnectionWrapper {
             let content = content_node
                 .as_object_mut()
                 .expect("Construct basic content has to return json object");
-            content.insert(
-                "received".to_owned(),
-                recv.clone(),
-            );
+            content.insert("received".to_owned(), recv.clone());
             content.insert(
                 "annotations".to_owned(),
                 serde_json::Value::String(self.annotations.clone().unwrap_or("".to_owned())),
@@ -888,10 +927,7 @@ impl ConnectionWrapper {
             let content = content_node
                 .as_object_mut()
                 .expect("Construct basic content has to return json object");
-            content.insert(
-                "received".to_owned(),
-                recv.clone(),
-            );
+            content.insert("received".to_owned(), recv.clone());
 
             redis.notify(
                 &format!("task/{event}"),
@@ -923,7 +959,7 @@ impl ConnectionWrapper {
             match &self.handler_continue {
                 Some(x) => {
                     x.enqueue(Signal::UpdateAgain);
-                },
+                }
                 None => log::error!("Received CPEE_UPDATE but handler_continue is empty?"),
             }
         } else {
@@ -1173,10 +1209,13 @@ impl ConnectionWrapper {
  */
 fn uniformize_headers(options: &HashMap<String, String>) -> HashMap<String, String> {
     let options = options.clone();
-    options.iter().map(|(k,v)| {
-        let k = k.to_lowercase().replace("-", "_");
-        (k,v.clone())
-    }).collect()
+    options
+        .iter()
+        .map(|(k, v)| {
+            let k = k.to_lowercase().replace("-", "_");
+            (k, v.clone())
+        })
+        .collect()
 }
 
 pub fn convert_thread_id(thread_id: ThreadId) -> u64 {
