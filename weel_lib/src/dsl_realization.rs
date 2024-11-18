@@ -1406,6 +1406,7 @@ impl Weel {
                                 code_type = "finalize";
                                 finalize_code
                             };
+                            log::debug!("Code type: {}", code_type);
 
                             connection_wrapper.inform_activity_manipulate()?;
                             if let Some(code) = code {
