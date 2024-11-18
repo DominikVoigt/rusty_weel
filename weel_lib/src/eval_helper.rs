@@ -351,7 +351,7 @@ pub fn evaluate_expression(
                 APPLICATION_JSON,
                 match call_result.as_str() {
                     Some(str) => {str},
-                    None => {""},
+                    None => {"{}"},
                 }.as_bytes(),
             )?;
         }
