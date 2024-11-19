@@ -62,6 +62,7 @@ impl DSL for Weel {
         id: &str,
         endpoint_name: &str,
         parameters: HTTPParams,
+        annotations: Value,
         // Even though adding separate functions would be more idomatic for opt. parameters, the number and similar handling of these parameters would make it clunky to handle (2^4 variants)
         prepare_code: Option<&str>,
         update_code: Option<&str>,
@@ -76,6 +77,7 @@ impl DSL for Weel {
             rescue_code,
             finalize_code,
             Some(parameters),
+            annotations,
             Some(endpoint_name),
         )
     }
@@ -96,8 +98,9 @@ impl DSL for Weel {
             label.map(|e: &'static str| HTTPParams {
                 label: e,
                 method: http_helper::Method::GET,
-                arguments: json!(""),
+                arguments: Value::Null,
             }),
+            Value::Null,
             None,
         )
     }
@@ -1093,6 +1096,7 @@ impl Weel {
         rescue_code: Option<&str>,
         finalize_code: Option<&str>,
         parameters: Option<HTTPParams>,
+        annotations: Value,
         endpoint_name: Option<&str>,
     ) -> Result<()> {
         let position = self.clone().position_test(activity_id)?;
@@ -1264,6 +1268,7 @@ impl Weel {
                                 .as_ref()
                                 .map(|x| x.as_str()),
                             parameters,
+                            &annotations
                         )?;
 
                         let connection_wrapper = connection_wrapper_mutex.lock().unwrap();

@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use serde_json::Value;
+
 use crate::{data_types::{CancelCondition, ChooseVariant, HTTPParams}, dsl_realization::Result};
 
 pub trait DSL {
@@ -11,6 +13,7 @@ pub trait DSL {
         id: &str,
         endpoint_name: &str,
         parameters: HTTPParams,
+        annotations: Value,
         // Even though adding separate functions would be more idomatic for opt. parameters, the number and similar handling of these parameters would make it clunky to handle (2^4 variants)
         prepare_code: Option<&str>,
         update_code: Option<&str>,

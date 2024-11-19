@@ -39,7 +39,7 @@ pub struct ConnectionWrapper {
     // Unique identifier (randomly created)
     pub handler_activity_uuid: String,
     activity_label: String,
-    annotations: Option<String>,
+    annotations: Option<Value>,
     error_regex: Regex,
 }
 // Determines whether recurring calls are too close together (in seconds)
@@ -461,6 +461,7 @@ impl ConnectionWrapper {
         selfy: &Arc<Mutex<Self>>,
         passthrough: Option<&str>,
         parameters: HTTPParams,
+        annotations: &Value
     ) -> Result<()> {
         let mut this = selfy.lock()?;
         let weel = this.weel();
@@ -473,6 +474,7 @@ impl ConnectionWrapper {
         // We do not model annotations anyway -> Can skip this from the original code
         {
             this.activity_label = parameters.label.to_owned();
+            this.annotations = Some(annotations.clone());
             this.inform_resource_utilization()?;
             let mut content_node = this.construct_basic_content();
             let content = content_node
@@ -482,6 +484,9 @@ impl ConnectionWrapper {
             content.insert("passthrough".to_owned(), json!(passthrough));
             // parameters do not look exactly like in the original (string representation looks different):
             content.insert("parameters".to_owned(), json!(parameters));
+            if let Some(annotations) = this.annotations.as_ref(){
+                content.insert("annotations".to_owned(), annotations.clone());
+            }
             weel.redis_notifications_client.lock()?.notify(
                 "activity/calling",
                 Some(content_node),
@@ -871,10 +876,9 @@ impl ConnectionWrapper {
                 .as_object_mut()
                 .expect("Construct basic content has to return json object");
             content.insert("received".to_owned(), recv.clone());
-            content.insert(
-                "annotations".to_owned(),
-                serde_json::Value::String(self.annotations.clone().unwrap_or("".to_owned())),
-            );
+            if let Some(annotation) = self.annotations.as_ref() {
+                content.insert("annotations".to_owned(), annotation.clone());
+            }
 
             redis.notify(
                 "activity/receiving",
@@ -968,9 +972,9 @@ impl ConnectionWrapper {
             } else {
                 match &self.handler_continue {
                     Some(x) => x.enqueue(Signal::None),
-                    None => eprintln!(
-                        "Received neither salvage or stop but handler_continue is empty?"
-                    ),
+                    None => {
+                        eprintln!("Received neither salvage or stop but handler_continue is empty?")
+                    }
                 }
             }
         }
@@ -1113,9 +1117,7 @@ impl ConnectionWrapper {
                     location.as_str().to_owned(),
                 ))
             }
-            None => {
-                Err(message.to_owned())
-            }
+            None => Err(message.to_owned()),
         }
     }
 
