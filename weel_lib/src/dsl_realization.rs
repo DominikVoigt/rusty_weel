@@ -1354,6 +1354,7 @@ impl Weel {
                                     .handler_passthrough
                                     .lock()
                                     .unwrap() = connection_wrapper.activity_passthrough_value();
+                                println!("Passthrough value is: {:?}", connection_wrapper.activity_passthrough_value());
                                 if weel_position
                                     .as_ref()
                                     .unwrap()
