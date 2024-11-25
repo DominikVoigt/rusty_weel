@@ -1288,9 +1288,9 @@ impl Weel {
                                 None,
                                 None,
                             );
-                            let content = json!([{
-                                "wait": **weel_position.as_ref().unwrap()
-                            }]);
+                            let content = json!({
+                                "wait": [**weel_position.as_ref().unwrap()]
+                            });
                             println!("Content: {:?}", content);
                             connection_wrapper.inform_position_change(Some(content))?;
                         };
