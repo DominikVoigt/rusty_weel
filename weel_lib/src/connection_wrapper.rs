@@ -505,6 +505,7 @@ impl ConnectionWrapper {
                 );
                 content.remove("endpoint");
                 weel.register_callback(selfy.clone(), passthrough, content_node)?;
+                this.handler_passthrough = Some(passthrough.to_owned());
             }
             None => {
                 // Drop to allow relocking in the method
