@@ -1882,6 +1882,8 @@ impl Weel {
                 ipc.insert("unmark".to_owned(), json!([**branch_position]));
             };
             let mut search_positions = self.search_positions.lock().unwrap();
+            println!("Searchpositions: {:?}", search_positions);
+            println!("Position: {}", position);
             let search_position = search_positions.remove(&position);
             let passthrough = search_position
                 .map(|pos| pos.handler_passthrough.lock().unwrap().clone())
