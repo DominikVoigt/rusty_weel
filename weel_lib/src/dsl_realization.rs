@@ -1888,6 +1888,7 @@ impl Weel {
             let passthrough = search_position
                 .map(|pos| pos.handler_passthrough.lock().unwrap().clone())
                 .flatten();
+            println!("Passthrough: {:?}", passthrough);
             let weel_position = if current_thread_info.switched_to_execution {
                 current_thread_info.switched_to_execution = false;
                 Position::new(
