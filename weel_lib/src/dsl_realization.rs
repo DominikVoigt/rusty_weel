@@ -1280,7 +1280,6 @@ impl Weel {
                             .lock()
                             .unwrap() = connection_wrapper.handler_passthrough.clone();
                         let passthrough_set = weel_position.as_ref().unwrap().handler_passthrough.lock().unwrap().is_some();
-                        println!("Weel pos: {:?}, passthrough_set: {passthrough_set}", weel_position);
                         if passthrough_set
                         {
                             let connection_wrapper = ConnectionWrapper::new(
@@ -1292,6 +1291,7 @@ impl Weel {
                             let content = json!({
                                 "wait": **weel_position.as_ref().unwrap()
                             });
+                            println!("Content: {:?}", content);
                             connection_wrapper.inform_position_change(Some(content))?;
                         };
                         drop(connection_wrapper);
