@@ -231,14 +231,12 @@ impl RedisHelper {
                                             panic!("Failed parsing mimetype")
                                         },
                                     };
-                                    // TODO: Handle complex with path or file handle
                                     let mut file = tempfile::tempfile()?;
                                     file.write_all(value[1][2].as_str().unwrap().as_bytes())?;
                                     file.rewind()?;
                                     content.push(Parameter::ComplexParameter { name: value[0].as_str().unwrap().to_owned(), mime_type, content_handle: file });
                                 }
                             };
-                            // TODO: Determine whether we need this still: construct_parameters(&message_json);
                             let headers = convert_headers_to_map(&message["content"]["headers"]);
                             callback_keys.get(&topic.event)
                                          .expect("Cannot happen as we check containment previously and hold mutex throughout")
@@ -395,62 +393,6 @@ fn convert_headers_to_map(headers_json: &serde_json::Value) -> HashMap<String, S
         headers.insert(key.clone(), value.to_owned());
     }
     headers
-}
-
-/**
- * Constructs parameters from query *panics* if parameters cannot be constructed due to incorrect internal structure
- */
-fn construct_parameters(message: &serde_json::Value) -> Result<Vec<Parameter>> {
-    // Values should be an array of values
-    let values = match message["content"]["values"].as_array() {
-        Some(x) => x,
-        None => {
-            log_error_and_panic("content.values of callback response is not an array");
-        }
-    };
-    let mut parameters = Vec::with_capacity(values.len());
-
-    for parameter in values {
-        if parameter[0].is_null() || parameter[1][0].is_null() || parameter[1][1].is_null() {
-            eprintln!("one of the values within the callback response content.values is null",);
-            // TODO: Determine whether we want to return here or skip parameter
-            continue;
-        }
-        let param_type = parameter[1][0].as_str().unwrap();
-        if param_type == "simple" {
-            let header_name = parameter[0].as_str().unwrap().to_owned();
-            let header_value = parameter[1][1].as_str().unwrap().to_owned();
-            parameters.push(Parameter::SimpleParameter {
-                name: header_name,
-                value: header_value,
-                param_type: http_helper::ParameterType::Body,
-            });
-        } else if param_type == "complex" {
-            let name = parameter[0].as_str().unwrap().to_owned();
-            let mime_type = match parameter[1][1].as_str().unwrap().parse::<mime::Mime>() {
-                Ok(x) => x,
-                Err(err) => {
-                    // TODO: Determine whether we want to return here or skip parameter
-                    return Err(err.into());
-                }
-            };
-            let content_path = parameter[1][2].as_str().unwrap();
-            parameters.push(Parameter::ComplexParameter {
-                name,
-                mime_type,
-                content_handle: std::fs::File::open(content_path)
-                    .expect("Could not open file for complex param in callback thread"),
-            });
-        } else {
-            eprintln!(
-                "Could not construct parameter out of callback response as the type was: {:?}",
-                parameter[1][0]
-            );
-            // TODO: Determine whether we want to return here or skip parameter
-            continue;
-        }
-    }
-    Ok(parameters)
 }
 
 #[cfg(test)]
