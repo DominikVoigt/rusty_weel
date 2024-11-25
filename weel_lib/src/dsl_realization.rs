@@ -1270,8 +1270,9 @@ impl Weel {
                             parameters,
                             &annotations
                         )?;
-
+                        
                         let connection_wrapper = connection_wrapper_mutex.lock().unwrap();
+                        println!("Connection wrapper passthrough: {:?}", connection_wrapper.handler_passthrough);
                         *weel_position
                             .as_ref()
                             .unwrap()
@@ -1279,6 +1280,7 @@ impl Weel {
                             .lock()
                             .unwrap() = connection_wrapper.handler_passthrough.clone();
                         let passthrough_set = weel_position.as_ref().unwrap().handler_passthrough.lock().unwrap().is_some();
+                        println!("Weel pos: {:?}, passthrough_set: {passthrough_set}", weel_position);
                         if passthrough_set
                         {
                             let connection_wrapper = ConnectionWrapper::new(
