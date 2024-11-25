@@ -1889,6 +1889,7 @@ impl Weel {
                 .map(|pos| pos.handler_passthrough.lock().unwrap().clone())
                 .flatten();
             println!("Passthrough: {:?}", passthrough);
+            println!("Switched to execution: {}", current_thread_info.switched_to_execution);
             let weel_position = if current_thread_info.switched_to_execution {
                 current_thread_info.switched_to_execution = false;
                 Position::new(
