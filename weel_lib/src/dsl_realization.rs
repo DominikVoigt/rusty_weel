@@ -2143,7 +2143,7 @@ pub struct PositionDTO {
     pub position: String,
     pub uuid: String,
     pub detail: String,
-    #[serde(rename = "passthrough")]
+    #[serde(rename(serialize = "passthrough"))]
     pub handler_passthrough: Option<String>,
 }
 
@@ -2152,7 +2152,7 @@ pub struct Position {
     position: String,
     uuid: String,
     pub detail: Mutex<String>,
-    #[serde(rename = "passthrough")]
+    #[serde(rename(serialize = "passthrough"))]
     pub handler_passthrough: Mutex<Option<String>>,
 }
 impl Position {
