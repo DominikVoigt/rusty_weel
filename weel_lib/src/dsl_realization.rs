@@ -1380,6 +1380,7 @@ impl Weel {
                                 .map(|x| x.is_null() || x.as_array().map(|arr| arr.is_empty()).unwrap_or(false))
                                 .unwrap_or(true);
                             println!("Return value empty: {}", return_value_empty);
+                            println!("Signaled update again: {}", signaled_update_again);
                             if signaled_update_again && return_value_empty {
                                 continue;
                             }
