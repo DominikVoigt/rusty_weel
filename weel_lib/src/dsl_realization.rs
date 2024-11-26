@@ -1371,7 +1371,7 @@ impl Weel {
 
                             let signaled_update_again = wait_result
                                 .as_ref()
-                                .map(|res| matches!(res, Signal::Again))
+                                .map(|res| matches!(res, Signal::UpdateAgain))
                                 .unwrap_or(false);
                             println!("return value is: {:?}", connection_wrapper.handler_return_value);
                             let return_value_empty = connection_wrapper
