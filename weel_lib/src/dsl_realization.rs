@@ -1885,14 +1885,10 @@ impl Weel {
                 ipc.insert("unmark".to_owned(), json!([**branch_position]));
             };
             let mut search_positions = self.search_positions.lock().unwrap();
-            println!("Searchpositions: {:?}", search_positions);
-            println!("Position: {}", position);
             let search_position = search_positions.remove(&position);
             let passthrough = search_position
                 .map(|pos| pos.handler_passthrough.lock().unwrap().clone())
                 .flatten();
-            println!("Passthrough: {:?}", passthrough);
-            println!("Switched to execution: {}", current_thread_info.switched_to_execution);
             let weel_position = if current_thread_info.switched_to_execution {
                 current_thread_info.switched_to_execution = false;
                 Position::new(
