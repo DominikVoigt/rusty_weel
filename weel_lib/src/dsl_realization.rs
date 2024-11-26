@@ -1354,7 +1354,6 @@ impl Weel {
                                     .handler_passthrough
                                     .lock()
                                     .unwrap() = connection_wrapper.activity_passthrough_value();
-                                println!("Passthrough value is: {:?}", connection_wrapper.activity_passthrough_value());
                                 if weel_position
                                     .as_ref()
                                     .unwrap()
@@ -1371,14 +1370,11 @@ impl Weel {
                                 .as_ref()
                                 .map(|res| matches!(res, Signal::UpdateAgain))
                                 .unwrap_or(false);
-                            println!("return value is: {:?}", connection_wrapper.handler_return_value);
                             let return_value_empty = connection_wrapper
                                 .handler_return_value
                                 .clone()
                                 .map(|x| x.is_null() || x.as_array().map(|arr| arr.is_empty()).unwrap_or(false))
                                 .unwrap_or(true);
-                            println!("Return value empty: {}", return_value_empty);
-                            println!("Signaled update again: {}", signaled_update_again);
                             if signaled_update_again && return_value_empty {
                                 continue;
                             }
