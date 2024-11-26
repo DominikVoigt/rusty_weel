@@ -1272,7 +1272,6 @@ impl Weel {
                         )?;
                         
                         let connection_wrapper = connection_wrapper_mutex.lock().unwrap();
-                        println!("Connection wrapper passthrough: {:?}", connection_wrapper.handler_passthrough);
                         *weel_position
                             .as_ref()
                             .unwrap()
@@ -1291,7 +1290,6 @@ impl Weel {
                             let content = json!({
                                 "wait": [**weel_position.as_ref().unwrap()]
                             });
-                            println!("Content: {}", content.to_string());
                             connection_wrapper.inform_position_change(Some(content))?;
                         };
                         drop(connection_wrapper);
