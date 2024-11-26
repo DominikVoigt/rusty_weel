@@ -1379,6 +1379,7 @@ impl Weel {
                                 .clone()
                                 .map(|x| x.is_null() || x.as_array().map(|arr| arr.is_empty()).unwrap_or(false))
                                 .unwrap_or(true);
+                            println!("Return value empty: {}", return_value_empty);
                             if signaled_update_again && return_value_empty {
                                 continue;
                             }
