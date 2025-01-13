@@ -17,11 +17,10 @@ serde = {version = "1.0.215", features = ["derive"]}
 serde_json = {version = "1.0", features = ["preserve_order"]}
 mime = "0.3.17"
 
-redis = "0.27.4"
+redis = "0.28.0"
 
 # HTTP 
 http_helper ={ path = "../http_helper"}
-reqwest = "0.12.5"
 tempfile = "3.10.1"
 urlencoding = "2.1.3"
 
@@ -30,7 +29,7 @@ once_map = "0.4.21"
 regex = "1.10.6"
 
 # Time
-chrono = {version = "0.4.38", features = ["serde"]}
+chrono = {version = "0.4.39", features = ["serde"]}
 
 # Vote id generation
 rand = "0.8.5"
@@ -39,6 +38,12 @@ once = "0.3.4"
 # Macros:
 derive_more = {version = "1.0.0", features = ["from"]}
 lazy_static = "1.5.0"
+
+[target.'cfg(target_arch = "x86_64")'.dependencies]
+reqwest = {version="0.12.12", features = ["blocking", "multipart"]}
+
+[target.'cfg(target_arch = "aarch64")'.dependencies]
+reqwest = {version="0.12.12", features = ["blocking", "multipart", "rustls-tls"]}
 
 [dev-dependencies]
 rand = "0.8.5"
