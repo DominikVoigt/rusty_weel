@@ -20,7 +20,7 @@ form_urlencoded = "1.2.1"
 derive_more = {version = "1.0.0", features = ["from"]}
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
-reqwest = {version="0.12.12", features = ["blocking", "multipart"]}
+reqwest = {version="0.12.12", features = ["blocking", "multipart", "rustls-tls"], default-features = false}
 
 [target.aarch64-unknown-linux-gnu.dependencies]
-reqwest = {version="0.12.12", features = ["blocking", "multipart", "rustls-tls"]}
+reqwest = {version="0.12.12", features = ["blocking", "multipart", "rustls-tls"], default-features = false}

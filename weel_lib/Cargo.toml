@@ -40,10 +40,10 @@ derive_more = {version = "1.0.0", features = ["from"]}
 lazy_static = "1.5.0"
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
-reqwest = {version="0.12.12", features = ["blocking", "multipart"]}
+reqwest = {version="0.12.12", features = ["blocking", "multipart", "rustls-tls"], default-features = false}
 
 [target.'cfg(target_arch = "aarch64")'.dependencies]
-reqwest = {version="0.12.12", features = ["blocking", "multipart", "rustls-tls"]}
+reqwest = {version="0.12.12", features = ["blocking", "multipart", "rustls-tls"], default-features = false}
 
 [dev-dependencies]
 rand = "0.8.5"
