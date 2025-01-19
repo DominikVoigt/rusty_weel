@@ -999,7 +999,7 @@ impl ConnectionWrapper {
             "activity-uuid": self.handler_activity_uuid,
             "label": self.activity_label,
             "activity": position,
-            "endpoint": self.handler_endpoints,
+            "endpoint": self.handler_endpoints.get(0),
             "ecid": convert_thread_id(thread::current().id())
         })
     }
