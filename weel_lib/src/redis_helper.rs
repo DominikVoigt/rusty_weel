@@ -125,7 +125,7 @@ impl RedisHelper {
             "timestamp",
             Value::String(
                 chrono::Utc::now()
-                    .to_rfc3339_opts(chrono::SecondsFormat::Millis, false)
+                    .to_rfc3339_opts(chrono::SecondsFormat::Micros, false)
                     .to_string(),
             ),
         );
