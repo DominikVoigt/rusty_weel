@@ -291,13 +291,14 @@ impl ConnectionWrapper {
                 let result =
                     weel.execute_code(true, code, thread_local, self, "prepare", None, None)?;
                 // Create snapshot of the context after the code is executed, if nothing changes, use the current dynamic data
+                let context = weel.context.lock().unwrap();
                 Context {
                     data: result
                         .data
-                        .unwrap_or(weel.context.lock().unwrap().data.clone()),
+                        .unwrap_or(context.data.clone()),
                     endpoints: result
                         .endpoints
-                        .unwrap_or(weel.context.lock().unwrap().endpoints.clone()),
+                        .unwrap_or(context.endpoints.clone()),
                     search_positions: HashMap::new(), // We can ignore them as they are not relevant to the evaluation context
                 }
             }
