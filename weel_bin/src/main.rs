@@ -197,6 +197,8 @@ macro_rules! weel {
     };
 }
 
+// Put lambda within a box as it is used as a trait object, otherwise a significant amout of duplicate code would be generated when using generics
+// As each anonymous function is its own type.
 #[macro_export]
 macro_rules! ƛ {
     ($block: block) => {

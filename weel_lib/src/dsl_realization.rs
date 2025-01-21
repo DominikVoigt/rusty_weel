@@ -1406,8 +1406,8 @@ impl Weel {
                                 finalize_code
                             };
 
-                            connection_wrapper.inform_activity_manipulate()?;
                             if let Some(code) = code {
+                                connection_wrapper.inform_activity_manipulate()?;
                                 let mut signaled_again = false;
                                 let result = match self.execute_code(
                                     false,
