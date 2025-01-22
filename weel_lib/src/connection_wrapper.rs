@@ -293,12 +293,8 @@ impl ConnectionWrapper {
                 // Create snapshot of the context after the code is executed, if nothing changes, use the current dynamic data
                 let context = weel.context.lock().unwrap();
                 Context {
-                    data: result
-                        .data
-                        .unwrap_or(context.data.clone()),
-                    endpoints: result
-                        .endpoints
-                        .unwrap_or(context.endpoints.clone()),
+                    data: result.data.unwrap_or(context.data.clone()),
+                    endpoints: result.endpoints.unwrap_or(context.endpoints.clone()),
                     search_positions: HashMap::new(), // We can ignore them as they are not relevant to the evaluation context
                 }
             }
@@ -462,7 +458,7 @@ impl ConnectionWrapper {
         selfy: &Arc<Mutex<Self>>,
         passthrough: Option<&str>,
         mut parameters: HTTPParams,
-        annotations: &Value
+        annotations: &Value,
     ) -> Result<()> {
         let mut this = selfy.lock()?;
         let weel = this.weel();
@@ -484,7 +480,7 @@ impl ConnectionWrapper {
             content.insert("label".to_owned(), json!(this.activity_label));
             content.insert("passthrough".to_owned(), json!(passthrough));
             // parameters do not look exactly like in the original (string representation looks different):
-            if let Some(annotations) = this.annotations.as_ref(){
+            if let Some(annotations) = this.annotations.as_ref() {
                 content.insert("annotations".to_owned(), annotations.clone());
             }
 
@@ -625,6 +621,7 @@ impl ConnectionWrapper {
                         } else {
                             serde_json::to_string(node)?
                         };
+                        // Just stringify any nested arguments
                         params.push(Parameter::SimpleParameter {
                             name: key.to_owned(),
                             value,
@@ -632,9 +629,32 @@ impl ConnectionWrapper {
                         });
                     }
                 }
-                None => {
-                    eprintln!("Parameter arguments should be an json object!")
-                }
+                None => match parameters.arguments.as_array() {
+                    Some(args) => {
+                        for arg in args {
+                            match arg.as_object() {
+                                Some(arg) => {
+                                    let name = arg.get("name").expect("argument array entry does not contain a name attribute");
+                                    let value = arg.get("value").map(|v| {serde_json::to_string(v).unwrap()}).unwrap_or("".to_owned());
+                                    params.push(Parameter::SimpleParameter {
+                                        name: serde_json::to_string(name).unwrap(),
+                                        value: value,
+                                        param_type: http_helper::ParameterType::Body,
+                                    });
+                                }
+                                None => {
+                                    eprintln!(
+                                        "Argument {:?} is not an json object!",
+                                        serde_json::to_string(arg)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    None => {
+                        eprintln!("Parameter arguments should be an json object!")
+                    }
+                },
             }
 
             let mut content_node = json!({
