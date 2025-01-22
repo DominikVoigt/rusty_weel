@@ -133,7 +133,7 @@ impl DSL for Weel {
         drop(thread_info);
         drop(thread_map);
         // Startup the branches
-        self.execute_lambda(lambda)?;
+        self.execute_lambda(&lambda)?;
 
         let thread_map = self.thread_information.lock().unwrap();
         let mut thread_info = thread_map
@@ -261,7 +261,7 @@ impl DSL for Weel {
             }
 
             if !weel.should_skip_locking() {
-                weel.execute_lambda(lambda.as_ref())?;
+                weel.execute_lambda(&lambda.as_ref())?;
             }
 
             // Now the parallel branch terminates
