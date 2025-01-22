@@ -461,7 +461,7 @@ impl ConnectionWrapper {
     pub fn activity_handle(
         selfy: &Arc<Mutex<Self>>,
         passthrough: Option<&str>,
-        parameters: HTTPParams,
+        mut parameters: HTTPParams,
         annotations: &Value
     ) -> Result<()> {
         let mut this = selfy.lock()?;
@@ -484,10 +484,73 @@ impl ConnectionWrapper {
             content.insert("label".to_owned(), json!(this.activity_label));
             content.insert("passthrough".to_owned(), json!(passthrough));
             // parameters do not look exactly like in the original (string representation looks different):
-            content.insert("parameters".to_owned(), json!(parameters));
             if let Some(annotations) = this.annotations.as_ref(){
                 content.insert("annotations".to_owned(), annotations.clone());
             }
+
+            let protocol_regex = match regex::Regex::new(r"^http(s)?-(get|put|post|delete):") {
+                Ok(regex) => regex,
+                Err(err) => {
+                    eprintln!("Could not compile static regex: {err} -> SHOULD NOT HAPPEN");
+                    panic!()
+                }
+            };
+            let mut https_enabled = false;
+            match this.handler_endpoints.get(0) {
+                // TODO: Set method by matched method in url
+                Some(endpoint) => {
+                    match protocol_regex.captures(&endpoint) {
+                        Some(capture) => {
+                            match capture.get(1) {
+                                Some(captured_suffix) => {
+                                    if captured_suffix.as_str() == "s" {
+                                        https_enabled = true;
+                                    }
+                                }
+                                None => {}
+                            }
+                            match capture.get(2) {
+                                Some(captured_method) => {
+                                    match captured_method.as_str().to_lowercase().as_str() {
+                                        "post" => {
+                                            parameters.method = Method::POST;
+                                        }
+                                        "get" => {
+                                            parameters.method = Method::GET;
+                                        }
+                                        "put" => {
+                                            parameters.method = Method::PUT;
+                                        }
+                                        "delete" => {
+                                            parameters.method = Method::DELETE;
+                                        }
+                                        "patch" => {
+                                            parameters.method = Method::PATCH;
+                                        }
+                                        "head" => {
+                                            parameters.method = Method::HEAD;
+                                        }
+                                        x => {
+                                            eprintln!("Captured unsupported method: {x}")
+                                        }
+                                    }
+                                }
+                                None => {}
+                            }
+                        }
+                        None => {}
+                    };
+                    protocol_regex
+                        .replace_all(&endpoint, if https_enabled { "https:" } else { "http;" })
+                }
+                None => {
+                    return Err(Error::GeneralError(
+                        "No endpoint for curl configured.".to_owned(),
+                    ))
+                }
+            };
+
+            content.insert("parameters".to_owned(), json!(parameters));
             weel.redis_notifications_client.lock()?.notify(
                 "activity/calling",
                 Some(content_node),
@@ -542,13 +605,6 @@ impl ConnectionWrapper {
         let mut response_headers: HashMap<String, String>;
         let mut body;
 
-        let protocol_regex = match regex::Regex::new(r"^http(s)?-(get|put|post|delete):") {
-            Ok(regex) => regex,
-            Err(err) => {
-                eprintln!("Could not compile static regex: {err} -> SHOULD NOT HAPPEN");
-                panic!()
-            }
-        };
         let event_regex = match regex::Regex::new(r"[^\w_-]") {
             Ok(regex) => regex,
             Err(err) => {
@@ -594,62 +650,8 @@ impl ConnectionWrapper {
             content.insert("activity".to_owned(), serde_json::Value::String(position));
             weel.register_callback(Arc::clone(selfy), &callback_id, content_node)?;
 
-            let mut method = parameters.method.clone();
-            let mut https_enabled = false;
-            let endpoint = match this.handler_endpoints.get(0) {
-                // TODO: Set method by matched method in url
-                Some(endpoint) => {
-                    match protocol_regex.captures(&endpoint) {
-                        Some(capture) => {
-                            match capture.get(1) {
-                                Some(captured_suffix) => {
-                                    if captured_suffix.as_str() == "s" {
-                                        https_enabled = true;
-                                    }
-                                }
-                                None => {}
-                            }
-                            match capture.get(2) {
-                                Some(captured_method) => {
-                                    match captured_method.as_str().to_lowercase().as_str() {
-                                        "post" => {
-                                            method = Method::POST;
-                                        }
-                                        "get" => {
-                                            method = Method::GET;
-                                        }
-                                        "put" => {
-                                            method = Method::PUT;
-                                        }
-                                        "delete" => {
-                                            method = Method::DELETE;
-                                        }
-                                        "patch" => {
-                                            method = Method::PATCH;
-                                        }
-                                        "head" => {
-                                            method = Method::HEAD;
-                                        }
-                                        x => {
-                                            eprintln!("Captured unsupported method: {x}")
-                                        }
-                                    }
-                                }
-                                None => {}
-                            }
-                        }
-                        None => {}
-                    };
-                    protocol_regex
-                        .replace_all(&endpoint, if https_enabled { "https:" } else { "http;" })
-                }
-                None => {
-                    return Err(Error::GeneralError(
-                        "No endpoint for curl configured.".to_owned(),
-                    ))
-                }
-            };
-            let mut client = http_helper::Client::new(&endpoint, method)?;
+            let endpoint = this.handler_endpoints.get(0).unwrap();
+            let mut client = http_helper::Client::new(&endpoint, parameters.method.clone())?;
             client.set_request_headers(headers.clone());
             client.add_parameters(params);
 
