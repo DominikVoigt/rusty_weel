@@ -998,9 +998,11 @@ impl ConnectionWrapper {
                 .expect("Construct basic content has to return json object");
             // CPEE::ValueHelper.parse(options['CPEE_INSTANTIATION'])
             println!("Pre json parse");
+            let res = serde_json::from_str(&headers["cpee_status"]);
+            println!("Json parse result: {:?}", res);
             content.insert(
                 "status".to_owned(),
-                serde_json::from_str(&headers["cpee_status"])?,
+                res?,
             );
             println!("Pre notify");
             redis.notify(

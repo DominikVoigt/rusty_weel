@@ -43,6 +43,7 @@ fn main() {
     match res {
         Ok(_) => {}
         Err(err) => {
+            eprintln!("Encountered error {:?}", err);
             weel!().handle_error(err, true);
             match weel!().set_state(State::Stopped) {
                 Ok(_) => {},

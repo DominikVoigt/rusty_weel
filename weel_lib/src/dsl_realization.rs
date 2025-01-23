@@ -706,6 +706,7 @@ impl Weel {
                         self.set_state(State::Running)?;
                     }
                     let result = model();
+                    println!("Model result: {:?}", result);
                     match result {
                         // TODO: Implement __weel_control_flow completely
                         Ok(()) => {
