@@ -492,7 +492,9 @@ impl ConnectionWrapper {
                 }
             };
             let mut https_enabled = false;
-            match this.handler_endpoints.get(0) {
+            // cannot be empty, as we checked this in the previous block
+            let endpoint = this.handler_endpoints.pop(); 
+            let endpoint = match &endpoint {
                 // TODO: Set method by matched method in url
                 Some(endpoint) => {
                     match protocol_regex.captures(&endpoint) {
@@ -537,7 +539,7 @@ impl ConnectionWrapper {
                         None => {}
                     };
                     protocol_regex
-                        .replace_all(&endpoint, if https_enabled { "https:" } else { "http;" })
+                        .replace_all(endpoint, if https_enabled { "https:" } else { "http;" })
                 }
                 None => {
                     return Err(Error::GeneralError(
@@ -545,6 +547,7 @@ impl ConnectionWrapper {
                     ))
                 }
             };
+            this.handler_endpoints.push((*endpoint).to_owned());
 
             content.insert("parameters".to_owned(), json!(parameters));
             weel.redis_notifications_client.lock()?.notify(
