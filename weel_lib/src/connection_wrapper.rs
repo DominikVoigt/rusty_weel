@@ -718,6 +718,7 @@ impl ConnectionWrapper {
             }
         }
 
+        let mut uniform_headers = uniformize_headers(&response_headers);
         println!("After loop");
         // If status not okay:
         if status < 200 || status >= 300 {
@@ -725,13 +726,13 @@ impl ConnectionWrapper {
             this.handle_callback(Some(status), CallbackType::Raw(&body), response_headers)?
         } else {
             // Accept callback if header is set
-            let callback_header_set = response_headers.contains_key("cpee_callback");
-            println!("Callback headers: {:?}", response_headers);
+            let callback_header_set = uniform_headers.contains_key("cpee_callback");
+            println!("Callback headers: {:?}", uniform_headers);
             // NOTE: For this area, all headers are checked against lowercase and - subsituted with _ due to the reqwest http library!
             println!("In callback with callback_header_set: {} body length: {}", callback_header_set, body.len());
             if callback_header_set {
                 if body.len() > 0 {
-                    response_headers.insert("cpee_update".to_owned(), "true".to_owned());
+                    uniform_headers.insert("cpee_update".to_owned(), "true".to_owned());
                     this.handle_callback(Some(status), CallbackType::Raw(&body), response_headers)?
                 } else {
                     // In this case we have an asynchroneous task
@@ -745,17 +746,17 @@ impl ConnectionWrapper {
                     let content = content_node.as_object_mut().expect("Cannot fail");
 
                     let instantiation_header_set =
-                        response_headers.contains_key("cpee_instantiation");
+                    uniform_headers.contains_key("cpee_instantiation");
                     println!("Instantiation header: {}", instantiation_header_set);
                     if instantiation_header_set {
                         // TODO What about value_helper
                         println!("Parsed cpee_instantiation header to: {:?}", serde_json::from_str(
-                            response_headers.get("cpee_instantiation").unwrap(),
+                            uniform_headers.get("cpee_instantiation").unwrap(),
                         )?);
                         content.insert(
                             "received".to_owned(),
                             serde_json::from_str(
-                                response_headers.get("cpee_instantiation").unwrap(),
+                                uniform_headers.get("cpee_instantiation").unwrap(),
                             )?,
                         );
                         weel.redis_notifications_client.lock().unwrap().notify(
@@ -765,10 +766,10 @@ impl ConnectionWrapper {
                         )?;
                     }
 
-                    let event_header_set = response_headers.contains_key("cpee_event");
+                    let event_header_set = uniform_headers.contains_key("cpee_event");
                     if event_header_set {
                         // TODO What about value_helper
-                        let event = response_headers.get("cpee_event").unwrap();
+                        let event = uniform_headers.get("cpee_event").unwrap();
                         let event = event_regex.replace_all(event, "");
                         let what = format!("task/{event}");
                         weel.redis_notifications_client.lock().unwrap().notify(
