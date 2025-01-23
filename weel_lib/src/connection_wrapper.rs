@@ -493,7 +493,7 @@ impl ConnectionWrapper {
             };
             let mut https_enabled = false;
             // cannot be empty, as we checked this in the previous block
-            let endpoint = this.handler_endpoints.pop(); 
+            let endpoint = this.handler_endpoints.pop();
             let endpoint = match &endpoint {
                 // TODO: Set method by matched method in url
                 Some(endpoint) => {
@@ -624,9 +624,7 @@ impl ConnectionWrapper {
                         } else {
                             match node.as_str() {
                                 Some(val_str) => val_str.to_owned(),
-                                None => {
-                                    serde_json::to_string(node)?
-                                },
+                                None => serde_json::to_string(node)?,
                             }
                         };
                         // Just stringify any nested arguments
@@ -645,20 +643,20 @@ impl ConnectionWrapper {
                                     let name = arg.get("name").expect(
                                         "argument array entry does not contain a name attribute",
                                     );
-                                    let value = arg
-                                        .get("value")
-                                        .map(|v| match v.as_str() {
-                                            Some(v_str) => {
-                                                v_str.to_owned()
-                                            },
+                                    let value = match arg.get("value") {
+                                        Some(v) => match v.as_str() {
+                                            Some(v_str) => v_str.to_owned(),
                                             None => {
-                                                serde_json::to_string(v).unwrap()
-                                            },
-                                        })
-                                        .unwrap_or("".to_owned());
-                                    println!("name: {:?}", name);
-                                    println!("value: {:?}", value);
-
+                                                if v.is_null() {
+                                                    "".to_owned()
+                                                } else {
+                                                    serde_json::to_string(v).unwrap()
+                                                }
+                                            }
+                                        },
+                                        None => "".to_owned(),
+                                    };
+                                    
                                     params.push(Parameter::SimpleParameter {
                                         name: serde_json::to_string(name)?,
                                         value: value,
