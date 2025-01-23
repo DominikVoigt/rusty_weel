@@ -997,15 +997,18 @@ impl ConnectionWrapper {
                 .as_object_mut()
                 .expect("Construct basic content has to return json object");
             // CPEE::ValueHelper.parse(options['CPEE_INSTANTIATION'])
+            println!("Pre json parse");
             content.insert(
                 "status".to_owned(),
                 serde_json::from_str(&headers["cpee_status"])?,
             );
+            println!("Pre notify");
             redis.notify(
                 "activity/status",
                 Some(content_node),
                 weel.get_instance_meta_data(),
             )?;
+            println!("Post notify");
         }
         drop(redis);
 
