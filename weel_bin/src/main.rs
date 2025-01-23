@@ -126,11 +126,13 @@ fn get_search_positions(
 }
 
 fn set_panic_hook(weel: Arc<Weel>) -> () {
+    let main_thread_id = thread::current().id();
     let original_hook = panic::take_hook();
     panic::set_hook(Box::new(move |info| {
         // Log panic information in case we ever panic
         eprintln!("Panic occured. Panic information: {info}");
-        weel.handle_error(weel_lib::dsl_realization::Error::GeneralError(info.to_string()), true);
+        weel.handle_error(weel_lib::dsl_realization::Error::GeneralError(info.to_string()), false);
+        weel.stop_weel(main_thread_id)
     }));
 }
 
