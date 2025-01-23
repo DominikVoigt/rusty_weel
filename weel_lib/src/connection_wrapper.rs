@@ -922,11 +922,6 @@ impl ConnectionWrapper {
         options: HashMap<String, String>, // Headers
     ) -> Result<()> {
         let headers = uniformize_headers(&options);
-        println!(
-            "In handle_callback, headers: {:?}, with update header: {}",
-            headers,
-            contains_non_empty(&headers, "cpee_update")
-        );
         let weel = self.weel();
         let recv =
             eval_helper::structurize_result(&weel.opts.eval_backend_structurize, &options, body)?;
@@ -1004,6 +999,7 @@ impl ConnectionWrapper {
                 .expect("Construct basic content has to return json object");
             // CPEE::ValueHelper.parse(options['CPEE_INSTANTIATION'])
             println!("Pre json parse");
+            println!("Trying to parse: {}", headers["cpee_status"]);
             let res = serde_json::from_str(&headers["cpee_status"])?;
             content.insert(
                 "status".to_owned(),
