@@ -56,8 +56,6 @@ fn main() {
 }
 
 fn startup() -> Arc<Weel> {
-    set_panic_hook();
-
     let opts = Opts::load("opts.json");
     let context = Mutex::new(Context::load("context.json"));
     let callback_keys: Arc<Mutex<HashMap<String, Arc<Mutex<ConnectionWrapper>>>>> =
@@ -103,6 +101,7 @@ fn startup() -> Arc<Weel> {
 
     setup_signal_handler(&weel);
     let local_weel = Arc::clone(&weel);
+    set_panic_hook(local_weel.clone());
     local_weel
 }
 
@@ -126,12 +125,12 @@ fn get_search_positions(
         .collect()
 }
 
-fn set_panic_hook() -> () {
+fn set_panic_hook(weel: Arc<Weel>) -> () {
     let original_hook = panic::take_hook();
     panic::set_hook(Box::new(move |info| {
         // Log panic information in case we ever panic
         eprintln!("Panic occured. Panic information: {info}");
-        original_hook(info);
+        weel.handle_error(weel_lib::dsl_realization::Error::GeneralError(info.to_string()), true);
     }));
 }
 
