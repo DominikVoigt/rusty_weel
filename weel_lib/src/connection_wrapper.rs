@@ -718,7 +718,7 @@ impl ConnectionWrapper {
             }
         }
 
-        let mut uniform_headers = uniformize_headers(&response_headers);
+        let uniform_headers = uniformize_headers(&response_headers);
         println!("After loop");
         // If status not okay:
         if status < 200 || status >= 300 {
@@ -732,7 +732,7 @@ impl ConnectionWrapper {
             println!("In callback with callback_header_set: {} body length: {}", callback_header_set, body.len());
             if callback_header_set {
                 if body.len() > 0 {
-                    uniform_headers.insert("cpee_update".to_owned(), "true".to_owned());
+                    response_headers.insert("cpee_update".to_owned(), "true".to_owned());
                     this.handle_callback(Some(status), CallbackType::Raw(&body), response_headers)?
                 } else {
                     // In this case we have an asynchroneous task
