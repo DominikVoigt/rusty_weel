@@ -919,6 +919,7 @@ impl ConnectionWrapper {
         options: HashMap<String, String>, // Headers
     ) -> Result<()> {
         let headers = uniformize_headers(&options);
+        println!("In handle_callback, headers: {:?}, with update header: {}", headers, contains_non_empty(&headers, "cpee_update"));
         let weel = self.weel();
         let recv =
             eval_helper::structurize_result(&weel.opts.eval_backend_structurize, &options, body)?;
@@ -1000,7 +1001,6 @@ impl ConnectionWrapper {
                 serde_json::Value::String(headers["cpee_status"].clone()),
             );
         }
-
         if contains_non_empty(&headers, "cpee_update") {
             match &self.handler_continue {
                 Some(x) => {
