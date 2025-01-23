@@ -1979,9 +1979,12 @@ impl Weel {
                 )
             }
         };
+        println!("Should stop: {}", should_set_stopping);
         if should_set_stopping {
             match self.set_state(State::Stopping) {
-                Ok(_) => {}
+                Ok(_) => {
+                    println!("Set state to stopping")
+                }
                 Err(err) => {
                     eprintln!("Encountered error: {:?}", err);
                     match ConnectionWrapper::new(self.clone(), None, None)
