@@ -750,12 +750,6 @@ impl ConnectionWrapper {
                         uniform_headers.contains_key("cpee_instantiation");
                     println!("Instantiation header set: {}", instantiation_header_set);
                     if instantiation_header_set {
-                        println!(
-                            "Parsed cpee_instantiation header to: {:?}",
-                            serde_json::from_str(
-                                uniform_headers.get("cpee_instantiation").unwrap(),
-                            )?
-                        );
                         content.insert(
                             "received".to_owned(),
                             serde_json::from_str(
@@ -770,8 +764,6 @@ impl ConnectionWrapper {
                     }
                     
                     let event_header_set = uniform_headers.contains_key("cpee_event");
-                    println!("Headers: {:?}", uniform_headers);
-                    println!("Event header set: {}", event_header_set);
                     if event_header_set {
                         // TODO What about value_helper
                         let event = uniform_headers.get("cpee_event").unwrap();
@@ -997,6 +989,7 @@ impl ConnectionWrapper {
             self.handler_return_value = Some(recv);
             self.handler_return_options = Some(options);
         }
+        println!("Cpee status present: {:?}", contains_non_empty(&headers, "cpee_status"));
 
         if contains_non_empty(&headers, "cpee_status") {
             let mut content_node = content.clone();
