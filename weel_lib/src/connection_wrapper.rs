@@ -656,7 +656,7 @@ impl ConnectionWrapper {
                                         },
                                         None => "".to_owned(),
                                     };
-                                    
+
                                     params.push(Parameter::SimpleParameter {
                                         name: serde_json::to_string(name)?,
                                         value: value,
@@ -746,9 +746,9 @@ impl ConnectionWrapper {
                         // TODO What about value_helper
                         content.insert(
                             "received".to_owned(),
-                            serde_json::Value::String(
-                                response_headers.get("cpee_instantiation").unwrap().clone(),
-                            ),
+                            serde_json::from_str(
+                                response_headers.get("cpee_instantiation").unwrap(),
+                            )?,
                         );
                         weel.redis_notifications_client.lock().unwrap().notify(
                             "task/instantiation",
