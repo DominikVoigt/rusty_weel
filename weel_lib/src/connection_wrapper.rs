@@ -620,7 +620,12 @@ impl ConnectionWrapper {
                         let value = if node.is_null() {
                             "".to_owned()
                         } else {
-                            serde_json::to_string(node)?
+                            match node.as_str() {
+                                Some(val_str) => val_str.to_owned(),
+                                None => {
+                                    serde_json::to_string(node)?
+                                },
+                            }
                         };
                         // Just stringify any nested arguments
                         params.push(Parameter::SimpleParameter {
@@ -654,7 +659,7 @@ impl ConnectionWrapper {
                                     println!("value: {:?}", value);
 
                                     params.push(Parameter::SimpleParameter {
-                                        name: serde_json::to_string(name).unwrap(),
+                                        name: serde_json::to_string(name)?,
                                         value: value,
                                         param_type: http_helper::ParameterType::Body,
                                     });
