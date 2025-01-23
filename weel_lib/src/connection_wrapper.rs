@@ -592,6 +592,7 @@ impl ConnectionWrapper {
      *  - redis_notification_client (shortly)
      */
     pub fn curl(selfy: &Arc<Mutex<Self>>, parameters: &HTTPParams, weel: Arc<Weel>) -> Result<()> {
+        println!("Entered curl");
         let mut this = selfy.lock().unwrap();
         let callback_id = generate_random_key();
         this.handler_passthrough = Some(callback_id.clone());
@@ -611,6 +612,7 @@ impl ConnectionWrapper {
                 panic!()
             }
         };
+        println!("Before loop");
 
         loop {
             // Compute parameters
@@ -715,6 +717,8 @@ impl ConnectionWrapper {
                 break;
             }
         }
+
+        println!("After loop");
         // If status not okay:
         if status < 200 || status >= 300 {
             response_headers.insert("cpee_salvage".to_owned(), "true".to_owned());
