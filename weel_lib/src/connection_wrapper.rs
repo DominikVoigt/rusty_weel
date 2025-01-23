@@ -334,7 +334,6 @@ impl ConnectionWrapper {
             None,
             thread_local,
         )?;
-        println!("Arguments after evaluation: {:?}", parameters.arguments);
         Ok(parameters)
     }
 
@@ -619,7 +618,6 @@ impl ConnectionWrapper {
             // Params could contain file handles (complex parameters) and thus cannot be cloned -> We cannot clone so we recompute them here
             match parameters.arguments.as_object() {
                 Some(object) => {
-                    println!("Parameters as object: {:?}", parameters.arguments);
                     for (key, node) in object {
                         let value = if node.is_null() {
                             "".to_owned()
@@ -641,7 +639,6 @@ impl ConnectionWrapper {
                 }
                 None => match parameters.arguments.as_array() {
                     Some(args) => {
-                        println!("Parameters as array: {:?}", parameters.arguments);
                         for arg in args {
                             match arg.as_object() {
                                 Some(arg) => {
