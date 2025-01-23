@@ -638,6 +638,8 @@ impl ConnectionWrapper {
                                 Some(arg) => {
                                     let name = arg.get("name").expect("argument array entry does not contain a name attribute");
                                     let value = arg.get("value").map(|v| {serde_json::to_string(v).unwrap()}).unwrap_or("".to_owned());
+                                    println!("name: {:?}", name);
+                                    println!("value: {:?}", value);
                                     params.push(Parameter::SimpleParameter {
                                         name: serde_json::to_string(name).unwrap(),
                                         value: value,
