@@ -770,6 +770,7 @@ impl ConnectionWrapper {
                     }
                     
                     let event_header_set = uniform_headers.contains_key("cpee_event");
+                    println!("Headers: {:?}", uniform_headers);
                     println!("Event header set: {}", event_header_set);
                     if event_header_set {
                         // TODO What about value_helper
