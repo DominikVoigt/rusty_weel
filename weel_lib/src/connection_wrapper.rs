@@ -984,7 +984,6 @@ impl ConnectionWrapper {
             self.handler_return_value = Some(recv);
             self.handler_return_options = Some(options);
         }
-        drop(redis);
 
         if contains_non_empty(&headers, "cpee_status") {
             let mut content_node = content.clone();
@@ -994,9 +993,12 @@ impl ConnectionWrapper {
             // CPEE::ValueHelper.parse(options['CPEE_INSTANTIATION'])
             content.insert(
                 "status".to_owned(),
-                serde_json::Value::String(headers["cpee_status"].clone()),
+                serde_json::from_str(&headers["cpee_status"])?,
             );
+            redis.notify("activity/status", Some(content_node), weel.get_instance_meta_data())?;
         }
+        drop(redis);
+
         if contains_non_empty(&headers, "cpee_update") {
             match &self.handler_continue {
                 Some(x) => {
