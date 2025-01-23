@@ -734,7 +734,9 @@ impl ConnectionWrapper {
             if callback_header_set {
                 if body.len() > 0 {
                     response_headers.insert("cpee_update".to_owned(), "true".to_owned());
-                    this.handle_callback(Some(status), CallbackType::Raw(&body), response_headers)?
+                    let callback_res = this.handle_callback(Some(status), CallbackType::Raw(&body), response_headers);
+                    println!("Callback res: {:?}", callback_res);
+                    callback_res?
                 } else {
                     // In this case we have an asynchroneous task
                     let mut content_node = json!({
@@ -998,11 +1000,10 @@ impl ConnectionWrapper {
                 .expect("Construct basic content has to return json object");
             // CPEE::ValueHelper.parse(options['CPEE_INSTANTIATION'])
             println!("Pre json parse");
-            let res = serde_json::from_str(&headers["cpee_status"]);
-            println!("Json parse result: {:?}", res);
+            let res = serde_json::from_str(&headers["cpee_status"])?;
             content.insert(
                 "status".to_owned(),
-                res?,
+                res,
             );
             println!("Pre notify");
             redis.notify(
