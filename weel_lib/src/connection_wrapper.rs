@@ -945,7 +945,7 @@ impl ConnectionWrapper {
                 .expect("Construct basic content has to return json object");
             content.insert(
                 "received".to_owned(),
-                serde_json::Value::String(headers.get("cpee_instantiation").unwrap().clone()),
+                serde_json::from_str(&headers.get("cpee_instantiation").unwrap().clone())?,
             );
 
             redis.notify(
