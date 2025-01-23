@@ -724,6 +724,7 @@ impl ConnectionWrapper {
             let callback_header_set = response_headers.contains_key("cpee_callback");
 
             // NOTE: For this area, all headers are checked against lowercase and - subsituted with _ due to the reqwest http library!
+            println!("In callback with callback_header_set: {} body length: {}", callback_header_set, body.len());
             if callback_header_set {
                 if body.len() > 0 {
                     response_headers.insert("cpee_update".to_owned(), "true".to_owned());
@@ -741,7 +742,7 @@ impl ConnectionWrapper {
 
                     let instantiation_header_set =
                         response_headers.contains_key("cpee_instantiation");
-
+                    println!("Instantiation header: {}", instantiation_header_set);
                     if instantiation_header_set {
                         // TODO What about value_helper
                         println!("Parsed cpee_instantiation header to: {:?}", serde_json::from_str(
