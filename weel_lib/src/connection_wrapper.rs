@@ -720,7 +720,9 @@ impl ConnectionWrapper {
         // If status not okay:
         if status < 200 || status >= 300 {
             response_headers.insert("cpee_salvage".to_owned(), "true".to_owned());
-            this.handle_callback(Some(status), CallbackType::Raw(&body), response_headers)?
+            let callback_res = this.handle_callback(Some(status), CallbackType::Raw(&body), response_headers);
+            println!("Callback res 1: {:?}", callback_res);
+            callback_res?
         } else {
             // Accept callback if header is set
             let callback_header_set = uniform_headers.contains_key("cpee_callback");
@@ -735,7 +737,7 @@ impl ConnectionWrapper {
                 if body.len() > 0 {
                     response_headers.insert("cpee_update".to_owned(), "true".to_owned());
                     let callback_res = this.handle_callback(Some(status), CallbackType::Raw(&body), response_headers);
-                    println!("Callback res: {:?}", callback_res);
+                    println!("Callback res 2: {:?}", callback_res);
                     callback_res?
                 } else {
                     // In this case we have an asynchroneous task
@@ -779,7 +781,9 @@ impl ConnectionWrapper {
                     }
                 }
             } else {
-                this.handle_callback(Some(status), CallbackType::Raw(&body), response_headers)?
+                let callback_res = this.handle_callback(Some(status), CallbackType::Raw(&body), response_headers);
+                println!("Callback res 3: {:?}", callback_res);
+                callback_res?
             }
         }
         Ok(())
