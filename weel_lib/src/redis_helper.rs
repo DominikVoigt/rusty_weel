@@ -206,7 +206,7 @@ impl RedisHelper {
                 "callback-response:*".to_owned(),
                 "callback-end:*".to_owned(),
             ];
-            redis_helper.blocking_pub_sub(topics, move |payload: &str, pattern: &str, topic: Topic| {
+            let result = redis_helper.blocking_pub_sub(topics, move |payload: &str, pattern: &str, topic: Topic| {
                 match pattern {
                     "callback-response:*" => {
                         let callback_keys = callback_keys
@@ -238,13 +238,11 @@ impl RedisHelper {
                                 }
                             };
                             let headers = convert_headers_to_map(&message["content"]["headers"]);
-                            let callback_res = callback_keys.get(&topic.event)
+                            callback_keys.get(&topic.event)
                                          .expect("Cannot happen as we check containment previously and hold mutex throughout")
                                          .lock()?
                                          // TODO: Maybe add status to message too?
-                                         .handle_callback(None, crate::data_types::CallbackType::Structured(content), headers);
-                            println!("callback res 4: {:?}", callback_res);
-                            callback_res?;
+                                         .handle_callback(None, crate::data_types::CallbackType::Structured(content), headers)?;
                         }
                     }
                     "callback-end:*" => {
@@ -259,8 +257,13 @@ impl RedisHelper {
                 };
                 // This should loop indefinitely:
                 Ok(true)
-            })?;
-            Ok(())
+            });
+            match result {
+                Ok(_) => Ok(()),
+                Err(err) => {
+                    panic!("Encountered error: {:?}", err)
+                },
+            }
         })
     }
 
@@ -613,7 +616,7 @@ mod test {
             global_executionhandlers: "".to_owned(),
         }
     }
-    
+
     #[test]
     fn parsing() {
         let mime = "application/json".parse::<Mime>().unwrap();
