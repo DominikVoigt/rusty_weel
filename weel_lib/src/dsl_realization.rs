@@ -1970,6 +1970,7 @@ impl Weel {
      */
     pub fn handle_error(self: &Arc<Self>, err: Error, should_set_stopping: bool) {
         println!("Encountered error: {:?}", err);
+        println!("Should stop: {}", should_set_stopping);
         match ConnectionWrapper::new(self.clone(), None, None).inform_connectionwrapper_error(err) {
             Ok(_) => {}
             Err(err) => {
