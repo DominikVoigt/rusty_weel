@@ -334,6 +334,7 @@ impl ConnectionWrapper {
             None,
             thread_local,
         )?;
+        println!("Arguments after evaluation: {:?}", parameters.arguments);
         Ok(parameters)
     }
 
