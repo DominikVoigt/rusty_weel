@@ -650,7 +650,7 @@ impl ConnectionWrapper {
                                             },
                                         })
                                         .unwrap_or("".to_owned());
-                                    println!("name: {:?}", serde_json::to_string(name).unwrap());
+                                    println!("name: {:?}", name);
                                     println!("value: {:?}", value);
 
                                     params.push(Parameter::SimpleParameter {
