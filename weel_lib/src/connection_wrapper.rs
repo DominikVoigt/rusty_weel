@@ -592,7 +592,6 @@ impl ConnectionWrapper {
      *  - redis_notification_client (shortly)
      */
     pub fn curl(selfy: &Arc<Mutex<Self>>, parameters: &HTTPParams, weel: Arc<Weel>) -> Result<()> {
-        println!("Entered curl");
         let mut this = selfy.lock().unwrap();
         let callback_id = generate_random_key();
         this.handler_passthrough = Some(callback_id.clone());
@@ -612,7 +611,6 @@ impl ConnectionWrapper {
                 panic!()
             }
         };
-        println!("Before loop");
 
         loop {
             // Compute parameters
@@ -719,7 +717,6 @@ impl ConnectionWrapper {
         }
 
         let uniform_headers = uniformize_headers(&response_headers);
-        println!("After loop");
         // If status not okay:
         if status < 200 || status >= 300 {
             response_headers.insert("cpee_salvage".to_owned(), "true".to_owned());
@@ -747,9 +744,8 @@ impl ConnectionWrapper {
 
                     let instantiation_header_set =
                     uniform_headers.contains_key("cpee_instantiation");
-                    println!("Instantiation header: {}", instantiation_header_set);
+                    println!("Instantiation header set: {}", instantiation_header_set);
                     if instantiation_header_set {
-                        // TODO What about value_helper
                         println!("Parsed cpee_instantiation header to: {:?}", serde_json::from_str(
                             uniform_headers.get("cpee_instantiation").unwrap(),
                         )?);
