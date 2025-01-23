@@ -38,6 +38,8 @@ fn main() {
         Ok(())
     };
 
+    set_panic_hook(WEEL.clone());
+
     // Executes the code and blocks until it is finished
     let res = weel!().start(model, stop_signal_sender);
     match res {
@@ -101,7 +103,6 @@ fn startup() -> Arc<Weel> {
 
     setup_signal_handler(&weel);
     let local_weel = Arc::clone(&weel);
-    set_panic_hook(local_weel.clone());
     local_weel
 }
 
@@ -132,7 +133,8 @@ fn set_panic_hook(weel: Arc<Weel>) -> () {
         // Log panic information in case we ever panic
         eprintln!("Panic occured. Panic information: {info}");
         weel.handle_error(weel_lib::dsl_realization::Error::GeneralError(info.to_string()), false);
-        weel.stop_weel(main_thread_id)
+        let res = weel.stop_weel(main_thread_id);
+        eprintln!("Result of stop due to panic: {:?}", res)
     }));
 }
 
