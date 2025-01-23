@@ -726,7 +726,7 @@ impl ConnectionWrapper {
         } else {
             // Accept callback if header is set
             let callback_header_set = response_headers.contains_key("cpee_callback");
-
+            println!("Callback headers: {:?}", response_headers);
             // NOTE: For this area, all headers are checked against lowercase and - subsituted with _ due to the reqwest http library!
             println!("In callback with callback_header_set: {} body length: {}", callback_header_set, body.len());
             if callback_header_set {
