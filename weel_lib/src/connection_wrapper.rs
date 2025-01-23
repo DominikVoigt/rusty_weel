@@ -744,6 +744,9 @@ impl ConnectionWrapper {
 
                     if instantiation_header_set {
                         // TODO What about value_helper
+                        println!("Parsed cpee_instantiation header to: {:?}", serde_json::from_str(
+                            response_headers.get("cpee_instantiation").unwrap(),
+                        )?);
                         content.insert(
                             "received".to_owned(),
                             serde_json::from_str(
