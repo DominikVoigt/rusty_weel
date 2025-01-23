@@ -238,11 +238,13 @@ impl RedisHelper {
                                 }
                             };
                             let headers = convert_headers_to_map(&message["content"]["headers"]);
-                            callback_keys.get(&topic.event)
+                            let callback_res = callback_keys.get(&topic.event)
                                          .expect("Cannot happen as we check containment previously and hold mutex throughout")
                                          .lock()?
                                          // TODO: Maybe add status to message too?
-                                         .handle_callback(None, crate::data_types::CallbackType::Structured(content), headers)?;
+                                         .handle_callback(None, crate::data_types::CallbackType::Structured(content), headers);
+                            println!("callback res 4: {:?}", callback_res);
+                            callback_res?;
                         }
                     }
                     "callback-end:*" => {
