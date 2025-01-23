@@ -625,7 +625,7 @@ impl DSL for Weel {
     }
 
     fn stop(self: Arc<Self>, id: &str) -> Result<()> {
-        if self.in_search_mode(None) {
+        if self.in_search_mode(Some(id)) {
             return Ok(());
         }
         
