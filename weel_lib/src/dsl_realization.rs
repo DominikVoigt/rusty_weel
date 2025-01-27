@@ -48,7 +48,7 @@ pub struct Weel {
     // To allow threads to access parent data => thread_local storage is, as the name suggest, thread local
     // stores information such as the parents thread id, search mode ...
     // Invariant: When a thread is spawned within any weel method, thread information for this thread has to be created
-    // Use ref cell here to allow immutable borrows -> Allows to independently borrow distinct elements
+    // Use ref cell here to allow immutable borrows -> Allows to independently borrow distinct elements (if get_mut of hashmap is used, no other element can be accessed until the mutable reference is dropped)
     pub thread_information: Mutex<HashMap<ThreadId, RefCell<ThreadInfo>>>,
     // We use once map here: For each critical section the mutex should be created only once!
     // Locking a critical secition should not block other threads from entering other critical sections -> We cannot lock the hashmap with either a mutex or rwlock
