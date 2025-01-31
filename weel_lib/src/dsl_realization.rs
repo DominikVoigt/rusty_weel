@@ -2006,7 +2006,7 @@ impl Weel {
 
     pub fn get_instance_meta_data(&self) -> InstanceMetaData {
         InstanceMetaData {
-            cpee_base_url: self.opts.base_url().to_owned(),
+            cpee_base_url: self.opts.base_url(),
             instance_id: self.opts.instance_id.clone(),
             instance_url: self.opts.instance_url(),
             instance_uuid: self.uuid().to_owned(),

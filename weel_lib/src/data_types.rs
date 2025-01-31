@@ -142,8 +142,8 @@ impl Opts {
         self.host.as_str()
     }
 
-    pub fn base_url(&self) -> &str {
-        self.cpee_base_url.as_str()
+    pub fn base_url(&self) -> String {
+        format!("{}/", self.cpee_base_url)
     }
 
     pub fn instance_url(&self) -> String {
