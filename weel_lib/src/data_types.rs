@@ -115,6 +115,7 @@ impl Status {
  */
 #[derive(Serialize, Deserialize)]
 pub struct InstanceMetaData {
+    // Base url of the CPEE implementation, with a trailing /
     pub cpee_base_url: String,
     pub instance_id: u32,
     pub instance_url: String,

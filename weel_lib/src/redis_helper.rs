@@ -115,7 +115,7 @@ impl RedisHelper {
         payload.insert("cpee", Value::String(cpee_url.clone()));
         payload.insert(
             "instance-url",
-            Value::String(format!("{}/{}", cpee_url, instance_id.clone())),
+            Value::String(format!("{}{}", cpee_url, instance_id.clone())),
         );
         payload.insert("instance", Value::Number(instance_id.into()));
         payload.insert("topic", Value::String(topic.to_owned()));
