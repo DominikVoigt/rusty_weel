@@ -484,63 +484,11 @@ impl ConnectionWrapper {
                 content.insert("annotations".to_owned(), annotations.clone());
             }
 
-            let protocol_regex = match regex::Regex::new(r"^http(s)?-(get|put|post|delete):") {
-                Ok(regex) => regex,
-                Err(err) => {
-                    eprintln!("Could not compile static regex: {err} -> SHOULD NOT HAPPEN");
-                    panic!()
-                }
-            };
-            let mut https_enabled = false;
             // cannot be empty, as we checked this in the previous block
             let endpoint = this.handler_endpoints.pop();
-            let endpoint = match &endpoint {
+            let (endpoint, method) = match endpoint {
                 // TODO: Set method by matched method in url
-                Some(endpoint) => {
-                    match protocol_regex.captures(&endpoint) {
-                        Some(capture) => {
-                            match capture.get(1) {
-                                Some(captured_suffix) => {
-                                    if captured_suffix.as_str() == "s" {
-                                        https_enabled = true;
-                                    }
-                                }
-                                None => {}
-                            }
-                            match capture.get(2) {
-                                Some(captured_method) => {
-                                    match captured_method.as_str().to_lowercase().as_str() {
-                                        "post" => {
-                                            parameters.method = Method::POST;
-                                        }
-                                        "get" => {
-                                            parameters.method = Method::GET;
-                                        }
-                                        "put" => {
-                                            parameters.method = Method::PUT;
-                                        }
-                                        "delete" => {
-                                            parameters.method = Method::DELETE;
-                                        }
-                                        "patch" => {
-                                            parameters.method = Method::PATCH;
-                                        }
-                                        "head" => {
-                                            parameters.method = Method::HEAD;
-                                        }
-                                        x => {
-                                            eprintln!("Captured unsupported method: {x}")
-                                        }
-                                    }
-                                }
-                                None => {}
-                            }
-                        }
-                        None => {}
-                    };
-                    protocol_regex
-                        .replace_all(endpoint, if https_enabled { "https:" } else { "http;" })
-                }
+                Some(endpoint) => extract_method(&endpoint)?,
                 None => {
                     return Err(Error::GeneralError(
                         "No endpoint for curl configured.".to_owned(),
@@ -548,6 +496,11 @@ impl ConnectionWrapper {
                 }
             };
             this.handler_endpoints.push((*endpoint).to_owned());
+
+            match method {
+                Some(method) => parameters.method = method,
+                None => {}
+            }
 
             content.insert("parameters".to_owned(), json!(parameters));
             weel.redis_notifications_client.lock()?.notify(
@@ -720,7 +673,8 @@ impl ConnectionWrapper {
         // If status not okay:
         if status < 200 || status >= 300 {
             response_headers.insert("cpee_salvage".to_owned(), "true".to_owned());
-            let callback_res = this.handle_callback(Some(status), CallbackType::Raw(&body), response_headers);
+            let callback_res =
+                this.handle_callback(Some(status), CallbackType::Raw(&body), response_headers);
             callback_res?
         } else {
             // Accept callback if header is set
@@ -729,7 +683,11 @@ impl ConnectionWrapper {
             if callback_header_set {
                 if body.len() > 0 {
                     response_headers.insert("cpee_update".to_owned(), "true".to_owned());
-                    let callback_res = this.handle_callback(Some(status), CallbackType::Raw(&body), response_headers);
+                    let callback_res = this.handle_callback(
+                        Some(status),
+                        CallbackType::Raw(&body),
+                        response_headers,
+                    );
                     callback_res?
                 } else {
                     // In this case we have an asynchroneous task
@@ -758,7 +716,7 @@ impl ConnectionWrapper {
                             weel.get_instance_meta_data(),
                         )?;
                     }
-                    
+
                     let event_header_set = uniform_headers.contains_key("cpee_event");
                     if event_header_set {
                         // TODO What about value_helper
@@ -773,7 +731,8 @@ impl ConnectionWrapper {
                     }
                 }
             } else {
-                let callback_res = this.handle_callback(Some(status), CallbackType::Raw(&body), response_headers);
+                let callback_res =
+                    this.handle_callback(Some(status), CallbackType::Raw(&body), response_headers);
                 callback_res?
             }
         }
@@ -981,7 +940,10 @@ impl ConnectionWrapper {
             self.handler_return_value = Some(recv);
             self.handler_return_options = Some(options);
         }
-        println!("Cpee status present: {:?}", contains_non_empty(&headers, "cpee_status"));
+        println!(
+            "Cpee status present: {:?}",
+            contains_non_empty(&headers, "cpee_status")
+        );
 
         if contains_non_empty(&headers, "cpee_status") {
             let mut content_node = content.clone();
@@ -990,10 +952,7 @@ impl ConnectionWrapper {
                 .expect("Construct basic content has to return json object");
             // CPEE::ValueHelper.parse(options['CPEE_INSTANTIATION'])
             let res = serde_json::Value::String(headers["cpee_status"].to_owned());
-            content.insert(
-                "status".to_owned(),
-                res,
-            );
+            content.insert("status".to_owned(), res);
             redis.notify(
                 "activity/status",
                 Some(content_node),
@@ -1271,4 +1230,123 @@ pub fn convert_thread_id(thread_id: ThreadId) -> u64 {
 
 fn contains_non_empty(options: &HashMap<String, String>, key: &str) -> bool {
     options.get(key).map(|e| !e.is_empty()).unwrap_or(false)
+}
+
+/**
+ * Extracts the method from strings of type http(s)-<Method>
+ * If the URL does not have this form, it does nothing and returns None for the method
+ */
+fn extract_method(endpoint: &str) -> Result<(String, Option<Method>)> {
+    if !endpoint.is_ascii() {
+        return Err(Error::GeneralError("Endpoint URL is not ASCII".to_owned()));
+    }
+    if !endpoint.starts_with("http") {
+        return Err(Error::GeneralError(
+            "Endpoint URL is not starting with http".to_owned(),
+        ));
+    }
+    let endpoints_ascii = endpoint.as_bytes();
+    let https_enabled = match endpoints_ascii.get(4) {
+        Some(ch) => *ch == b's',
+        None => return Err(Error::GeneralError("no character after http".to_owned())),
+    };
+    // Byte position of the "-" separator between http(s)-<Method>
+    let separator_pos = if https_enabled { 5 } else { 4 };
+    let method_after_protocol = endpoints_ascii[separator_pos] == b'-';
+    let colon_pos = match endpoint.find("://") {
+        Some(pos) => pos,
+        None => {
+            return Err(Error::GeneralError(
+                "URL does not contain :// separator".to_owned(),
+            ))
+        }
+    };
+    if colon_pos < separator_pos {
+        return Err(Error::GeneralError("- Separator of http and the http method comes after the :// protocol and url separator".to_owned()));
+    }
+
+    let mut method = None;
+    if method_after_protocol {
+        let method_str = &endpoints_ascii[separator_pos + 1..colon_pos];
+        method = Some(match method_str {
+            b"get" => Method::GET,
+            b"put" => Method::PUT,
+            b"post" => Method::POST,
+            b"delete" => Method::DELETE,
+            b"head" => Method::HEAD,
+            b"patch" => Method::PATCH,
+            x => {
+                return Err(Error::GeneralError(format!(
+                    "Method after hyphen is not known: {}",
+                    String::from_utf8_lossy(x)
+                )));
+            }
+        })
+    }
+
+    let url = match endpoints_ascii.get(colon_pos + 3..) {
+        Some(url) => match String::from_utf8(url.to_owned()) {
+            Ok(x) => x,
+            Err(err) => {
+                return Err(Error::StringUTF8Error(err));
+            }
+        },
+        None => {
+            return Err(Error::GeneralError(
+                "URL has no content after ://".to_owned(),
+            ))
+        }
+    };
+    let protocol = if https_enabled {
+        "https".to_owned()
+    } else {
+        "http".to_owned()
+    };
+    return Ok((format!("{protocol}://{url}"), method));
+}
+
+#[cfg(test)]
+mod test {
+    use crate::connection_wrapper::extract_method;
+    use http_helper::Method;
+
+    #[test]
+    fn test_protocol_extraction_post() {
+        let endpoint = "https-post://cpee.org/services/timeout.php";
+        let (endpoint, method) = extract_method(endpoint).unwrap();
+        assert_eq!(endpoint, "https://cpee.org/services/timeout.php");
+        assert_eq!(method, Some(Method::POST))
+    }
+
+    #[test]
+    fn test_protocol_extraction_put() {
+        let endpoint = "https-put://cpee.org/services/timeout.php";
+        let (endpoint, method) = extract_method(endpoint).unwrap();
+        assert_eq!(endpoint, "https://cpee.org/services/timeout.php");
+        assert_eq!(method, Some(Method::PUT))
+    }
+
+    #[test]
+    fn test_protocol_extraction_get() {
+        let endpoint = "https-get://cpee.org/services/timeout.php";
+        let (endpoint, method) = extract_method(endpoint).unwrap();
+        assert_eq!(endpoint, "https://cpee.org/services/timeout.php");
+        assert_eq!(method, Some(Method::GET))
+    }
+
+    #[test]
+    fn test_protocol_extraction_del() {
+        let endpoint = "https-delete://cpee.org/services/timeout.php";
+        let (endpoint, method) = extract_method(endpoint).unwrap();
+        assert_eq!(endpoint, "https://cpee.org/services/timeout.php");
+        assert_eq!(method, Some(Method::DELETE))
+    }
+
+    #[test]
+    fn test_protocol_extraction_del_no_https() {
+        let endpoint = "http-delete://cpee.org/services/timeout.php";
+        let (endpoint, method) = extract_method(endpoint).unwrap();
+        assert_eq!(endpoint, "http://cpee.org/services/timeout.php");
+        assert_eq!(method, Some(Method::DELETE))
+    }
 }

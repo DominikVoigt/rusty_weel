@@ -716,7 +716,7 @@ fn parse_multipart(body: &[u8], boundary: &str) -> Result<Vec<Parameter>> {
     }
 }
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, PartialEq)]
 pub enum Method {
     GET,
     PUT,
