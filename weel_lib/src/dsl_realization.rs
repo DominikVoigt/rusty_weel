@@ -1376,7 +1376,6 @@ impl Weel {
                                 .clone()
                                 .map(|x| x.is_null() || x.as_array().map(|arr| arr.is_empty()).unwrap_or(false))
                                 .unwrap_or(true);
-                            println!("Wait res: {:?} Signaled update again: {:?} Return empty: {:?}", wait_result, signaled_update_again, return_value_empty);
                             if signaled_update_again && return_value_empty {
                                 println!("Continue update again");
                                 continue;
