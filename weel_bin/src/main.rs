@@ -29,6 +29,11 @@ lazy_static! {
     static ref WEEL: Arc<Weel> = startup();
 }
 
+use peak_alloc::PeakAlloc;
+
+#[global_allocator]
+static PEAK_ALLOC: PeakAlloc = PeakAlloc;
+
 fn main() {
     let (stop_signal_sender, stop_signal_receiver) = mpsc::channel::<()>();
     *WEEL.stop_signal_receiver.lock().unwrap() = Some(stop_signal_receiver);
@@ -42,6 +47,11 @@ fn main() {
 
     // Executes the code and blocks until it is finished
     let res = weel!().start(model, stop_signal_sender);
+    
+	let current_mem = PEAK_ALLOC.current_usage_as_mb();
+	println!("This program currently uses {} MB of RAM.", current_mem);
+	let peak_mem = PEAK_ALLOC.peak_usage_as_mb();
+	println!("The max amount that was used {} MB", peak_mem);
     match res {
         Ok(_) => {}
         Err(err) => {

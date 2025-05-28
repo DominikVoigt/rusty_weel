@@ -10,7 +10,7 @@ resolver = "2"
 [profile.release]
 strip = true # Strips symbols from the binary
 opt-level = "z" #optimize for size
-lto = false # Link time optimization
+lto = false # Link time optimization, required to be false for static linking
 codegen-units = 16
 incremental = true
 

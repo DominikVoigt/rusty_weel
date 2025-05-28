@@ -14,6 +14,7 @@ indoc = "2"
 lazy_static = "1.5.0"
 weel_inject ={ path = "../weel_inject" }
 weel_lib = { path = "../weel_lib" }
+peak_alloc = "0.2.1"
 
 # Signal handling
 ctrlc = {version = "3.4.4", features = ["termination"]}
