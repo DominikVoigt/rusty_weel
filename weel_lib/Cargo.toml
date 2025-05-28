@@ -26,7 +26,6 @@ urlencoding = "2.1.3"
 
 # Parallelism
 once_map = "0.4.21"
-regex = "1.10.6"
 
 # Time
 chrono = {version = "0.4.39", features = ["serde"]}
