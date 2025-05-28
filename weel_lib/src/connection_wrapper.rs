@@ -7,7 +7,6 @@ use crate::{
 };
 use core::str;
 use http_helper::{header_map_to_hash_map, Method, Parameter};
-use regex::Regex;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde_json::{json, Value};
 use std::{
@@ -40,7 +39,6 @@ pub struct ConnectionWrapper {
     pub handler_activity_uuid: String,
     activity_label: String,
     annotations: Option<Value>,
-    error_regex: Regex,
 }
 // Determines whether recurring calls are too close together (in seconds)
 const LOOP_GUARD_DELTA: f32 = 2.0;
@@ -70,7 +68,7 @@ impl ConnectionWrapper {
             activity_label: "".to_owned(),
             handler_endpoint_origin: Vec::new(),
             annotations: None,
-            error_regex: Regex::new(r#"(.*?)(, Line |:)(\d+):\s(.*)"#).unwrap(),
+            // error_regex: Regex::new(r#"(.*?)(, Line |:)(\d+):\s(.*)"#).unwrap(),
         }
     }
 
@@ -556,14 +554,7 @@ impl ConnectionWrapper {
         let mut status: u16;
         let mut response_headers: HashMap<String, String>;
         let mut body;
-
-        let event_regex = match regex::Regex::new(r"[^\w_-]") {
-            Ok(regex) => regex,
-            Err(err) => {
-                eprintln!("Could not compile static regex: {err} -> SHOULD NOT HAPPEN");
-                panic!()
-            }
-        };
+        // TODO: Check whether \w of regex matches char::is_alphanumeric
 
         loop {
             // Compute parameters
@@ -721,7 +712,7 @@ impl ConnectionWrapper {
                     if event_header_set {
                         // TODO What about value_helper
                         let event = uniform_headers.get("cpee_event").unwrap();
-                        let event = event_regex.replace_all(event, "");
+                        let event = remove_special_chars(event);
                         let what = format!("task/{event}");
                         weel.redis_notifications_client.lock().unwrap().notify(
                             &what,
@@ -912,17 +903,9 @@ impl ConnectionWrapper {
         }
 
         if contains_non_empty(&headers, "cpee_event") {
-            let event_regex = match regex::Regex::new(r"[^\w_-]") {
-                Ok(regex) => regex,
-                Err(err) => {
-                    eprintln!("Could not compile static regex: {err} -> SHOULD NOT HAPPEN");
-                    panic!()
-                }
-            };
-
             // contains_non_empty ensures it it contained
             let event = headers["cpee_event"].clone();
-            let event = event_regex.replace_all(&event, "");
+            let event = remove_special_chars(&event);
 
             let mut content_node = content.clone();
             let content = content_node
@@ -1079,9 +1062,7 @@ impl ConnectionWrapper {
     fn add_error_information(&self, content: &mut Value, err: Error) {
         let content = content.as_object_mut().unwrap();
         match self.extract_info_from_message(err) {
-            Ok((message, line, location)) => {
-                content.insert("line".to_owned(), json!(line));
-                content.insert("location".to_owned(), json!(location));
+            Ok(message) => {
                 content.insert("message".to_owned(), json!(message));
             }
             Err(message) => {
@@ -1090,16 +1071,19 @@ impl ConnectionWrapper {
         }
     }
 
+    /**
+     * This method can be further simplified
+     */
     fn extract_info_from_message(
         &self,
         err: Error,
-    ) -> std::result::Result<(String, String, String), String> {
+    ) -> std::result::Result<String, String> {
         match err {
-            Error::GeneralError(message) => self.try_extract(&message),
+            Error::GeneralError(message) => Ok(message),
             Error::EvalError(eval_error) => match eval_error {
-                eval_helper::EvalError::GeneralEvalError(message) => self.try_extract(&message),
-                eval_helper::EvalError::SyntaxError(message) => self.try_extract(&message),
-                eval_helper::EvalError::RuntimeError(message) => self.try_extract(&message),
+                eval_helper::EvalError::GeneralEvalError(message) => Ok(message),
+                eval_helper::EvalError::SyntaxError(message) => Ok(message),
+                eval_helper::EvalError::RuntimeError(message) => Ok(message),
                 eval_helper::EvalError::Signal(signal, evaluation_result) => {
                     let signal_error = EvalError::Signal(signal, evaluation_result);
                     eprintln!(
@@ -1113,25 +1097,6 @@ impl ConnectionWrapper {
                 eprintln!("Trying to extract information from error: {:?}", other);
                 Err(other.to_string().to_owned())
             }
-        }
-    }
-
-    /**
-     * Will try to extract information from the error in a structurized form (OK), otherwise will return the original message (Err)
-     */
-    fn try_extract(&self, message: &str) -> std::result::Result<(String, String, String), String> {
-        match self.error_regex.captures(message) {
-            Some(capture) => {
-                let message = capture.get(4).unwrap();
-                let line = capture.get(3).unwrap();
-                let location = capture.get(1).unwrap();
-                Ok((
-                    message.as_str().to_owned(),
-                    line.as_str().to_owned(),
-                    location.as_str().to_owned(),
-                ))
-            }
-            None => Err(message.to_owned()),
         }
     }
 
@@ -1233,6 +1198,16 @@ fn contains_non_empty(options: &HashMap<String, String>, key: &str) -> bool {
 }
 
 /**
+ * Removes all characters that are not (\w|-|_)
+ */
+fn remove_special_chars(input: &str) -> String {
+    input
+        .chars()
+        .filter(|ch| -> bool { ch.is_alphanumeric() || *ch == '-' || *ch == '_' })
+        .collect()
+}
+
+/**
  * Extracts the method from strings of type http(s)-<Method>
  * If the URL does not have this form, it does nothing and returns None for the method
  */
@@ -1309,6 +1284,15 @@ fn extract_method(endpoint: &str) -> Result<(String, Option<Method>)> {
 mod test {
     use crate::connection_wrapper::extract_method;
     use http_helper::Method;
+
+    use super::remove_special_chars;
+
+    #[test]
+    fn test_remove_special_characters() {
+        let endpoint = "https-post://cpee.org/services/timeout.php";
+        let result = remove_special_chars(endpoint);
+        assert_eq!(result, "https-postcpeeorgservicestimeoutphp")
+    }
 
     #[test]
     fn test_protocol_extraction_post() {
