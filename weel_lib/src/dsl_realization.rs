@@ -1500,6 +1500,7 @@ impl Weel {
                             }
                         }
                         Signal::NoLongerNecessary => {
+                            connection_wrapper.activity_stop()?;
                             connection_wrapper.inform_activity_cancelled()?;
                             connection_wrapper.inform_activity_done()?;
                             self.positions
