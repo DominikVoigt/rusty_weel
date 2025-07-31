@@ -918,10 +918,6 @@ impl ConnectionWrapper {
                 Some(content_node),
                 weel.get_instance_meta_data(),
             )?;
-        } else {
-            self.handler_return_status = status;
-            self.handler_return_value = Some(recv);
-            self.handler_return_options = Some(options);
         }
         println!(
             "Cpee status present: {:?}",
@@ -943,6 +939,14 @@ impl ConnectionWrapper {
             )?;
         }
         drop(redis);
+        
+        if contains_non_empty(&headers, "cpee_status") || contains_non_empty(&headers, "cpee_event") {
+            self.handler_return_value = None;
+            self.handler_return_options = None;
+        } else {
+            self.handler_return_value = Some(recv);
+            self.handler_return_options = Some(options);
+        }
 
         if contains_non_empty(&headers, "cpee_update") {
             match &self.handler_continue {
@@ -1162,10 +1166,12 @@ impl ConnectionWrapper {
         });
 
         if let Some(branch_traces) = branch_traces {
-            content
+            let map = content
                 .as_object_mut()
-                .unwrap()
-                .insert("branches".to_owned(), json!(branch_traces.len()));
+                .unwrap();
+            let branch_ids: Vec<_> = branch_traces.keys().map(|thread_id| format!("{:?}", thread_id)).collect();
+            map.insert("branches".to_owned(), json!(branch_ids));
+            map.insert("branches_length".to_owned(), json!(branch_traces.len()));
         }
 
         self.inform("gateway/join", Some(content))

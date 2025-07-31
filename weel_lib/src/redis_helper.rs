@@ -130,14 +130,15 @@ impl RedisHelper {
             ),
         );
         payload.insert("content", content);
-        payload.insert("instance-uuid", Value::String(instance_uuid));
+        payload.insert("instance-uuid", Value::String(instance_uuid.clone()));
         payload.insert("instance-name", Value::String(info));
 
         let channel: String = format!("{}:{}:{}", message_type, target_worker, event);
         // Construct complete payload out of: <instance-id> <actual-payload>
         let payload: String = format!(
-            "{} {}",
+            "{},{} {}",
             instance_id,
+            instance_uuid,
             serde_json::to_string(&payload).expect("Could not deserialize payload")
         );
         let publish_result: RedisResult<()> = self.connection.publish(channel, payload);
@@ -296,7 +297,8 @@ impl RedisHelper {
                 .get_payload()
                 .expect("Failed to get payload from message in callback thread");
             // cut of the instance-id in front of the actual message off
-            let (_instance_id, payload) = payload
+            // TODO: _instance_id is now instance_id,uuid
+            let (_instance_id_and_uuid, payload) = payload
                 .split_once(" ")
                 .expect(CALLBACK_RESPONSE_ERROR_MESSAGE);
             let pattern: String = message.get_pattern().expect("Could not get pattern");
