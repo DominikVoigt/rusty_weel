@@ -13,17 +13,15 @@ use weel_lib::data_types::ChooseVariant::{Exclusive, Inclusive};
 
 use std::{panic, thread};
 
-use weel_lib::ConnectionWrapper;
-use weel_lib::data_types::{
-    Context, HTTPParams, KeyValuePair, State, Opts, Status, ThreadInfo
-};
+use std::io::Write;
+use weel_inject::inject;
+use weel_lib::data_types::{Context, HTTPParams, KeyValuePair, Opts, State, Status, ThreadInfo};
 use weel_lib::dsl::DSL;
 use weel_lib::dsl_realization::{Position, Result, Weel};
-use weel_lib::redis_helper::RedisHelper;
-use weel_lib::Method;
 use weel_lib::json;
-use weel_inject::inject;
-use std::io::Write;
+use weel_lib::redis_helper::RedisHelper;
+use weel_lib::ConnectionWrapper;
+use weel_lib::Method;
 
 lazy_static! {
     static ref WEEL: Arc<Weel> = startup();
@@ -32,11 +30,10 @@ lazy_static! {
 fn main() {
     let (stop_signal_sender, stop_signal_receiver) = mpsc::channel::<()>();
     *WEEL.stop_signal_receiver.lock().unwrap() = Some(stop_signal_receiver);
-    let model = || -> Result<()> {
+    let model = Box::new(|| -> Result<()> {
         inject!();
-        
         Ok(())
-    };
+    });
 
     set_panic_hook(WEEL.clone());
 
@@ -48,12 +45,12 @@ fn main() {
             eprintln!("Encountered error {:?}", err);
             weel!().handle_error(err, true);
             match weel!().set_state(State::Stopped) {
-                Ok(_) => {},
+                Ok(_) => {}
                 Err(err) => {
                     panic!("Weel start returned with error signal, and failed to set state to stopping: {:?}", err)
-                },
+                }
             };
-        },
+        }
     }
 }
 
@@ -117,12 +114,17 @@ fn get_search_positions(
         .unwrap()
         .search_positions
         .iter()
-        .map(|(identifier, position_dto)| (identifier.clone(), Position::new(
-            position_dto.position.clone(),
-            position_dto.uuid.clone(),
-            position_dto.detail.clone(),
-            position_dto.handler_passthrough.clone()
-        )))
+        .map(|(identifier, position_dto)| {
+            (
+                identifier.clone(),
+                Position::new(
+                    position_dto.position.clone(),
+                    position_dto.uuid.clone(),
+                    position_dto.detail.clone(),
+                    position_dto.handler_passthrough.clone(),
+                ),
+            )
+        })
         .collect()
 }
 
@@ -132,9 +134,13 @@ fn set_panic_hook(weel: Arc<Weel>) -> () {
     panic::set_hook(Box::new(move |info| {
         // Log panic information in case we ever panic
         eprintln!("Panic occured. Panic information: {info}");
-        weel.handle_error(weel_lib::dsl_realization::Error::GeneralError(info.to_string()), false);
+        weel.handle_error(
+            weel_lib::dsl_realization::Error::GeneralError(info.to_string()),
+            false,
+        );
         let res = weel.stop_weel(main_thread_id);
-        eprintln!("Result of stop due to panic: {:?}", res)
+        eprintln!("Result of stop due to panic: {:?}", res);
+        original_hook(info)
     }));
 }
 
@@ -146,8 +152,7 @@ fn setup_signal_handler(weel: &Arc<Weel>) {
         println!("Received SIGINT/SIGTERM/SIGHUP. Set state to stopping...");
         let res = weel.stop_weel(main_thread_id);
         match res {
-            Ok(_) => {
-            }
+            Ok(_) => {}
             Err(_err) => {
                 panic!("Could not stop -> Crash instead of failing silently")
             }
@@ -160,20 +165,14 @@ fn setup_signal_handler(weel: &Arc<Weel>) {
 /**
  * Creates a new Key value pair by evaluating the key and value expressions
  */
-pub fn new_key_value_pair_ex(
-    key_expression: &'static str,
-    value: &'static str,
-) -> KeyValuePair {
+pub fn new_key_value_pair_ex(key_expression: &'static str, value: &'static str) -> KeyValuePair {
     create_kv_pair(key_expression, value, true)
 }
 
 /**
  * Creates a new Key value pair
  */
-pub fn new_key_value_pair(
-    key_expression: &'static str,
-    value: &'static str,
-) -> KeyValuePair {
+pub fn new_key_value_pair(key_expression: &'static str, value: &'static str) -> KeyValuePair {
     create_kv_pair(key_expression, value, false)
 }
 
@@ -226,7 +225,7 @@ macro_rules! pƛ {
 #[macro_export]
 macro_rules! code {
     ($str: tt) => {
-        Some(indoc::indoc!{
+        Some(indoc::indoc! {
             $str
         })
     };

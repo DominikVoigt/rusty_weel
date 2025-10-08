@@ -691,7 +691,7 @@ impl Weel {
      */
     pub fn start(
         self: Arc<Self>,
-        model: impl FnOnce() -> Result<()> + Send + 'static,
+        model: Box<(dyn FnOnce() -> Result<()> + Send + 'static)>,
         stop_signal_sender: Sender<()>,
     ) -> Result<()> {
         let content = json!({
