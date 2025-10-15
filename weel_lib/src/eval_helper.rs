@@ -20,12 +20,6 @@ use crate::{
     dsl_realization::{Error, Result, Signal},
 };
 
-static NUMBER_CLIENTS: u8 = 6;
-
-lazy_static! {
-    static ref pool: Vec<Mutex<reqwest::blocking::Client>> = construct_clients(NUMBER_CLIENTS);
-}
-
 fn construct_clients(number_clients: u8) -> Vec<Mutex<reqwest::blocking::Client>> {
     let mut new_pool = Vec::new();
     for _ in 0..number_clients {
@@ -41,12 +35,9 @@ pub fn test_condition(
     thread_local: &Option<Value>,
     connection_wrapper: &ConnectionWrapper,
 ) -> Result<bool> {
-    let ex_client = get_client();
-
-    let mut client = Client::new_with_existing_client(
+    let mut client = Client::new(
         &static_context.eval_backend_exec_full,
         http_helper::Method::PUT,
-        ex_client,
     )?;
     // Construct multipart request
     client.add_parameter(Parameter::SimpleParameter {
@@ -198,8 +189,7 @@ pub fn test_condition(
                             Err(err) => {
                                 eprintln!(
                                     "Encountered error deserializing signal: {:?}, received: {}",
-                                    err,
-                                    p_content
+                                    err, p_content
                                 );
                                 return Err(Error::JsonError(err));
                             }
@@ -245,9 +235,7 @@ pub fn test_condition(
                     x => {
                         eprintln!(
                             "Got signaled: {:?} with text: {} when evaluating {}",
-                            x,
-                            signal_text,
-                            code
+                            x, signal_text, code
                         );
                         Err(Error::EvalError(EvalError::GeneralEvalError(format!(
                             "Got signaled: {:?} with text: {} when evaluating {}",
@@ -262,23 +250,6 @@ pub fn test_condition(
             )))),
         }
     }
-}
-
-fn get_client() -> MutexGuard<'static, reqwest::blocking::Client> {
-    let client ;
-    // try locking a client
-    'spin: loop {
-        for client_mut in pool.iter() {
-            match client_mut.try_lock() {
-                Ok(lock) => {
-                    client = lock;
-                    break 'spin;
-                },
-                Err(_) => {}
-            };
-        }
-    };
-    return client;
 }
 
 /**
@@ -299,12 +270,9 @@ pub fn evaluate_expression(
     location: &str,
 ) -> Result<EvaluationResult> {
     // This url has to be the full path to the exec-full endpoint
-    let ex_client = get_client();
-
-    let mut client = Client::new_with_existing_client(
+    let mut client = Client::new(
         &static_context.eval_backend_exec_full,
         http_helper::Method::PUT,
-        ex_client,
     )?;
     {
         // Construct multipart request
@@ -372,7 +340,7 @@ pub fn evaluate_expression(
     let mut endpoints: Option<HashMap<String, String>> = None;
     let mut signal: Option<Signal> = None;
     let mut signal_text: Option<String> = None;
-    
+
     /*
      * Retrieve the result of the expression
      * Also retrieves the data endpoints state and local data if there is some
@@ -591,12 +559,7 @@ pub fn evaluate_expression(
                 changed_endpoints:{:?}\n
                 changed_status:{:?}
                 ",
-                data,
-                endpoints,
-                expression_result,
-                changed_data,
-                changed_endpoints,
-                changed_status
+                data, endpoints, expression_result, changed_data, changed_endpoints, changed_status
             );
             Err(Error::EvalError(EvalError::GeneralEvalError(
             format!("Response of Eval Service is {} and the body does not contain the evaluation result -> General issue with the service", status))))
@@ -659,29 +622,30 @@ pub fn structurize_result(
             body_file.write_all(body)?;
             body_file.rewind()?;
             let content_string = options.get(CONTENT_TYPE.as_str());
-            // TODO: The default cannot be json! (just for worklist for now) -> Needs to be octet-stream or none and structurize service has to guess! 
+            // TODO: The default cannot be json! (just for worklist for now) -> Needs to be octet-stream or none and structurize service has to guess!
             let mime_type = match content_string {
-                Some(content_type) => {
-                    content_type.parse::<Mime>().unwrap_or_else(|err| {
-                        eprintln!("Provided content type could not be parsed to a mimetype: {:?}", err);
-                        eprintln!("Defaulting to text/plain");
-                        TEXT_PLAIN_UTF_8
-                    })
-                },
+                Some(content_type) => content_type.parse::<Mime>().unwrap_or_else(|err| {
+                    eprintln!(
+                        "Provided content type could not be parsed to a mimetype: {:?}",
+                        err
+                    );
+                    eprintln!("Defaulting to text/plain");
+                    TEXT_PLAIN_UTF_8
+                }),
                 None => {
                     eprintln!("No content type provided in response, defaulting to text/plain");
                     TEXT_PLAIN_UTF_8
-                },
+                }
             };
             client.add_parameter(Parameter::ComplexParameter {
                 name: "body".to_owned(),
                 mime_type: mime_type,
                 content_handle: body_file,
             });
-        },
+        }
         CallbackType::Structured(vec) => {
             client.add_parameters(vec);
-        },
+        }
     }
     client.add_request_headers(options.clone())?;
     let response = client.execute()?;
@@ -701,7 +665,10 @@ pub fn structurize_result(
             Ok(match content.pop().unwrap() {
                 Parameter::SimpleParameter { value, .. } => serde_json::from_str::<Value>(&value)?,
                 Parameter::ComplexParameter {
-                    mut content_handle, name, .. } => {
+                    mut content_handle,
+                    name,
+                    ..
+                } => {
                     let mut content = String::new();
                     content_handle.rewind()?;
                     content_handle.read_to_string(&mut content)?;

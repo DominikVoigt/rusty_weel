@@ -113,43 +113,19 @@ pub struct ParsedResponse {
     pub raw: Bytes,
 }
 
-enum ReqClient<'a> {
-    Owned(reqwest::blocking::Client),
-    Borrowed(std::sync::MutexGuard<'a, reqwest::blocking::Client>),
-}
-impl<'a> ReqClient<'a> {
-    fn execute(
-        &'a self,
-        request: reqwest::blocking::Request,
-    ) -> std::result::Result<Response, reqwest::Error> {
-        let res = match self {
-            ReqClient::Owned(client) => client.execute(request),
-            ReqClient::Borrowed(client) => client.execute(request),
-        };
-        res
-    }
-
-    fn request(&self, method: reqwest::Method, url: Url) -> RequestBuilder {
-        match self {
-            ReqClient::Owned(client) => client.request(method, url),
-            ReqClient::Borrowed(client) => client.request(method, url),
-        }
-    }
-}
-
 /**
  * Abstraction on top of libcurl
  */
-pub struct Client<'a> {
+pub struct Client {
     method: Method,
-    reqwest_client: ReqClient<'a>,
+    reqwest_client: reqwest::blocking::Client,
     base_url: Url,
     pub headers: HeaderMap,
     parameters: Vec<Parameter>,
     form_url_encoded: bool,
 }
 
-impl<'a> Debug for Client<'a> {
+impl  Debug for Client {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Client")
             .field("method", &self.method)
@@ -184,34 +160,14 @@ type Result<T> = std::result::Result<T, Error>;
  *  - If the query string contains query parameters they are parsed into SimpleParameters (with ParameterType Query)
  *  - SimpleParameter name and value are URL encoded and Quotation marks are stripped from start and end (not for complex parameters)
  */
-impl<'a> Client<'a> {
+impl Client {
     pub fn new(url: &str, method: Method) -> Result<Client> {
         let client = reqwest::blocking::Client::new();
 
         let (base_url, parameters) = generate_base_url(url)?;
         let mut client = Client {
             method,
-            reqwest_client: ReqClient::Owned(client),
-            base_url,
-            headers: HeaderMap::new(),
-            // All simple parameters are URL encoded -> If added through add_parameters
-            parameters: Vec::new(),
-            form_url_encoded: true,
-        };
-        // Add clients via add to url encode them
-        client.add_parameters(parameters);
-        Ok(client)
-    }
-
-    pub fn new_with_existing_client(
-        url: &str,
-        method: Method,
-        client: MutexGuard<'a, reqwest::blocking::Client>,
-    ) -> Result<Client<'a>> {
-        let (base_url, parameters) = generate_base_url(url)?;
-        let mut client = Client {
-            method,
-            reqwest_client: ReqClient::Borrowed(client),
+            reqwest_client: client,
             base_url,
             headers: HeaderMap::new(),
             // All simple parameters are URL encoded -> If added through add_parameters
