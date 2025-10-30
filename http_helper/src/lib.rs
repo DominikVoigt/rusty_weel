@@ -4,7 +4,7 @@ use multipart::server::{FieldHeaders, ReadEntry};
 use reqwest::{
     blocking::{
         multipart::{Form, Part},
-        RequestBuilder, Response,
+        RequestBuilder,
     },
     header::{HeaderMap, HeaderName, HeaderValue, ToStrError, CONTENT_TYPE},
     Url,

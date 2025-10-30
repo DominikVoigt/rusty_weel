@@ -3,12 +3,11 @@ use std::{
     collections::HashMap,
     fmt::Display,
     io::{Read, Seek, Write},
-    sync::{Mutex, MutexGuard},
+    sync::Mutex,
     thread,
 };
 
 use http_helper::{Client, Parameter};
-use lazy_static::lazy_static;
 use mime::{Mime, APPLICATION_JSON, TEXT_PLAIN_UTF_8};
 use reqwest::header::CONTENT_TYPE;
 use serde_json::Value;
