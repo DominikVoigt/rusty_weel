@@ -17,11 +17,11 @@ module CPEE
   module ExecutionHandler
 
     module Rust
-      BACKEND_INSTANCE = File.expand_path(File.join(__dir__,'backend','instance.rs'))
-      BACKEND_OPTS     = File.expand_path(File.join(__dir__,'backend','opts.json'))
-      BACKEND_CONTEXT  = File.expand_path(File.join(__dir__,'backend','context.json'))
-      BACKEND_COMPILE  = File.expand_path(File.join(__dir__,'backend','compile'))
-      BACKEND_RUN      = File.expand_path(File.join(__dir__,'backend','run'))
+      BACKEND_INSTANCE = File.expand_path(File.join(__dir__, 'instance.rs'))
+      BACKEND_OPTS     = File.expand_path(File.join(__dir__, '../../configs', 'opts.json'))
+      BACKEND_CONTEXT  = File.expand_path(File.join(__dir__, 'context.json'))
+      BACKEND_COMPILE  = File.expand_path(File.join(__dir__, 'compile'))
+      BACKEND_RUN      = File.expand_path(File.join(__dir__, 'run'))
       INDENT = 4
 
       module Translate #{{{
