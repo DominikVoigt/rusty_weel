@@ -7,7 +7,7 @@ use proc_macro::TokenStream;
  */
 #[proc_macro]
 pub fn inject(input: TokenStream) -> TokenStream {
-    let mut path = format!("{}", input);
+    let mut path = input.to_string();
     if path.is_empty() {
         path = "./instance.rs".to_owned() 
     }
