@@ -23,6 +23,8 @@ ln -sf "$SOURCE_DIR/target" "$INSTANCE_DIR"
 
 # copy and run build script (will crate instance binary
 ln -sf "$SCRIPT_DIR/build" $INSTANCE_DIR
+echo "Script dir:"
+echo $SCRIPT_DIR
 cd $INSTANCE_DIR
 ./build $INSTANCE_ID
 
