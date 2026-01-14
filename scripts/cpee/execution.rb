@@ -140,7 +140,7 @@ module CPEE
           end
           x << self::_indent(indent+1) +  %Q[code! {] + self::_nl
           x << self::_indent(indent+1) +  'r###"' + self::_nl
-          x << self::_indent(indent+2) +  node.text + self::_nl
+          x << self::_indent(indent+2) +  node.find('string(d:code)') + self::_nl
           x << self::_indent(indent+1) +  %Q["###}] + self::_nln
           x << self::_indent(indent) + ")?;" + self::_nl
           x
