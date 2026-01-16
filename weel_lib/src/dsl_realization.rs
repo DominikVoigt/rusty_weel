@@ -164,7 +164,6 @@ impl DSL for Weel {
         drop(thread_map);
         // Wait for the "final" thread to fulfill the wait condition (wait_threshold = wait_count)
         if !(self.terminating() || spawned_branches == 0) {
-            println!("Waiting for branch event...");
             branch_event_rx.recv().unwrap();
         }
         let thread_map = self.thread_information.lock().unwrap();
@@ -173,7 +172,6 @@ impl DSL for Weel {
             .expect(PRECON_THREAD_INFO)
             .borrow_mut();
         thread_info.branch_event_sender = None;
-        println!("Joining branches...");
         connection_wrapper.join_branches(current_thread_id, Some(&thread_info.branch_traces))?;
         drop(thread_info);
         if !self.terminating() {
@@ -197,7 +195,6 @@ impl DSL for Weel {
                 self.recursive_join(child_thread)?;
             }
         }
-        println!("At end of parallel do");
         Ok(())
     }
 
@@ -263,7 +260,7 @@ impl DSL for Weel {
                 match weel.execute_lambda(&lambda.as_ref()) {
                     Ok(_) => {println!("Done executing parallel branch on thread: {:?}", thread::current().id())},
                     Err(err) => {
-                        println!("Error within parallel branch: {:?}, continue to do housekeeping...", err)
+                        eprintln!("Error within parallel branch: {:?}, continue to do housekeeping...", err)
                     },
                 }
             }
@@ -1539,9 +1536,13 @@ impl Weel {
                         ))?;
                         self.set_state(State::Stopping)?;
                     }
-                    EvalError::Signal(_signal, _evaluation_result) => {
-                        eprintln!("Handling EvalError::Signal in weel_activity, this should never happen! Should be \"raised\" as Error::Signal");
-                        panic!("Handling EvalError::Signal in weel_activity, this should never happen! Should be \"raised\" as Error::Signal");
+                    EvalError::Signal(signal, _evaluation_result) => {
+                        if matches!(activity_type, ActivityType::Call) {
+                            eprintln!("Handling EvalError::Signal in weel_activity, this should never happen! Should be \"raised\" as Error::Signal");
+                            panic!("Handling EvalError::Signal in weel_activity, this should never happen! Should be \"raised\" as Error::Signal");    
+                        } else {
+                            self.handle_error(Error::GeneralError(format!("Using signal {:?} in manipulate not supported", signal)), true);
+                        }
                     }
                     // Runtime and general evaluation errors use the default error handling
                     other => {
@@ -1571,7 +1572,6 @@ impl Weel {
         if let Some(parent_id) = thread_info.parent_thread {
             self.parallel_gateway_update(&thread_info_map, parent_id, thread_info, current_thread);
         }
-        println!("Exiting weel activity on thread {:?}", thread::current().id())
     }
 
     fn parallel_gateway_update(

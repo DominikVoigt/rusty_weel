@@ -34,7 +34,6 @@ pub fn test_condition(
     thread_local: &Option<Value>,
     connection_wrapper: &ConnectionWrapper,
 ) -> Result<bool> {
-    println!("Testing condition: {code}");
     let mut client = Client::new(
         &static_context.eval_backend_exec_full,
         http_helper::Method::PUT,
@@ -269,7 +268,6 @@ pub fn evaluate_expression(
     call_headers: Option<HashMap<String, String>>,
     location: &str,
 ) -> Result<EvaluationResult> {
-    println!("Evaluting expression: {expression}");
     // This url has to be the full path to the exec-full endpoint
     let mut client = Client::new(
         &static_context.eval_backend_exec_full,
@@ -495,9 +493,6 @@ pub fn evaluate_expression(
     }
 
     let status_not_ok = status < 200 || status >= 300;
-    println!("Status: {status}");
-    println!("Signal: {:?}", signal);
-    println!("Expression result: {:?}", expression_result);
     match expression_result {
         Some(expression_result) => {
             let eval_result = EvaluationResult {
@@ -508,7 +503,6 @@ pub fn evaluate_expression(
                 data,
                 endpoints,
             };
-            println!("Before status if");
             if status_not_ok {
                 // Either error or signal
                 let signal_text = match signal_text {
