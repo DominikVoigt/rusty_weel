@@ -164,6 +164,7 @@ impl DSL for Weel {
         drop(thread_map);
         // Wait for the "final" thread to fulfill the wait condition (wait_threshold = wait_count)
         if !(self.terminating() || spawned_branches == 0) {
+            println!("Waiting for branch event...");
             branch_event_rx.recv().unwrap();
         }
         let thread_map = self.thread_information.lock().unwrap();
@@ -175,7 +176,6 @@ impl DSL for Weel {
         println!("Joining branches...");
         connection_wrapper.join_branches(current_thread_id, Some(&thread_info.branch_traces))?;
         drop(thread_info);
-        // TODO: in original code we did not check on no_longer necessary here, should we or not?
         if !self.terminating() {
             for child in &branches {
                 let mut child_info: std::cell::RefMut<'_, ThreadInfo> =
@@ -261,7 +261,12 @@ impl DSL for Weel {
             }
 
             if !weel.should_skip_locking() {
-                weel.execute_lambda(&lambda.as_ref())?;
+                match weel.execute_lambda(&lambda.as_ref()) {
+                    Ok(_) => {},
+                    Err(err) => {
+                        println!("Error within parallel branch, continue to do housekeeping...")
+                    },
+                }
             }
 
             // Now the parallel branch terminates
