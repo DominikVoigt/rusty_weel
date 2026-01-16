@@ -6,8 +6,11 @@ use proc_macro::TokenStream;
  * Expects TokenStream to contain the path (single "string" expression)
  */
 #[proc_macro]
-pub fn inject(_input: TokenStream) -> TokenStream {
-    let path = std::env::var("EIC_FILE").unwrap_or("./instance.rs".to_owned());
+pub fn inject(input: TokenStream) -> TokenStream {
+    let mut path = input.to_string();
+    if path.is_empty() {
+        path = "./instance.rs".to_owned() 
+    }
     // Strip "-symbol from string literal:
     //let path = input.to_string().replace("\"", "");
     let main_content = match open_file(&path) {

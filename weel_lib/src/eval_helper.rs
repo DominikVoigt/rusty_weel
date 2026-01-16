@@ -352,6 +352,7 @@ pub fn evaluate_expression(
                     if value.len() == 0 {
                         expression_result = Some(Value::Null);
                     } else {
+                        eprintln!("Received simple parameter: {}", value);
                         // In case we have a string, strip them
                         match serde_json::from_str(&value) {
                             Ok(res) => expression_result = Some(res),
@@ -380,6 +381,7 @@ pub fn evaluate_expression(
             } => {
                 let mut content = String::new();
                 content_handle.read_to_string(&mut content)?;
+                eprintln!("Received complex parameter: {}, content: {}", name, content);
                 match name.as_str() {
                     "result" => {
                         if content.len() == 0 {

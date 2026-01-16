@@ -27,13 +27,10 @@ ln -sf "$RDIR/../target" "$INSTANCE_DIR"
 ln -sf "$SDIR/cpee/build" $INSTANCE_DIR
 ln -sf "$SDIR/cpee/build_debug" $INSTANCE_DIR
 cd $INSTANCE_DIR
-echo $(pwd)
 ./build $INSTANCE_ID
 
 # Dynlink the run script
-
-cp -f "$SDIR/run" $INSTANCE_DIR
-cp -f "$SDIR/run_debug" $INSTANCE_DIR
+cp -f "$SDIR/cpee/run" $INSTANCE_DIR
+cp -f "$SDIR/cpee/run_debug" $INSTANCE_DIR
 cp -f "$SDIR/profiling/run_heaptrack" $INSTANCE_DIR
 cp -f "$SDIR/profiling/run_massif" $INSTANCE_DIR
-
