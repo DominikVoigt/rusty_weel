@@ -1542,6 +1542,7 @@ impl Weel {
                             panic!("Handling EvalError::Signal in weel_activity, this should never happen! Should be \"raised\" as Error::Signal");    
                         } else {
                             self.handle_error(Error::GeneralError(format!("Using signal {:?} in manipulate not supported", signal)), true);
+                            panic!("Test panic")
                         }
                     }
                     // Runtime and general evaluation errors use the default error handling
