@@ -326,7 +326,7 @@ impl DSL for Weel {
                     }
                 }
             }
-            // Case when the wait count is the number of branches?
+            // Wait for all finished and canceled branches before signaling to continue
             if parent_thread_info.branch_finished_count == parent_thread_info.branches.len()
                 && !matches!(
                     *weel.state.lock().unwrap(),
