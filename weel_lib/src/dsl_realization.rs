@@ -259,7 +259,7 @@ impl DSL for Weel {
                 // wait for run signal from parallel gateway
                 branch_barrier_start.dequeue();
             }
-
+            println!("Executing lambda on thread: {:?}", thread::current().id());
             if !weel.should_skip_locking() {
                 match weel.execute_lambda(&lambda.as_ref()) {
                     Ok(_) => {},
