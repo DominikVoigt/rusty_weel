@@ -9,7 +9,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
-use std::thread::{self, ThreadId};
+use std::thread::{self, Thread, ThreadId};
 use std::time::SystemTime;
 
 use rand::distributions::Alphanumeric;
@@ -1970,7 +1970,7 @@ impl Weel {
      * Locks: state and potentially positions and status (via set_state)
      */
     pub fn handle_error(self: &Arc<Self>, err: Error, should_set_stopping: bool) {
-        println!("Encountered error: {:?}", err);
+        println!("Encountered error: {:?} on thread {:?}", err, thread::current().id());
         println!("Should stop: {}", should_set_stopping);
         match ConnectionWrapper::new(self.clone(), None, None).inform_connectionwrapper_error(err) {
             Ok(_) => {}
