@@ -1574,6 +1574,7 @@ impl Weel {
         if let Some(parent_id) = thread_info.parent_thread {
             self.parallel_gateway_update(&thread_info_map, parent_id, thread_info, current_thread);
         }
+        println!("Exiting weel activity on thread {:?}", thread::current().id())
     }
 
     fn parallel_gateway_update(
