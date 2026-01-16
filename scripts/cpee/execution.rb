@@ -23,7 +23,7 @@ module CPEE
       BACKEND_COMPILE  = File.expand_path(File.join(__dir__,'backend','compile'))
       BACKEND_RUN      = File.expand_path(File.join(__dir__,'backend','run'))
       INDENT = 4
-
+      p BACKEND_INSTANCE
       module Translate #{{{
         def self::_indent(indent) #{{{
           " " * CPEE::ExecutionHandler::Rust::INDENT * indent
