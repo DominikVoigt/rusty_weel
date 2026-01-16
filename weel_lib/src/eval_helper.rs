@@ -508,7 +508,9 @@ pub fn evaluate_expression(
                 data,
                 endpoints,
             };
+            println!("Before status if");
             if status_not_ok {
+                // Either error or signal
                 let signal_text = match signal_text {
                     Some(text) => text,
                     None => "".to_owned(),
