@@ -262,7 +262,7 @@ impl DSL for Weel {
             println!("Executing lambda on thread: {:?}", thread::current().id());
             if !weel.should_skip_locking() {
                 match weel.execute_lambda(&lambda.as_ref()) {
-                    Ok(_) => {},
+                    Ok(_) => {println!("Done executing parallel branch on thread: {:?}", thread::current().id())},
                     Err(err) => {
                         println!("Error within parallel branch, continue to do housekeeping...")
                     },
