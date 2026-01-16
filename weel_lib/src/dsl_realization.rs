@@ -327,12 +327,7 @@ impl DSL for Weel {
                 }
             }
             // Wait for all finished and canceled branches before signaling to continue
-            if parent_thread_info.branch_finished_count == parent_thread_info.branches.len()
-                && !matches!(
-                    *weel.state.lock().unwrap(),
-                    State::Stopping | State::Finishing
-                )
-            {
+            if parent_thread_info.branch_finished_count == parent_thread_info.branches.len() {
                 match branch_event_sender.send(()) {
                     Ok(()) => {}
                     Err(err) => {
