@@ -1555,6 +1555,7 @@ impl Weel {
                 }
             };
         };
+        println!("Calling finalize call activitity on thread {:?}", thread::current().id());
         self.finalize_call_activity();
         Ok(())
     }
