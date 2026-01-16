@@ -455,7 +455,6 @@ pub fn evaluate_expression(
                     "signal" => {
                         signal = {
                             // Enums are serialized as strings!
-                            println!("Received signal string: {content}");
                             let signal_enum = if let Some(enum_name) = content.split("::").last() {
                                 enum_name.trim()
                             } else {
@@ -506,6 +505,8 @@ pub fn evaluate_expression(
                 data,
                 endpoints,
             };
+            println!("Status: {status}");
+            println!("Signal: {:?}", signal);
             if status_not_ok {
                 let signal_text = match signal_text {
                     Some(text) => text,
