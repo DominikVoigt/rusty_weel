@@ -329,7 +329,6 @@ pub fn evaluate_expression(
     }
 
     let mut result = client.execute()?;
-    println!("After executing code");
     let status = result.status_code;
     // Get the expressions parameter from the parsed response
     let mut expression_result: Option<Value> = None;
