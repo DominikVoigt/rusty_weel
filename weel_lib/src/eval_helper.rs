@@ -497,6 +497,7 @@ pub fn evaluate_expression(
     let status_not_ok = status < 200 || status >= 300;
     println!("Status: {status}");
     println!("Signal: {:?}", signal);
+    println!("Expression result: {:?}", expression_result);
     match expression_result {
         Some(expression_result) => {
             let eval_result = EvaluationResult {
