@@ -259,12 +259,11 @@ impl DSL for Weel {
                 // wait for run signal from parallel gateway
                 branch_barrier_start.dequeue();
             }
-            println!("Executing lambda on thread: {:?}", thread::current().id());
             if !weel.should_skip_locking() {
                 match weel.execute_lambda(&lambda.as_ref()) {
                     Ok(_) => {println!("Done executing parallel branch on thread: {:?}", thread::current().id())},
                     Err(err) => {
-                        println!("Error within parallel branch, continue to do housekeeping...")
+                        println!("Error within parallel branch: {:?}, continue to do housekeeping...", err)
                     },
                 }
             }
@@ -1755,17 +1754,21 @@ impl Weel {
         match result {
             Ok(()) => Ok(()),
             Err(err) => {
-                self.set_state(State::Stopping)?;
-                match ConnectionWrapper::new(self.clone(), None, None)
-                    .inform_syntax_error(err, None)
-                {
-                    Ok(_) => Ok(()),
-                    Err(c_err) => {
-                        eprintln!(
-                            "Error occured when executing lambda, but informing CPEE failed: {:?}",
-                            c_err
-                        );
-                        Err(c_err)
+                if matches!(err, Error::BreakLoop()) {
+                    return Err(err);
+                } else {
+                    self.set_state(State::Stopping)?;
+                    match ConnectionWrapper::new(self.clone(), None, None)
+                        .inform_syntax_error(err, None)
+                    {
+                        Ok(_) => Ok(()),
+                        Err(c_err) => {
+                            eprintln!(
+                                "Error occured when executing lambda, but informing CPEE failed: {:?}",
+                                c_err
+                            );
+                            Err(c_err)
+                        }
                     }
                 }
             }
