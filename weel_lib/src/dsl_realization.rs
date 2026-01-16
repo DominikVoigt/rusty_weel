@@ -850,6 +850,7 @@ impl Weel {
                         eprintln!("Error receiving termination signal for model thread. Sender must have been dropped.")
                     }
                 }
+                State::Stopping => eprint!("Called stop_weel, however state is already stopping"),
                 _ => eprintln!(
                     "Instance stop was called but instance is in state: {:?}",
                     *state
@@ -1542,7 +1543,6 @@ impl Weel {
                             panic!("Handling EvalError::Signal in weel_activity, this should never happen! Should be \"raised\" as Error::Signal");    
                         } else {
                             self.handle_error(Error::GeneralError(format!("Using signal {:?} in manipulate not supported", signal)), true);
-                            panic!("Test panic")
                         }
                     }
                     // Runtime and general evaluation errors use the default error handling
