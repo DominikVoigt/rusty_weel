@@ -292,8 +292,7 @@ impl DSL for Weel {
             if parent_thread_info.parallel_wait_condition == CancelCondition::Last {
                 let reached_wait_threshold = parent_thread_info.branch_finished_count
                     == parent_thread_info.branch_wait_threshold;
-                if reached_wait_threshold
-                    && !matches!(
+                if reached_wait_threshold && !matches!(
                         *weel.state.lock().unwrap(),
                         State::Stopping | State::Finishing
                     )
@@ -310,6 +309,7 @@ impl DSL for Weel {
                                 // Branch already done, nothing to do here
                             }
                             Err(err) => {
+                                // Since there was no message for the thread, it is not yet terminated, thus skip it
                                 match err {
                                     mpsc::TryRecvError::Empty => {
                                         // We did not hear back yet, this means that the branch did not finish yet, so we will cancel it
