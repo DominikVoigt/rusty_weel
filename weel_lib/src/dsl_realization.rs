@@ -2003,6 +2003,7 @@ impl Weel {
                 }
             };
         };
+        println!("Exiting handle error for state {:?}", thread::current().id())
     }
 
     pub fn get_instance_meta_data(&self) -> InstanceMetaData {
