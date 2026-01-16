@@ -172,7 +172,7 @@ impl DSL for Weel {
             .expect(PRECON_THREAD_INFO)
             .borrow_mut();
         thread_info.branch_event_sender = None;
-
+        println!("Joining branches...");
         connection_wrapper.join_branches(current_thread_id, Some(&thread_info.branch_traces))?;
         drop(thread_info);
         // TODO: in original code we did not check on no_longer necessary here, should we or not?
@@ -197,7 +197,7 @@ impl DSL for Weel {
                 self.recursive_join(child_thread)?;
             }
         }
-
+        println!("At end of parallel do");
         Ok(())
     }
 
@@ -1377,7 +1377,6 @@ impl Weel {
                                 .map(|x| x.is_null() || x.as_array().map(|arr| arr.is_empty()).unwrap_or(false))
                                 .unwrap_or(true);
                             if signaled_update_again && return_value_empty {
-                                println!("Continue update again");
                                 continue;
                             }
 
@@ -1555,7 +1554,6 @@ impl Weel {
                 }
             };
         };
-        println!("Calling finalize call activitity on thread {:?}", thread::current().id());
         self.finalize_call_activity();
         Ok(())
     }
@@ -1972,8 +1970,7 @@ impl Weel {
      * Locks: state and potentially positions and status (via set_state)
      */
     pub fn handle_error(self: &Arc<Self>, err: Error, should_set_stopping: bool) {
-        println!("Encountered error: {:?} on thread {:?}", err, thread::current().id());
-        println!("Should stop: {}", should_set_stopping);
+        eprintln!("Encountered error: {:?} on thread {:?}", err, thread::current().id());
         match ConnectionWrapper::new(self.clone(), None, None).inform_connectionwrapper_error(err) {
             Ok(_) => {}
             Err(err) => {
@@ -1983,11 +1980,10 @@ impl Weel {
                 )
             }
         };
-        println!("Should stop: {}", should_set_stopping);
         if should_set_stopping {
             match self.set_state(State::Stopping) {
                 Ok(_) => {
-                    println!("Set state to stopping")
+                    eprintln!("Set state to stopping")
                 }
                 Err(err) => {
                     eprintln!("Encountered error: {:?}", err);
@@ -2005,7 +2001,6 @@ impl Weel {
                 }
             };
         };
-        println!("Exiting handle error for state {:?}", thread::current().id())
     }
 
     pub fn get_instance_meta_data(&self) -> InstanceMetaData {
