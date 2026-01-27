@@ -693,7 +693,6 @@ impl ConnectionWrapper {
 
                     let instantiation_header_set =
                         uniform_headers.contains_key("cpee_instantiation");
-                    println!("Instantiation header set: {}", instantiation_header_set);
                     if instantiation_header_set {
                         content.insert(
                             "received".to_owned(),
@@ -919,10 +918,6 @@ impl ConnectionWrapper {
                 weel.get_instance_meta_data(),
             )?;
         }
-        println!(
-            "Cpee status present: {:?}",
-            contains_non_empty(&headers, "cpee_status")
-        );
 
         if contains_non_empty(&headers, "cpee_status") {
             let mut content_node = content.clone();

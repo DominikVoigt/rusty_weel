@@ -12,7 +12,7 @@ use crate::{
     data_types::{InstanceMetaData, Opts},
     dsl_realization::{Error, Result},
 };
-use http_helper::{Parameter, ParameterDTO};
+use http_helper::Parameter;
 use mime::Mime;
 use once::assert_has_not_been_called;
 use redis::{Commands, Connection, RedisResult};
