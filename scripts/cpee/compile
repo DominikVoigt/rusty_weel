@@ -1,34 +1,37 @@
-# CPEE SCRIPT DIR i.e. scripts/cpee
-SCRIPT_DIR=$(dirname "$0")
-echo $SCRIPT_DIR
-SOURCE_DIR="$SCRIPT_DIR/../.."
-echo "Compiling rust instance..."
-echo $CDIR
-echo $1
+# Repository root:
+RDIR="$(dirname $0)/../.."
+# Script dir
+SDIR="$(dirname $0)/.."
 INSTANCE_DIR=$1
 INSTANCE_ID=$(basename $INSTANCE_DIR)
 
+#echo "Instance dir: $INSTANCE_DIR"
+#echo "Instance id: $INSTANCE_ID"
+#echo "RDIR: $RDIR"
+#echo "SDIR: $SDIR"
+
 # copy source code over
-ln -sf "$SOURCE_DIR/http_helper" $INSTANCE_DIR
-ln -sf "$SOURCE_DIR/weel_lib" $INSTANCE_DIR
-ln -sf "$SOURCE_DIR/weel_inject" $INSTANCE_DIR
-ln -sf "$SOURCE_DIR/Cargo.toml" $INSTANCE_DIR
-ln -sf "$SOURCE_DIR/Cargo.lock" $INSTANCE_DIR
+ln -sf "$RDIR/http_helper" $INSTANCE_DIR
+ln -sf "$RDIR/weel_lib" $INSTANCE_DIR
+ln -sf "$RDIR/weel_inject" $INSTANCE_DIR
+ln -sf "$RDIR/Cargo.toml" $INSTANCE_DIR
+ln -sf "$RDIR/Cargo.lock" $INSTANCE_DIR
 
 
-cp -rf "$SOURCE_DIR/weel_bin" $INSTANCE_DIR
+cp -rf "$RDIR/weel_bin" $INSTANCE_DIR
 
 # Link build dir directly into instance dir
-ln -sf "$SOURCE_DIR/target" "$INSTANCE_DIR"
+mkdir -p $RDIR/target
+ln -sf $RDIR/target $INSTANCE_DIR
 
 # copy and run build script (will crate instance binary
-ln -sf "$SCRIPT_DIR/build" $INSTANCE_DIR
+ln -sf "$SDIR/cpee/build" $INSTANCE_DIR
+ln -sf "$SDIR/cpee/build_debug" $INSTANCE_DIR
 cd $INSTANCE_DIR
 ./build $INSTANCE_ID
 
 # Dynlink the run script
-
-cp -f "$SCRIPT_DIR/run" $INSTANCE_DIR
-cp -f "$SOURCE_DIR/scripts/profiling/run_heaptrack" $INSTANCE_DIR
-cp -f "$SOURCE_DIR/scripts/profiling/run_massif" $INSTANCE_DIR
-
+cp -f "$SDIR/cpee/run" $INSTANCE_DIR
+cp -f "$SDIR/cpee/run_debug" $INSTANCE_DIR
+cp -f "$SDIR/profiling/run_heaptrack" $INSTANCE_DIR
+cp -f "$SDIR/profiling/run_massif" $INSTANCE_DIR

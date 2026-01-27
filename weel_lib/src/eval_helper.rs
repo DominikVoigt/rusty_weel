@@ -452,12 +452,12 @@ pub fn evaluate_expression(
                     // Handle others based on ruby code
                     "signal" => {
                         signal = {
+                            // Enums are serialized as strings!
                             let signal_enum = if let Some(enum_name) = content.split("::").last() {
                                 enum_name.trim()
                             } else {
                                 &content
                             };
-                            // Enums are serialized as strings!
                             let signal_enum = format!("\"{signal_enum}\"");
                             match serde_json::from_str(&signal_enum) {
                                 Ok(res) => res,
@@ -504,6 +504,7 @@ pub fn evaluate_expression(
                 endpoints,
             };
             if status_not_ok {
+                // Either error or signal
                 let signal_text = match signal_text {
                     Some(text) => text,
                     None => "".to_owned(),

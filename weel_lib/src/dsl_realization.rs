@@ -9,7 +9,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
-use std::thread::{self, ThreadId};
+use std::thread::{self, Thread, ThreadId};
 use std::time::SystemTime;
 
 use rand::distributions::Alphanumeric;
@@ -172,10 +172,8 @@ impl DSL for Weel {
             .expect(PRECON_THREAD_INFO)
             .borrow_mut();
         thread_info.branch_event_sender = None;
-
         connection_wrapper.join_branches(current_thread_id, Some(&thread_info.branch_traces))?;
         drop(thread_info);
-        // TODO: in original code we did not check on no_longer necessary here, should we or not?
         if !self.terminating() {
             for child in &branches {
                 let mut child_info: std::cell::RefMut<'_, ThreadInfo> =
@@ -197,7 +195,6 @@ impl DSL for Weel {
                 self.recursive_join(child_thread)?;
             }
         }
-
         Ok(())
     }
 
@@ -259,9 +256,13 @@ impl DSL for Weel {
                 // wait for run signal from parallel gateway
                 branch_barrier_start.dequeue();
             }
-
             if !weel.should_skip_locking() {
-                weel.execute_lambda(&lambda.as_ref())?;
+                match weel.execute_lambda(&lambda.as_ref()) {
+                    Ok(_) => {println!("Done executing parallel branch on thread: {:?}", thread::current().id())},
+                    Err(err) => {
+                        eprintln!("Error within parallel branch: {:?}, continue to do housekeeping...", err)
+                    },
+                }
             }
 
             // Now the parallel branch terminates
@@ -287,8 +288,7 @@ impl DSL for Weel {
             if parent_thread_info.parallel_wait_condition == CancelCondition::Last {
                 let reached_wait_threshold = parent_thread_info.branch_finished_count
                     == parent_thread_info.branch_wait_threshold;
-                if reached_wait_threshold
-                    && !matches!(
+                if reached_wait_threshold && !matches!(
                         *weel.state.lock().unwrap(),
                         State::Stopping | State::Finishing
                     )
@@ -305,6 +305,7 @@ impl DSL for Weel {
                                 // Branch already done, nothing to do here
                             }
                             Err(err) => {
+                                // Since there was no message for the thread, it is not yet terminated, thus skip it
                                 match err {
                                     mpsc::TryRecvError::Empty => {
                                         // We did not hear back yet, this means that the branch did not finish yet, so we will cancel it
@@ -321,13 +322,8 @@ impl DSL for Weel {
                     }
                 }
             }
-            // Case when the wait count is the number of branches?
-            if parent_thread_info.branch_finished_count == parent_thread_info.branches.len()
-                && !matches!(
-                    *weel.state.lock().unwrap(),
-                    State::Stopping | State::Finishing
-                )
-            {
+            // Wait for all finished and canceled branches before signaling to continue
+            if parent_thread_info.branch_finished_count == parent_thread_info.branches.len() {
                 match branch_event_sender.send(()) {
                     Ok(()) => {}
                     Err(err) => {
@@ -853,6 +849,7 @@ impl Weel {
                         eprintln!("Error receiving termination signal for model thread. Sender must have been dropped.")
                     }
                 }
+                State::Stopping => eprint!("Called stop_weel, however state is already stopping"),
                 _ => eprintln!(
                     "Instance stop was called but instance is in state: {:?}",
                     *state
@@ -1537,9 +1534,13 @@ impl Weel {
                         ))?;
                         self.set_state(State::Stopping)?;
                     }
-                    EvalError::Signal(_signal, _evaluation_result) => {
-                        eprintln!("Handling EvalError::Signal in weel_activity, this should never happen! Should be \"raised\" as Error::Signal");
-                        panic!("Handling EvalError::Signal in weel_activity, this should never happen! Should be \"raised\" as Error::Signal");
+                    EvalError::Signal(signal, _evaluation_result) => {
+                        if matches!(activity_type, ActivityType::Call) {
+                            eprintln!("Handling EvalError::Signal in weel_activity, this should never happen! Should be \"raised\" as Error::Signal");
+                            panic!("Handling EvalError::Signal in weel_activity, this should never happen! Should be \"raised\" as Error::Signal");    
+                        } else {
+                            self.handle_error(Error::GeneralError(format!("Using signal {:?} in manipulate not supported", signal)), true);
+                        }
                     }
                     // Runtime and general evaluation errors use the default error handling
                     other => {
@@ -1666,6 +1667,7 @@ impl Weel {
             let eval_lock = EVALUATION_LOCK.lock().unwrap();
             let dynamic_data = self.context.lock().unwrap().clone();
             let status = self.status.lock().unwrap().to_dto();
+            print!("Executing code: {code}");
             let result = eval_helper::evaluate_expression(
                 &dynamic_data,
                 &self.opts,
@@ -1750,17 +1752,21 @@ impl Weel {
         match result {
             Ok(()) => Ok(()),
             Err(err) => {
-                self.set_state(State::Stopping)?;
-                match ConnectionWrapper::new(self.clone(), None, None)
-                    .inform_syntax_error(err, None)
-                {
-                    Ok(_) => Ok(()),
-                    Err(c_err) => {
-                        eprintln!(
-                            "Error occured when executing lambda, but informing CPEE failed: {:?}",
-                            c_err
-                        );
-                        Err(c_err)
+                if matches!(err, Error::BreakLoop()) {
+                    return Err(err);
+                } else {
+                    self.set_state(State::Stopping)?;
+                    match ConnectionWrapper::new(self.clone(), None, None)
+                        .inform_syntax_error(err, None)
+                    {
+                        Ok(_) => Ok(()),
+                        Err(c_err) => {
+                            eprintln!(
+                                "Error occured when executing lambda, but informing CPEE failed: {:?}",
+                                c_err
+                            );
+                            Err(c_err)
+                        }
                     }
                 }
             }
@@ -1965,8 +1971,7 @@ impl Weel {
      * Locks: state and potentially positions and status (via set_state)
      */
     pub fn handle_error(self: &Arc<Self>, err: Error, should_set_stopping: bool) {
-        println!("Encountered error: {:?}", err);
-        println!("Should stop: {}", should_set_stopping);
+        eprintln!("Encountered error: {:?} on thread {:?}", err, thread::current().id());
         match ConnectionWrapper::new(self.clone(), None, None).inform_connectionwrapper_error(err) {
             Ok(_) => {}
             Err(err) => {
@@ -1976,11 +1981,10 @@ impl Weel {
                 )
             }
         };
-        println!("Should stop: {}", should_set_stopping);
         if should_set_stopping {
             match self.set_state(State::Stopping) {
                 Ok(_) => {
-                    println!("Set state to stopping")
+                    eprintln!("Set state to stopping")
                 }
                 Err(err) => {
                     eprintln!("Encountered error: {:?}", err);

@@ -149,7 +149,7 @@ fn setup_signal_handler(weel: &Arc<Weel>) {
     let main_thread_id = thread::current().id();
 
     if let Err(err) = ctrlc::set_handler(move || {
-        println!("Received SIGINT/SIGTERM/SIGHUP. Set state to stopping...");
+        eprintln!("Received SIGINT/SIGTERM/SIGHUP. Set state to stopping...");
         let res = weel.stop_weel(main_thread_id);
         match res {
             Ok(_) => {}
