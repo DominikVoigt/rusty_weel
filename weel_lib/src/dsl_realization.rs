@@ -258,7 +258,7 @@ impl DSL for Weel {
             }
             if !weel.should_skip_locking() {
                 match weel.execute_lambda(&lambda.as_ref()) {
-                    Ok(_) => {println!("Done executing parallel branch on thread: {:?}", thread::current().id())},
+                    Ok(_) => {},
                     Err(err) => {
                         eprintln!("Error within parallel branch: {:?}, continue to do housekeeping...", err)
                     },
@@ -1667,7 +1667,6 @@ impl Weel {
             let eval_lock = EVALUATION_LOCK.lock().unwrap();
             let dynamic_data = self.context.lock().unwrap().clone();
             let status = self.status.lock().unwrap().to_dto();
-            print!("Executing code: {code}");
             let result = eval_helper::evaluate_expression(
                 &dynamic_data,
                 &self.opts,
