@@ -415,6 +415,7 @@ impl Client {
         parameter: Parameter,
         request_builder: RequestBuilder,
     ) -> RequestBuilder {
+        println!("Constructing singular body");
         match parameter {
             Parameter::SimpleParameter { name, value, .. } => {
                 let text = if value.len() == 0 {
