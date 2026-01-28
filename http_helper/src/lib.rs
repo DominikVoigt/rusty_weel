@@ -517,6 +517,9 @@ fn construct_multipart(
                 // We read out the content handle, otherwise we could stream in the file read (better) but then it would use transfer-encoding chunked -> currently not supported
                 content_handle.rewind()?;
                 content_handle.read_to_string(&mut content)?;
+                // let mut content = Vec::new();
+                // let content = content_handle.read_to_end(&mut content);
+                println!("Adding parameter with type: #{}", mime_type.to_string());
                 let part = Part::text(content).mime_str(&mime_type.to_string())?;
                 form = form.part(name, part);
             }
