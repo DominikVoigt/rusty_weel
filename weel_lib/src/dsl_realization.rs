@@ -1649,6 +1649,8 @@ impl Weel {
         call_result: Option<Value>,
         call_headers: Option<HashMap<String, String>>,
     ) -> Result<eval_helper::EvaluationResult> {
+        println!("Calling execute with code: {code}");
+        println!("Location: {location}");
         // We clone the dynamic data and status dto here which is expensive but allows us to not block the whole weel until the eval call returns
         if read_only {
             let dynamic_data = self.context.lock().unwrap().clone();
