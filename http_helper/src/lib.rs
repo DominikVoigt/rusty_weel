@@ -13,7 +13,7 @@ use serde::Serialize;
 use tempfile::tempfile;
 
 use std::{
-    collections::HashMap, fmt::Debug, fs, io::{Read, Seek, Write}, os::unix::fs::MetadataExt, str::FromStr, sync::MutexGuard
+    collections::HashMap, fmt::Debug, fs, io::{Read, Seek, Write}, os::unix::fs::MetadataExt, str::FromStr, sync::MutexGuard, time::Duration
 };
 
 pub use mime::*;
@@ -162,8 +162,9 @@ type Result<T> = std::result::Result<T, Error>;
  */
 impl Client {
     pub fn new(url: &str, method: Method) -> Result<Client> {
-        let client = reqwest::blocking::Client::new();
-
+        let mut client = reqwest::blocking::Client::builder();
+        client = client.timeout(Duration::from_secs(20));
+        let client = client.build().unwrap();
         let (base_url, parameters) = generate_base_url(url)?;
         let mut client = Client {
             method,
