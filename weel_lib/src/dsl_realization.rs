@@ -258,7 +258,7 @@ impl DSL for Weel {
             }
             if !weel.should_skip_locking() {
                 match weel.execute_lambda(&lambda.as_ref()) {
-                    Ok(_) => {println!("Done executing parallel branch on thread: {:?}", thread::current().id())},
+                    Ok(_) => {},
                     Err(err) => {
                         eprintln!("Error within parallel branch: {:?}, continue to do housekeeping...", err)
                     },
@@ -702,7 +702,6 @@ impl Weel {
                         self.set_state(State::Running)?;
                     }
                     let result = model();
-                    println!("Model result: {:?}", result);
                     match result {
                         // TODO: Implement __weel_control_flow completely
                         Ok(()) => {
@@ -1304,7 +1303,6 @@ impl Weel {
                                 *self.state.lock().unwrap(),
                                 State::Stopping | State::Stopped | State::Finishing
                             );
-                            let connection_wrapper = connection_wrapper_mutex.lock().unwrap();
 
                             let should_block =
                                 !state_stopping_or_finishing && !thread_info.no_longer_necessary;
@@ -1315,8 +1313,6 @@ impl Weel {
                             // We need to release the locks on the thread_info_map to allow other parallel branches to execute while we wait for the callback (can take long for async case)
                             drop(thread_info);
                             drop(thread_info_map);
-                            // We need to release the connection_wrapper lock here to allow callbacks from redis to lock the wrapper
-                            drop(connection_wrapper);
 
                             if should_block {
                                 wait_result = Some(thread_queue.dequeue());
@@ -1451,6 +1447,7 @@ impl Weel {
                                 break 'inner;
                             }
                         }
+                        // This locking can lead to a lost update problem -> Scenario: multiple handle_callbacks invoked by the redis_helper (multiple async callbacks) will change the activity_passthrough value before thsi mutex locks
                         let connection_wrapper = connection_wrapper_mutex.lock().unwrap();
                         if connection_wrapper.activity_passthrough_value().is_none() {
                             connection_wrapper.inform_activity_done()?;
@@ -1672,7 +1669,6 @@ impl Weel {
             let eval_lock = EVALUATION_LOCK.lock().unwrap();
             let dynamic_data = self.context.lock().unwrap().clone();
             let status = self.status.lock().unwrap().to_dto();
-            print!("Executing code: {code}");
             let result = eval_helper::evaluate_expression(
                 &dynamic_data,
                 &self.opts,

@@ -21,7 +21,8 @@ ln -sf "$RDIR/Cargo.lock" $INSTANCE_DIR
 cp -rf "$RDIR/weel_bin" $INSTANCE_DIR
 
 # Link build dir directly into instance dir
-ln -sf "$RDIR/../target" "$INSTANCE_DIR"
+mkdir -p $RDIR/target
+ln -sf $RDIR/target $INSTANCE_DIR
 
 # copy and run build script (will crate instance binary
 ln -sf "$SDIR/cpee/build" $INSTANCE_DIR
