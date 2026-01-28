@@ -863,6 +863,7 @@ impl ConnectionWrapper {
     ) -> Result<()> {
         let headers = uniformize_headers(&options);
         let weel = self.weel();
+        println!("Prior to structurize");
         let recv =
             eval_helper::structurize_result(&weel.opts.eval_backend_structurize, &options, body)?;
         let mut redis = weel.redis_notifications_client.lock()?;
