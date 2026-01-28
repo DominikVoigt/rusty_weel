@@ -442,9 +442,9 @@ impl Client {
                 // We read out the content handle, otherwise we could stream in the file read (better) but then it would use transfer-encoding chunked -> currently not supported
                 content_handle.rewind()?;
                 content_handle.read_to_end(&mut content)?;
-                println!("Adding a body of byte length: {}", content.len());
-                self.headers.append(CONTENT_LENGTH, content.len().into());
+                let body_length = content.len();
                 let request_builder = request_builder.body(content);
+                self.headers.append(CONTENT_LENGTH, body_length.into());
                 if self.headers.contains_key(CONTENT_TYPE.as_str()) {
                     println!("Using content type from header: {:?}", self.headers.get(CONTENT_TYPE.as_str()));
                     Ok(request_builder)
