@@ -2,12 +2,9 @@ use bytes::{Buf, Bytes};
 use derive_more::From;
 use multipart::server::{FieldHeaders, ReadEntry};
 use reqwest::{
-    blocking::{
-        multipart::{Form, Part},
-        RequestBuilder,
-    },
-    header::{HeaderMap, HeaderName, HeaderValue, ToStrError, CONTENT_TYPE},
-    Url,
+    Url, blocking::{
+        RequestBuilder, multipart::{Form, Part}
+    }, header::{CONTENT_LENGTH, CONTENT_TYPE, HeaderMap, HeaderName, HeaderValue, ToStrError}
 };
 use serde::Serialize;
 use tempfile::tempfile;
@@ -445,8 +442,8 @@ impl Client {
                 content_handle.rewind()?;
                 content_handle.read_to_end(&mut content)?;
                 println!("Adding a body of byte length: {}", content.len());
+                self.headers.append(CONTENT_LENGTH, content.len().into());
                 let request_builder = request_builder.body(content);
-                // Need to provide content_type but not content-length
                 if self.headers.contains_key(CONTENT_TYPE.as_str()) {
                     println!("Using content type from header: {:?}", self.headers.get(CONTENT_TYPE.as_str()));
                     Ok(request_builder)
