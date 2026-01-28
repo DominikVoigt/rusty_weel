@@ -636,7 +636,7 @@ pub fn structurize_result(
                     TEXT_PLAIN_UTF_8
                 }
             };
-
+            println!("Adding body parameter with mime type: {}", mime_type.to_string());
             client.add_complex_parameter(
                 "body",
                 mime_type,
