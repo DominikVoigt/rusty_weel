@@ -620,9 +620,6 @@ pub fn structurize_result(
     match body {
         CallbackType::Raw(body) => {
             println!("Callback body length: {}", String::from_utf8(body.to_owned()).unwrap().len());
-            let mut body_file = tempfile()?;
-            body_file.write_all(body)?;
-            body_file.rewind()?;
             let content_string = options.get(CONTENT_TYPE.as_str());
             // TODO: The default cannot be json! (just for worklist for now) -> Needs to be octet-stream or none and structurize service has to guess!
             let mime_type = match content_string {
@@ -639,11 +636,12 @@ pub fn structurize_result(
                     TEXT_PLAIN_UTF_8
                 }
             };
-            client.add_parameter(Parameter::ComplexParameter {
-                name: "body".to_owned(),
-                mime_type: mime_type,
-                content_handle: body_file,
-            });
+
+            client.add_complex_parameter(
+                "body",
+                mime_type,
+                body
+            )?;
         }
         CallbackType::Structured(vec) => {
             client.add_parameters(vec);
