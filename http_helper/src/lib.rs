@@ -351,7 +351,7 @@ impl Client {
             Ok(self.construct_singular_body(
                 body_parameters.pop().expect("Cannot fail"),
                 request_builder,
-            ))
+            )?)
         } else {
             // For multipart we set a multipart content type => Remove custom content type
             self.headers.remove(CONTENT_TYPE.as_str());
@@ -414,7 +414,7 @@ impl Client {
         &mut self,
         parameter: Parameter,
         request_builder: RequestBuilder,
-    ) -> RequestBuilder {
+    ) -> Result<RequestBuilder> {
         println!("Constructing singular body");
         match parameter {
             Parameter::SimpleParameter { name, value, .. } => {
@@ -426,29 +426,33 @@ impl Client {
                 let request_builder = request_builder.body(text);
                 // Need to provide content_type but not content-length
                 if self.headers.contains_key(CONTENT_TYPE.as_str()) {
-                    request_builder
+                    Ok(request_builder)
                 } else {
                     // Only set default header if no header is provided
-                    request_builder.header(
+                    Ok(request_builder.header(
                         CONTENT_TYPE,
                         mime::APPLICATION_WWW_FORM_URLENCODED.to_string(),
-                    )
+                    ))
                 }
             }
             Parameter::ComplexParameter {
                 mime_type,
-                content_handle,
+                mut content_handle,
                 ..
             } => {
-                let request_builder = request_builder.body(content_handle);
+                let mut content = String::new();
+                // We read out the content handle, otherwise we could stream in the file read (better) but then it would use transfer-encoding chunked -> currently not supported
+                content_handle.rewind()?;
+                content_handle.read_to_string(&mut content)?;
+                let request_builder = request_builder.body(content);
                 // Need to provide content_type but not content-length
                 if self.headers.contains_key(CONTENT_TYPE.as_str()) {
                     println!("Using content type from header: {:?}", self.headers.get(CONTENT_TYPE.as_str()));
-                    request_builder
+                    Ok(request_builder)
                 } else {
                     println!("Setting content type to: {}", mime_type.to_string());
                     // Only set default header if no header is provided
-                    request_builder.header(CONTENT_TYPE, mime_type.to_string())
+                    Ok(request_builder.header(CONTENT_TYPE, mime_type.to_string()))
                 }
             }
         }
