@@ -438,10 +438,10 @@ impl Client {
                 mut content_handle,
                 ..
             } => {
-                let mut content = Vec::new();
+                let mut content = String::new();
                 // We read out the content handle, otherwise we could stream in the file read (better) but then it would use transfer-encoding chunked -> currently not supported
                 content_handle.rewind()?;
-                content_handle.read_to_end(&mut content)?;
+                content_handle.read_to_string(&mut content)?;
                 let body_length = content.len();
                 let request_builder = request_builder.body(content);
                 self.headers.append(CONTENT_LENGTH, body_length.into());
