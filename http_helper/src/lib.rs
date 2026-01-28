@@ -375,6 +375,7 @@ impl Client {
         request_builder = self.generate_body(request_builder)?;
         request_builder = self.set_headers(request_builder);
         let request = request_builder.build()?;
+        println!("Content length header: {:?}", request.headers().get(CONTENT_LENGTH));
         let response = self.reqwest_client.execute(request)?;
         Ok(RawResponse {
             headers: response.headers().clone(),
