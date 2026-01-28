@@ -443,8 +443,10 @@ impl Client {
                 let request_builder = request_builder.body(content_handle);
                 // Need to provide content_type but not content-length
                 if self.headers.contains_key(CONTENT_TYPE.as_str()) {
+                    println!("Using content type from header: {:?}", self.headers.get(CONTENT_TYPE.as_str()));
                     request_builder
                 } else {
+                    println!("Setting content type to: {}", mime_type.to_string());
                     // Only set default header if no header is provided
                     request_builder.header(CONTENT_TYPE, mime_type.to_string())
                 }
