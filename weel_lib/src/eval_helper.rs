@@ -619,7 +619,7 @@ pub fn structurize_result(
         http_helper::Client::new(eval_backend_structurize_url, http_helper::Method::PUT)?;
     match body {
         CallbackType::Raw(body) => {
-            println!("Callback body: {}", String::from_utf8(body.to_owned()).unwrap());
+            println!("Callback body length: {}", String::from_utf8(body.to_owned()).unwrap().len());
             let mut body_file = tempfile()?;
             body_file.write_all(body)?;
             body_file.rewind()?;
