@@ -440,10 +440,10 @@ impl Client {
                 mut content_handle,
                 ..
             } => {
-                let mut content = String::new();
+                let mut content = Vec::new();
                 // We read out the content handle, otherwise we could stream in the file read (better) but then it would use transfer-encoding chunked -> currently not supported
                 content_handle.rewind()?;
-                content_handle.read_to_string(&mut content)?;
+                content_handle.read_to_end(&mut content)?;
                 let request_builder = request_builder.body(content);
                 // Need to provide content_type but not content-length
                 if self.headers.contains_key(CONTENT_TYPE.as_str()) {
@@ -520,14 +520,14 @@ fn construct_multipart(
                 mime_type,
                 mut content_handle,
             } => {
-                let mut content = String::new();
+                let mut content = Vec::new();
                 // We read out the content handle, otherwise we could stream in the file read (better) but then it would use transfer-encoding chunked -> currently not supported
                 content_handle.rewind()?;
-                content_handle.read_to_string(&mut content)?;
+                content_handle.read_to_end(&mut content)?;
                 // let mut content = Vec::new();
                 // let content = content_handle.read_to_end(&mut content);
                 println!("Adding parameter with type: {}", mime_type.to_string());
-                let part = Part::text(content).mime_str(&mime_type.to_string())?;
+                let part = Part::bytes(content).mime_str(&mime_type.to_string())?;
                 form = form.part(name, part);
             }
         }
