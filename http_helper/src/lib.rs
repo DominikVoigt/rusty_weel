@@ -375,7 +375,6 @@ impl Client {
         request_builder = self.generate_body(request_builder)?;
         request_builder = self.set_headers(request_builder);
         let request = request_builder.build()?;
-        println!("Content length header: {:?}", request.headers().get(CONTENT_LENGTH));
         let response = self.reqwest_client.execute(request)?;
         Ok(RawResponse {
             headers: response.headers().clone(),
@@ -413,7 +412,6 @@ impl Client {
         parameter: Parameter,
         request_builder: RequestBuilder,
     ) -> Result<RequestBuilder> {
-        println!("Constructing singular body");
         match parameter {
             Parameter::SimpleParameter { name, value, .. } => {
                 let text = if value.len() == 0 {
@@ -446,10 +444,8 @@ impl Client {
                 let request_builder = request_builder.body(content);
                 self.headers.append(CONTENT_LENGTH, body_length.into());
                 if self.headers.contains_key(CONTENT_TYPE.as_str()) {
-                    println!("Using content type from header: {:?}", self.headers.get(CONTENT_TYPE.as_str()));
                     Ok(request_builder)
                 } else {
-                    println!("Setting content type to: {}", mime_type.to_string());
                     // Only set default header if no header is provided
                     Ok(request_builder.header(CONTENT_TYPE, mime_type.to_string()))
                 }
@@ -525,7 +521,6 @@ fn construct_multipart(
                 content_handle.read_to_end(&mut content)?;
                 // let mut content = Vec::new();
                 // let content = content_handle.read_to_end(&mut content);
-                println!("Adding parameter with type: {}", mime_type.to_string());
                 let part = Part::bytes(content).mime_str(&mime_type.to_string())?;
                 form = form.part(name, part);
             }
