@@ -1,6 +1,5 @@
 use std::{
     collections::{HashMap, HashSet},
-    io::{Seek, Write},
     panic::{set_hook, take_hook},
     sync::{Arc, Mutex},
     thread::{self, sleep, JoinHandle},
@@ -232,10 +231,8 @@ impl RedisHelper {
                                             panic!("Failed parsing mimetype")
                                         },
                                     };
-                                    let mut file = tempfile::tempfile()?;
-                                    file.write_all(value[1][2].as_str().unwrap().as_bytes())?;
-                                    file.rewind()?;
-                                    content.push(Parameter::ComplexParameter { name: value[0].as_str().unwrap().to_owned(), mime_type, content_handle: file });
+                                    let bytes = http_helper::Bytes::copy_from_slice(value[1][2].as_str().unwrap().as_bytes());
+                                    content.push(Parameter::ComplexParameter { name: value[0].as_str().unwrap().to_owned(), mime_type, content: bytes });
                                 }
                             };
                             let headers = convert_headers_to_map(&message["content"]["headers"]);

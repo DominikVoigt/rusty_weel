@@ -16,7 +16,7 @@ module CPEE
 
   module ExecutionHandler
 
-    module Rust
+    module Altrust
       BACKEND_INSTANCE = 'instance.rs'
       BACKEND_OPTS     = File.expand_path(File.join(__dir__, '../../configs', 'opts.json'))
       BACKEND_CONTEXT  = 'context.json'
@@ -25,7 +25,7 @@ module CPEE
       INDENT = 4
       module Translate #{{{
         def self::_indent(indent) #{{{
-          " " * CPEE::ExecutionHandler::Rust::INDENT * indent
+          " " * CPEE::ExecutionHandler::Altrust::INDENT * indent
         end #}}}
 
         def self::_nl #{{{
@@ -242,7 +242,7 @@ module CPEE
         dsl = CPEE::Persistence::extract_item(id,opts,'dsl')
         hw = CPEE::Persistence::extract_item(id,opts,'executionhandler')
         attributes = CPEE::Persistence::extract_list(id,opts,'attributes').to_h
-        iopts = JSON::load_file(ExecutionHandler::Rust::BACKEND_OPTS)
+        iopts = JSON::load_file(ExecutionHandler::Altrust::BACKEND_OPTS)
         iopts['instance_id'] = id.to_i
         iopts['host'] = opts[:host]
         iopts['cpee_base_url'] = opts[:url]
@@ -254,7 +254,7 @@ module CPEE
         iopts['executionhandler'] = hw
         iopts['attributes'] = attributes
         instance_dir = File.join(opts[:instances], id.to_s)
-        File.open(File.join(instance_dir, File::basename(ExecutionHandler::Rust::BACKEND_OPTS)),'w') do |f|
+        File.open(File.join(instance_dir, File::basename(ExecutionHandler::Altrust::BACKEND_OPTS)),'w') do |f|
           f.write JSON::pretty_generate(iopts)
         end
 
@@ -270,27 +270,27 @@ module CPEE
         positions.each do |k, v|
           pos[k] = {"position" => k, "uuid" => "0", "detail" => v, "handler_passthrough" => CPEE::Persistence::extract_item(id,opts,File.join('positions',k,'@passthrough'))}
         end
-        File.open(File.join(instance_dir, ExecutionHandler::Rust::BACKEND_CONTEXT),'w') do |f|
+        File.open(File.join(instance_dir, ExecutionHandler::Altrust::BACKEND_CONTEXT),'w') do |f|
           f.write JSON::pretty_generate({
             'endpoints' => endpoints,
             'data' => data,
             'search_positions' => pos
           })
         end
-        File.write(File.join(instance_dir, ExecutionHandler::Rust::BACKEND_INSTANCE),dsl)
+        File.write(File.join(instance_dir, ExecutionHandler::Altrust::BACKEND_INSTANCE),dsl)
 
-        system(ExecutionHandler::Rust::BACKEND_COMPILE, instance_dir)
+        system(ExecutionHandler::Altrust::BACKEND_COMPILE, instance_dir)
       end #}}}
 
       def self::run(id,opts) # {{{
-        exe = File.join(opts[:instances],id.to_s,ExecutionHandler::Rust::BACKEND_RUN)
+        exe = File.join(opts[:instances],id.to_s,ExecutionHandler::Altrust::BACKEND_RUN)
         pid = Kernel.spawn(exe, id.to_s, :pgroup => true, :in => '/dev/null', :out => exe + '.out', :err => exe + '.err')
         Process.detach pid
         File.write(exe + '.pid',pid)
       end #}}}
 
       def self::stop(id,opts) ### return: bool to tell if manually changing redis is necessary # {{{
-        exe = File.join(opts[:instances],id.to_s,ExecutionHandler::Rust::BACKEND_RUN)
+        exe = File.join(opts[:instances],id.to_s,ExecutionHandler::Altrust::BACKEND_RUN)
         pid = File.read(exe + '.pid') rescue nil
         if pid && (Process.kill(0, pid.to_i) rescue false)
           Process.kill('HUP', pid.to_i) rescue nil

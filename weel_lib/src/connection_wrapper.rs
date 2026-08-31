@@ -7,11 +7,10 @@ use crate::{
 };
 use core::str;
 use http_helper::{header_map_to_hash_map, Method, Parameter};
-use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
+use http::header::{HeaderMap, HeaderName, HeaderValue};
 use serde_json::{json, Value};
 use std::{
     collections::HashMap,
-    io::{Read, Seek},
     str::FromStr,
     sync::{Arc, Mutex, Weak},
     thread::{self, sleep, ThreadId},
@@ -635,6 +634,24 @@ impl ConnectionWrapper {
             content.insert("activity".to_owned(), serde_json::Value::String(position));
             weel.register_callback(Arc::clone(selfy), &callback_id, content_node)?;
 
+            // Strip quotation marks introduced by the translation of parameters, even if they are numbers.
+            // The previous http_helper stripped these inside its add_parameter (see upstream e5fc5be).
+            let params = params
+                .into_iter()
+                .map(|param| match param {
+                    Parameter::SimpleParameter {
+                        name,
+                        value,
+                        param_type,
+                    } => Parameter::SimpleParameter {
+                        name: strip_quotation_marks(&name).to_owned(),
+                        value: strip_quotation_marks(&value).to_owned(),
+                        param_type,
+                    },
+                    complex => complex,
+                })
+                .collect();
+
             let endpoint = this.handler_endpoints.get(0).unwrap();
             let mut client = http_helper::Client::new(&endpoint, parameters.method.clone())?;
             client.set_request_headers(headers.clone());
@@ -753,14 +770,8 @@ impl ConnectionWrapper {
             // Assumption about "gtresult.first.value.read": first is the array method to get the first element
             let body = match content.pop().unwrap() {
                 Parameter::SimpleParameter { value, .. } => value.clone(),
-                Parameter::ComplexParameter {
-                    mut content_handle, ..
-                } => {
-                    let mut body = String::new();
-                    content_handle.rewind()?;
-                    content_handle.read_to_string(&mut body)?;
-                    content_handle.rewind()?;
-                    body
+                Parameter::ComplexParameter { content, .. } => {
+                    std::str::from_utf8(&content)?.to_owned()
                 }
             };
 
@@ -1196,6 +1207,14 @@ pub fn convert_thread_id(thread_id: ThreadId) -> u64 {
 
 fn contains_non_empty(options: &HashMap<String, String>, key: &str) -> bool {
     options.get(key).map(|e| !e.is_empty()).unwrap_or(false)
+}
+
+/**
+ * Removes a single leading and trailing quotation mark (introduced by the translation of parameters)
+ */
+fn strip_quotation_marks(input: &str) -> &str {
+    let input = input.strip_prefix('"').unwrap_or(input);
+    input.strip_suffix('"').unwrap_or(input)
 }
 
 /**

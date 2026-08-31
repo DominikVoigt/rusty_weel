@@ -1,0 +1,8 @@
+[target.aarch64-unknown-linux-gnu]
+# The pinned 0.2.5 image is Ubuntu 16.04 (OpenSSL 1.0.2) — too old for
+# openssl-sys and ABI-incompatible with the Debian trixie SBC.
+image = "ghcr.io/cross-rs/aarch64-unknown-linux-gnu:main"
+pre-build = [
+    "dpkg --add-architecture $CROSS_DEB_ARCH",
+    "apt-get update && apt-get --assume-yes install libssl-dev:$CROSS_DEB_ARCH libcurl4-openssl-dev:$CROSS_DEB_ARCH"
+]

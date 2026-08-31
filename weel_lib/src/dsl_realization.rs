@@ -14,7 +14,7 @@ use std::time::SystemTime;
 
 use rand::distributions::Alphanumeric;
 use rand::Rng;
-use reqwest::header::ToStrError;
+use http::header::ToStrError;
 
 use crate::connection_wrapper::ConnectionWrapper;
 use crate::data_types::{
@@ -2093,10 +2093,9 @@ fn recursive_continue(
 #[derive(Debug, From)]
 pub enum Error {
     GeneralError(String),
-    InvalidHeaderValue(reqwest::header::InvalidHeaderValue),
-    InvalidHeaderName(reqwest::header::InvalidHeaderName),
+    InvalidHeaderValue(http::header::InvalidHeaderValue),
+    InvalidHeaderName(http::header::InvalidHeaderName),
     JsonError(serde_json::Error),
-    ReqwestError(reqwest::Error),
     ToStrError(ToStrError),
     IOError(std::io::Error),
     RedisError(redis::RedisError),

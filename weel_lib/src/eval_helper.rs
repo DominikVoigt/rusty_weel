@@ -2,14 +2,12 @@ use core::str;
 use std::{
     collections::HashMap,
     fmt::Display,
-    io::{Read, Seek},
-    sync::Mutex,
     thread,
 };
 
+use http::header::CONTENT_TYPE;
 use http_helper::{Client, Parameter};
 use mime::{Mime, APPLICATION_JSON, TEXT_PLAIN_UTF_8};
-use reqwest::header::CONTENT_TYPE;
 use serde_json::Value;
 
 use crate::{
@@ -17,14 +15,6 @@ use crate::{
     data_types::{CallbackType, Context, Opts, StatusDTO},
     dsl_realization::{Error, Result, Signal},
 };
-
-fn construct_clients(number_clients: u8) -> Vec<Mutex<reqwest::blocking::Client>> {
-    let mut new_pool = Vec::new();
-    for _ in 0..number_clients {
-        new_pool.push(Mutex::new(reqwest::blocking::Client::new()));
-    }
-    new_pool
-}
 
 pub fn test_condition(
     dynamic_context: &Context,
@@ -106,14 +96,8 @@ pub fn test_condition(
                         continue;
                     }
                 }
-                Parameter::ComplexParameter {
-                    name,
-                    mut content_handle,
-                    ..
-                } => {
-                    let mut content = String::new();
-                    content_handle.read_to_string(&mut content)?;
-                    let content = content.replace("\"", "");
+                Parameter::ComplexParameter { name, content, .. } => {
+                    let content = std::str::from_utf8(&content)?.replace("\"", "");
                     if content.len() == 0 {
                         return Err(Error::EvalError(EvalError::SyntaxError(
                             "Provided code is not an expression! Evaluation returned empty"
@@ -155,19 +139,15 @@ pub fn test_condition(
         let mut signal_text: Option<String> = None;
         while let Some(param) = result.content.pop() {
             let p_name: String;
-            let mut p_content = String::new();
+            let p_content: String;
             match param {
                 Parameter::SimpleParameter { name, value, .. } => {
                     p_name = name;
                     p_content = value;
                 }
-                Parameter::ComplexParameter {
-                    name,
-                    mut content_handle,
-                    ..
-                } => {
+                Parameter::ComplexParameter { name, content, .. } => {
                     p_name = name;
-                    content_handle.read_to_string(&mut p_content)?;
+                    p_content = std::str::from_utf8(&content)?.to_owned();
                 }
             };
             match p_name.as_str() {
@@ -373,13 +353,8 @@ pub fn evaluate_expression(
                     continue;
                 }
             }
-            Parameter::ComplexParameter {
-                name,
-                mut content_handle,
-                ..
-            } => {
-                let mut content = String::new();
-                content_handle.read_to_string(&mut content)?;
+            Parameter::ComplexParameter { name, content, .. } => {
+                let content = std::str::from_utf8(&content)?.to_owned();
                 match name.as_str() {
                     "result" => {
                         if content.len() == 0 {
@@ -663,15 +638,8 @@ pub fn structurize_result(
         } else {
             Ok(match content.pop().unwrap() {
                 Parameter::SimpleParameter { value, .. } => serde_json::from_str::<Value>(&value)?,
-                Parameter::ComplexParameter {
-                    mut content_handle,
-                    name: _,
-                    ..
-                } => {
-                    let mut content = String::new();
-                    content_handle.rewind()?;
-                    content_handle.read_to_string(&mut content)?;
-                    serde_json::from_str::<Value>(&content)?
+                Parameter::ComplexParameter { content, name: _, .. } => {
+                    serde_json::from_str::<Value>(std::str::from_utf8(&content)?)?
                 }
             })
         }

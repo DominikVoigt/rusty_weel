@@ -20,8 +20,8 @@ mime = "0.3.17"
 redis = "0.28.0"
 
 # HTTP 
-http_helper ={ path = "../http_helper"}
-tempfile = "3.10.1"
+http_helper = { git = "https://github.com/CarloTUM/Bachelor-Thesis.git", rev = "bddfb45" }
+http = "1"
 urlencoding = "2.1.3"
 
 # Parallelism
@@ -38,11 +38,9 @@ once = "0.3.4"
 derive_more = {version = "1.0.0", features = ["from"]}
 lazy_static = "1.5.0"
 
-[target.'cfg(target_arch = "x86_64")'.dependencies]
-reqwest = {version="0.12.12", features = ["blocking", "multipart", "rustls-tls"], default-features = false}
-
-[target.'cfg(target_arch = "aarch64")'.dependencies]
-reqwest = {version="0.12.12", features = ["blocking", "multipart", "rustls-tls"], default-features = false}
-
 [dev-dependencies]
 rand = "0.8.5"
+
+[features]
+static-curl = ["http_helper/static-curl"]
+static-ssl = ["http_helper/static-ssl"]
