@@ -124,7 +124,8 @@ impl DSL for Weel {
 
         thread_info.branches = Vec::new();
         thread_info.branch_traces = HashMap::new();
-        // thread_info.branch_finished_count = 0;
+        // In case of dynamic parallelism reset the counter before setting up the branches 
+        thread_info.branch_finished_count = 0;
 
         let barrier_start = Arc::new(BlockingQueue::new());
         thread_info.branch_barrier_start = Some(barrier_start.clone());
@@ -283,8 +284,8 @@ impl DSL for Weel {
                 .send(())
                 .unwrap();
             drop(thread_info);
+            
             // Signal that this thread has terminated
-
             if parent_thread_info.parallel_wait_condition == CancelCondition::Last {
                 let reached_wait_threshold = parent_thread_info.branch_finished_count
                     == parent_thread_info.branch_wait_threshold;
