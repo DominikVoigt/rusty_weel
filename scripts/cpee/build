@@ -2,5 +2,8 @@ INSTANCE_ID=$(grep -Po '(?<=\"instance_id\": )(\d+)' opts.json)
 BIN_NAME="weel_bin_$INSTANCE_ID"
 sed -i "s/name = \"weel_bin\"/name = \"$BIN_NAME\"/" ./weel_bin/Cargo.toml
 
+# Dynamic linking against the prebuilt libstd.so requires unwinding and is incompatible with LTO:
+# override the size/memory oriented release profile (see Cargo.toml) with the fast-to-compile settings.
+export CARGO_PROFILE_RELEASE_LTO=false CARGO_PROFILE_RELEASE_PANIC=unwind CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16 CARGO_PROFILE_RELEASE_INCREMENTAL=true
 export RUSTFLAGS='-C prefer-dynamic -Awarnings'
 cargo build --release 1> build.out 2>&1
