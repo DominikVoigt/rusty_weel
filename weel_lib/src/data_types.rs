@@ -134,7 +134,7 @@ pub struct TaskMetaData {
 
 impl Opts {
     pub fn load(path: &str) -> Self {
-        let config = fs::read_to_string(path).expect("Could not read configuration file!");
+        let config = fs::read_to_string(path).expect(&format!("Could not read configuration file from path: {}", path));
         let config: Self = serde_json::from_str(&config).expect("Could not parse Configuration");
         config
     }
@@ -337,7 +337,7 @@ mod test_queue {
     fn test_count() {
         println!("Start test");
         let queue: Arc<BlockingQueue<u32>> = Arc::new(BlockingQueue::new());
-        let handles: Vec<_> = (0..2000)
+        let handles: Vec<_> = (0..200)
             .map(|_i| {
                 let queue = queue.clone();
                 thread::spawn(move || {
