@@ -1,0 +1,23 @@
+{
+  "endpoints": {
+    "user": "https-post://cpee.org/services/timeout-user.php",
+    "auto": "https-post://cpee.org/services/timeout-auto.php",
+    "subprocess": "https://cpee.org/flow/start/url/",
+    "timeout": "https://cpee.org/services/timeout.php",
+    "send": "https-post://cpee.org/ing/correlators/message/send/",
+    "receive": "https-get://cpee.org/ing/correlators/message/receive/",
+    "bookAir": "https://cpee.org/services/airline.php",
+    "bookHotel": "https://cpee.org/services/hotel.php",
+    "approve": "https://cpee.org//services/approval.php"
+  },
+  "data": {
+    "airline": "Aeroflot",
+    "persons": 3,
+    "card": "Visa_12345",
+    "costs": 565.0,
+    "hotels": [],
+    "from": "Vienna",
+    "to": "Prague"
+  },
+  "search_positions": {}
+}

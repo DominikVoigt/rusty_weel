@@ -1,0 +1,30 @@
+{
+  "instance_id": 1686,
+  "host": "localhost",
+  "cpee_base_url": "https://echo.bpm.in.tum.de/flow/engine",
+  "redis_url": "redis://localhost:6379",
+  "redis_db": 0,
+  "redis_workers": 1,
+  "executionhandlers": "/home/mangler/run/flow/executionhandlers",
+  "executionhandler": "rust",
+  "eval_language": "ruby",
+  "eval_backend_exec_full": "http://localhost:9302/exec-full",
+  "eval_backend_structurize": "http://localhost:9302/structurize",
+  "workers": 1,
+  "global_executionhandlers": "/home/mangler/Projects/cpee/server/executionhandlers",
+  "attributes": {
+    "uuid": "b3102d4a-f150-4066-b580-188fa6ef6437",
+    "info": "Coopis 2010",
+    "modeltype": "CPEE",
+    "theme": "extended",
+    "guarded": "none",
+    "guarded_id": "",
+    "creator": "Christine Ashcreek",
+    "author": "Christine Ashcreek",
+    "design_stage": "development",
+    "design_dir": "Templates.dir",
+    "model_uuid": "a1cbb855-90e3-4d8c-b44b-d3ba7bff9f4e",
+    "model_version": "",
+    "executionhandler": "rust"
+  }
+}

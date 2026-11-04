@@ -54,9 +54,34 @@ fn main() {
     }
 }
 
+/**
+ * Resolves the path of a config file. Precedence:
+ * 1. Command line flag (`--<flag> <path>` or `--<flag>=<path>`)
+ * 2. Environment variable `env_var`
+ * 3. `default` (relative to the current working directory)
+ */
+fn config_path(flag: &str, env_var: &str, default: &str) -> String {
+    let long_flag = format!("--{}", flag);
+    let prefix = format!("--{}=", flag);
+    let mut args = std::env::args().skip(1);
+    while let Some(arg) = args.next() {
+        if arg == long_flag {
+            match args.next() {
+                Some(path) => return path,
+                None => panic!("Missing value for {}", long_flag),
+            }
+        } else if let Some(path) = arg.strip_prefix(&prefix) {
+            return path.to_owned();
+        }
+    }
+    std::env::var(env_var).unwrap_or_else(|_| default.to_owned())
+}
+
 fn startup() -> Arc<Weel> {
-    let opts = Opts::load("opts.json");
-    let context = Mutex::new(Context::load("context.json"));
+    let opts_path = config_path("opts", "WEEL_OPTS", "opts.json");
+    let context_path = config_path("context", "WEEL_CONTEXT", "context.json");
+    let opts = Opts::load(&opts_path);
+    let context = Mutex::new(Context::load(&context_path));
     let callback_keys: Arc<Mutex<HashMap<String, Arc<Mutex<ConnectionWrapper>>>>> =
         Arc::new(Mutex::new(HashMap::new()));
     let redis_helper = match RedisHelper::new(&opts, "notifications") {

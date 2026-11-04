@@ -28,7 +28,14 @@ A good starting point is using the `build_static.sh` to compile the binary and s
 
 The compiled binary requires a configuration and a context file in the same folder. The configuraiton specifies where it can reach
 the other components required to execute the process model (e.g. the evaluation helper to execute ruby code, the Redis-like database for persistence, callbacks, and monitoring).
-The both files are respectively expected to be JSON files named `opts.json` and `context.json`.
+The both files are respectively expected to be JSON files named `opts.json` and `context.json` in the current working directory.
+Their locations can be overridden via command line flags or environment variables (flags take precedence):
+
+```sh
+./weel_bin --opts /path/to/opts.json --context /path/to/context.json
+WEEL_OPTS=/path/to/opts.json WEEL_CONTEXT=/path/to/context.json ./weel_bin
+```
+
 The structure of these JSON files are specified by the `Opts` and `Context` structs specified [here](./weel_lib/src/data_types.rs).
 
 The process model then can be executed using the [run.sh](./run.sh) script located in the process root. Please note that the required files are located in the [binaries location](./target/release/).
